@@ -1,0 +1,8 @@
+/* Demo mode only: marked, but in the same voice as the rest — a dashed frame and a small tag, no extra colour. */
+.demotag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;padding:2px 7px;border-radius:999px;background:var(--ink);color:#fff;vertical-align:1px;margin-right:6px}
+.box.demobox{background:none;border:1px dashed var(--line-2);margin-top:12px}.box.demobox .btn{width:100%}.box.demobox .pills{margin:10px 0 2px}
+.tourh{margin:20px 0 8px;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.tour{list-style:none;margin:0;padding:0;display:grid;gap:10px}.tour li{display:grid;grid-template-columns:22px 1fr;gap:10px;align-items:start}
+.tour .tick{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--line-2);display:grid;place-items:center;font-size:12px;font-weight:800;margin-top:1px}
+.tour li.done .tick{background:var(--blue);border-color:var(--blue);color:#fff}.tour strong{font-size:15px}.tour .how{font-size:13.5px;color:var(--ink-2);margin-top:2px}
+.demobar{border:1px dashed var(--line-2);border-radius:var(--r-m);padding:10px 14px;font-size:13.5px;color:var(--ink-2);margin:0 0 14px}

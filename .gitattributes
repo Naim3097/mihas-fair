@@ -1,0 +1,2 @@
+# Normalise line endings: LF in the repo and on every checkout; binaries are auto-detected.
+* text=auto eol=lf

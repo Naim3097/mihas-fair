@@ -1,0 +1,11 @@
+/* The Nexova fair: Mission X's interface over a hall in space. Only what differs from ui.css lives here. */
+body{background:#070b16}
+#stage{background:#070b16}
+#stage canvas{cursor:grab}
+/* holographic names: cyan for visitors, MIHAS orange for exhibitors, a beam down to the head */
+.lbl.holo{font-size:calc(11.5px * var(--ui));letter-spacing:.04em;text-transform:none;font-weight:700;color:#7ff3ff;background:rgba(6,20,36,.55);border:1px solid rgba(0,229,255,.45);padding:3px 10px;border-radius:999px;text-shadow:0 0 8px rgba(0,229,255,.75);backdrop-filter:blur(3px);max-width:calc(200px * var(--ui));overflow:hidden;text-overflow:ellipsis}
+.lbl.holo::after{content:"";position:absolute;left:50%;top:100%;width:1px;height:14px;background:linear-gradient(180deg,rgba(0,229,255,.8),transparent)}
+.lbl.holo.exhib{color:#ffb27a;border-color:rgba(240,122,29,.6);text-shadow:0 0 8px rgba(240,122,29,.8)}
+.lbl.holo.exhib::after{background:linear-gradient(180deg,rgba(240,122,29,.9),transparent)}
+.lbl.holo.me{border-color:rgba(0,229,255,.85);background:rgba(6,20,36,.7)}
+.lbl.booth.online::before{background:#f07a1d}

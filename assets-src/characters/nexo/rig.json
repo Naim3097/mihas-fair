@@ -1,0 +1,225 @@
+{
+  "_": "Nexo's skeleton, read off the body's profile (PROFILE=1 node tools/rig/fit-mascot-rig.mjs). Metres, y up, facing +z, left at +x; the right side is mirrored from the left. Capsules: [bone, from, to, coreRadius]; 'end' is the bone's tip from ends.",
+  "height": 1.6,
+  "joints": {
+    "Hips": [
+      0,
+      0.37,
+      0.07
+    ],
+    "Spine02": [
+      0,
+      0.51,
+      0.06
+    ],
+    "Spine01": [
+      0,
+      0.65,
+      0.055
+    ],
+    "Spine": [
+      0,
+      0.78,
+      0.05
+    ],
+    "neck": [
+      0,
+      0.88,
+      0.04
+    ],
+    "Head": [
+      0,
+      0.94,
+      0.04
+    ],
+    "head_end": [
+      0,
+      1.6,
+      0.03
+    ],
+    "headfront": [
+      0,
+      1.25,
+      0.39
+    ],
+    "LeftShoulder": [
+      0.1,
+      0.8,
+      0.05
+    ],
+    "LeftArm": [
+      0.3,
+      0.83,
+      0.06
+    ],
+    "LeftForeArm": [
+      0.45,
+      0.655,
+      0.065
+    ],
+    "LeftHand": [
+      0.54,
+      0.5,
+      0.075
+    ],
+    "LeftUpLeg": [
+      0.22,
+      0.37,
+      0.09
+    ],
+    "LeftLeg": [
+      0.265,
+      0.25,
+      0.12
+    ],
+    "LeftFoot": [
+      0.27,
+      0.13,
+      0.12
+    ],
+    "LeftToeBase": [
+      0.22,
+      0.03,
+      0.3
+    ]
+  },
+  "ends": {
+    "LeftHand": [
+      0.57,
+      0.37,
+      0.08
+    ],
+    "LeftToeBase": [
+      0.2,
+      0.02,
+      0.4
+    ]
+  },
+  "capsules": [
+    [
+      "Hips",
+      [
+        0,
+        0.36,
+        0.07
+      ],
+      "Spine02",
+      0.14
+    ],
+    [
+      "Spine02",
+      "Spine02",
+      "Spine01",
+      0.24
+    ],
+    [
+      "Spine01",
+      "Spine01",
+      "Spine",
+      0.26
+    ],
+    [
+      "Spine",
+      "Spine",
+      "neck",
+      0.24
+    ],
+    [
+      "neck",
+      "neck",
+      "Head",
+      0.12
+    ],
+    [
+      "Head",
+      [
+        0,
+        1.25,
+        0.04
+      ],
+      "head_end",
+      0.36
+    ],
+    [
+      "LeftShoulder",
+      "LeftShoulder",
+      "LeftArm",
+      0.09
+    ],
+    [
+      "LeftArm",
+      "LeftArm",
+      "LeftForeArm",
+      0.075
+    ],
+    [
+      "LeftForeArm",
+      "LeftForeArm",
+      "LeftHand",
+      0.06
+    ],
+    [
+      "LeftHand",
+      "LeftHand",
+      "end",
+      0.07
+    ],
+    [
+      "LeftUpLeg",
+      "LeftUpLeg",
+      [
+        0.263,
+        0.285,
+        0.12
+      ],
+      0.065
+    ],
+    [
+      "LeftLeg",
+      [
+        0.266,
+        0.225,
+        0.12
+      ],
+      "LeftFoot",
+      0.065
+    ],
+    [
+      "LeftFoot",
+      [
+        0.25,
+        0.09,
+        0.14
+      ],
+      "LeftToeBase",
+      0.11
+    ],
+    [
+      "LeftToeBase",
+      "LeftToeBase",
+      "end",
+      0.1
+    ]
+  ],
+  "rigid": {
+    "helmet": {
+      "centre": [
+        0,
+        1.25,
+        0.04
+      ],
+      "radius": 0.36,
+      "margin": 0.08,
+      "aboveY": 0.9
+    },
+    "shoulderPad": {
+      "radius": 0.1
+    },
+    "boot": {
+      "belowY": 0.155,
+      "minX": 0.02
+    }
+  },
+  "blend": 0.03,
+  "smoothPasses": 2
+}
