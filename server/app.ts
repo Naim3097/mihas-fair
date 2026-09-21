@@ -30,7 +30,7 @@ function toCsv(cols: string[], rows: Record<string, unknown>[]): string {
 }
 const csvHeaders = (name: string) => ({ 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="${name}"` });
 
-export function createApp({ game, stations, social, crews, venue, director, gc, ops, signer, ceritera, crewPin, publicOrigin, secureCookies, cookies: cookieIO }: AppDeps) {
+export function createApp({ game, stations, social, crews, venue, director, gc, ops, signer, ceritera, checkpoints, crewPin, publicOrigin, secureCookies, cookies: cookieIO }: AppDeps) {
   const app = new Hono<Vars>();
   const cookieOpts = { httpOnly: true, sameSite: 'Lax' as const, secure: secureCookies, path: '/' };
   const cookies: CookieIO = cookieIO ?? { get: (c, name) => getCookie(c, name), set: (c, name, value, maxAge) => setCookie(c, name, value, { ...cookieOpts, maxAge }) };
@@ -97,6 +97,14 @@ export function createApp({ game, stations, social, crews, venue, director, gc, 
   player.post('/station/unshare', async (c) => { await stations.revokeShare(pid(c), String((await body(c)).stationId)); return ok(c, null); });
   player.get('/host/stations', async (c) => ok(c, await stations.mine(pid(c)), [], false));
   player.get('/host/code', async (c) => ok(c, await stations.hostCode(pid(c), c.req.query('station') ?? ''), [], false));
+  /* the exhibitor's dashboard: who scanned their QR, their printable QR, their logo */
+  player.get('/host/scans', async (c) => ok(c, await checkpoints.scans(pid(c), c.req.query('station') ?? ''), [], false));
+  player.get('/host/scans.csv', async (c) => {
+    const station = c.req.query('station') ?? '', rows = await checkpoints.scans(pid(c), station);
+    return c.body(toCsv(['name', 'phone', 'email', 'company', 'scanned_at', 'checkpoint'], rows.map((r) => ({ ...r, scanned_at: new Date(r.at).toISOString(), checkpoint: r.checkpoint ? 'yes' : '' }))), 200, csvHeaders(`visitors-${station.replace(/[^0-9A-Za-z]/g, "")}.csv`));
+  });
+  player.get('/host/qr', async (c) => ok(c, await checkpoints.printableQr(pid(c), c.req.query('station') ?? ''), [], false));
+  player.post('/station/logo', async (c) => { const b = await body(c); await checkpoints.setLogo(pid(c), String(b.stationId ?? ''), b.image); return ok(c, null, [], false); });
   player.get('/host/leads', async (c) => ok(c, await stations.leads(pid(c), c.req.query('station') ?? ''), [], false));
   player.get('/host/leads.csv', async (c) => {
     const sid = c.req.query('station') ?? '', rows = await stations.leads(pid(c), sid);
@@ -170,11 +178,21 @@ export function createApp({ game, stations, social, crews, venue, director, gc, 
     const t = game.now(), dots = await game.presence.all(t, venue.hidden);
     return c.json({ ok: true, data: { dots, online: dots.length, onsite: dots.filter((d) => d.deck).length, totals: await ops.totals(), board: await ops.board('today', null), booths: await ops.board('stations', null), sectors: await crews.view(), storm: await director.stormView(), drop: await ops.drop(null), joinUrl: publicOrigin } });
   });
+  crew.get('/geocal', async (c) => c.json({ ok: true, data: { points: await venue.calPoints(), geo: await venue.geo(true) } }));
+  crew.post('/geocal', async (c) => { const b = await body(c); await venue.addCalPoint(String(b.stationId ?? ''), { lat: Number(b.lat), lon: Number(b.lon), acc: Number(b.acc) }); return c.json({ ok: true, data: { points: await venue.calPoints(), geo: await venue.geo() } }); });
+  crew.post('/geocal/delete', async (c) => { await venue.removeCalPoint(Number((await body(c)).id)); return c.json({ ok: true, data: { points: await venue.calPoints(), geo: await venue.geo() } }); });
   crew.post('/stations/status', async (c) => { const b = await body(c); await stations.crewSetStatus(String(b.stationId), String(b.status)); return c.json({ ok: true, data: null }); });
 
   // The pages ask this first: a healthy answer means "real backend"; anything else and they start the in-browser demo.
   // Registered before the player routes so that asking does not create a guest account.
   app.get('/api/healthz', (c) => c.json({ ok: true, data: 'live' }));
+  // Exhibitors' logos, for their booths in the world. Versioned URLs (?v=), so they cache for good.
+  app.get('/api/logo/:id', async (c) => {
+    const l = await checkpoints.logo(c.req.param('id'));
+    return l ? c.body(l.bytes as unknown as ArrayBuffer, 200, { 'content-type': l.mime, 'cache-control': 'public, max-age=31536000, immutable' }) : c.text('No logo', 404);
+  });
+  // How a phone at MITEC turns GPS into a spot on the plan. Public: it is a map of the building, nothing about anyone.
+  app.get('/api/geo', async (c) => c.json({ ok: true, data: await venue.geo() }));
   app.route('/api/crew', crew);
   app.route('/api', player);
 

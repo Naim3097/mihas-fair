@@ -9,6 +9,7 @@ import './crew.css';
 import './demo/demo.css';
 import { demo, demoState, ensureBackend } from './demo/client';
 import type { CrewStationRow, CrewTicketView } from '../shared/types';
+import type { GeoCalPoint, GeoCalibration } from '../shared/geo';
 
 type Res<T> = { ok: true; data: T } | { ok: false; error: string; code: string };
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -27,17 +28,17 @@ function extractTicket(raw: string): string {
 
 function Crew() {
   const [authed, setAuthed] = useState<boolean | null>(null);
-  const [tab, setTab] = useState<'scan' | 'leads' | 'stations' | 'review' | 'ops' | 'beacons'>('scan');
+  const [tab, setTab] = useState<'scan' | 'leads' | 'stations' | 'review' | 'ops' | 'beacons' | 'calibrate'>('scan');
   useEffect(() => { call('GET', '/api/crew/check').then(() => setAuthed(true), () => setAuthed(false)); }, []);
   if (authed === null) return <main class="console"><p>Loading…</p></main>;
   if (!authed) return <Login onDone={() => setAuthed(true)} />;
   return (
     <main class="console">
       <header><div class="brand"><span>lean<b>.x</b>digital</span><i /><span>Crew console</span></div>
-        <nav>{([['scan', 'Scan'], ['leads', 'Leads'], ['stations', 'Booths'], ['review', 'Review'], ['ops', 'Live'], ['beacons', 'Booth QRs']] as const).map(([t, label]) => <button key={t} class={'chip' + (tab === t ? ' on' : '')} onClick={() => setTab(t)}>{label}</button>)}
+        <nav>{([['scan', 'Scan'], ['leads', 'Leads'], ['stations', 'Booths'], ['review', 'Review'], ['ops', 'Live'], ['beacons', 'Booth QRs'], ['calibrate', 'Calibrate GPS']] as const).map(([t, label]) => <button key={t} class={'chip' + (tab === t ? ' on' : '')} onClick={() => setTab(t)}>{label}</button>)}
           <button class="chip ghost" onClick={() => call('POST', '/api/crew/logout').finally(() => setAuthed(false))}>Sign out</button></nav></header>
       {demo.value && <p class="demobar"><b>Demo mode.</b> This console talks to the demo world inside this browser — the same one the game tab is playing in. Leads, stations and the accounts under review belong to a simulated cast; your own demo player is in there too.</p>}
-      {tab === 'scan' && <Scan />}{tab === 'leads' && <Leads />}{tab === 'stations' && <StationsTab />}{tab === 'review' && <ReviewTab />}{tab === 'ops' && <OpsTab />}{tab === 'beacons' && <Beacons />}
+      {tab === 'scan' && <Scan />}{tab === 'leads' && <Leads />}{tab === 'stations' && <StationsTab />}{tab === 'review' && <ReviewTab />}{tab === 'ops' && <OpsTab />}{tab === 'beacons' && <Beacons />}{tab === 'calibrate' && <Calibrate />}
     </main>
   );
 }
@@ -82,6 +83,7 @@ function Scan() {
         <div class="sheet wide">
           <div class="k gold">Prize code</div><h2>{ticket.view.name}</h2>
           <p class="lead">{[ticket.view.role, ticket.view.company].filter(Boolean).join(' · ')}<br /><small>{ticket.view.callsign}</small></p>
+          {ticket.view.checkpoints && <p class={'banner ' + (ticket.view.checkpoints.started && ticket.view.checkpoints.target > 0 && ticket.view.checkpoints.done >= ticket.view.checkpoints.target ? 'ok' : 'bad')}>{!ticket.view.checkpoints.started ? 'Has not started the mission (never scanned the Lean X QR)' : `Checkpoints: ${ticket.view.checkpoints.done} of ${ticket.view.checkpoints.target}`}</p>}
           {ticket.view.alreadyDocked ? <p class="banner bad">Already claimed — do not hand out a second gift.</p> : <button class="btn primary big" onClick={dock}>Confirm · +500 points and the gift</button>}
           <button class="btn big" style={{ marginTop: '8px' }} onClick={() => setTicket(null)}>Back</button>
         </div>
@@ -124,9 +126,9 @@ function StationsTab() {
       <div class="row"><h2>Booths online {rows ? `(${rows.length})` : ''}</h2><button class="btn" onClick={load}>Refresh</button></div>
       <p class="fine">Approve = “verified exhibitor” badge. Revoke = the booth goes dark and that person cannot take it again. Release = remove them so the real exhibitor can bring the booth online.</p>
       {err && <p class="banner bad">{err}</p>}
-      <div class="scroll"><table><thead><tr><th>Booth</th><th>Name shown</th><th>Brought online by</th><th>Their company</th><th>Status</th><th>Visits</th><th></th></tr></thead>
+      <div class="scroll"><table><thead><tr><th>Booth</th><th>Logo</th><th>Name shown</th><th>Brought online by</th><th>Their company</th><th>Status</th><th>Visits</th><th></th></tr></thead>
         <tbody>{(rows ?? []).map((r) => (
-          <tr key={r.id}><td>{r.id}</td><td>{r.company}</td><td>{r.ownerName} <small>{r.ownerCallsign}</small></td><td>{r.ownerCompany}</td><td>{r.status}{r.hosted ? ' · at the counter' : ''}</td><td>{r.visits}</td>
+          <tr key={r.id}><td>{r.id}</td><td>{r.logo ? <img class="thumb" src={r.logo} alt={`${r.company} logo`} /> : <small>none</small>}</td><td>{r.company}</td><td>{r.ownerName} <small>{r.ownerCallsign}</small></td><td>{r.ownerCompany}</td><td>{r.status}{r.hosted ? ' · at the counter' : ''}</td><td>{r.visits}</td>
             <td class="acts">{r.status !== 'approved' && <button class="chip" onClick={() => set(r.id, 'approved')}>Approve</button>}{r.status !== 'revoked' && <button class="chip" onClick={() => set(r.id, 'revoked')}>Revoke</button>}<button class="chip" onClick={() => set(r.id, 'release')}>Release</button></td></tr>
         ))}</tbody></table></div>
     </section>
@@ -141,7 +143,7 @@ function Beacons() {
   return (
     <section class="sheet wide">
       <div class="row"><h2>Printed booth QRs</h2><button class="btn" onClick={() => print()}>Print</button></div>
-      <p class="fine no-print">For exhibitors who will not keep a screen open: search a booth, print, and hand them the card for their counter. Each QR is signed for its booth. Scanned at MIHAS it scores +50; anywhere else, +10.</p>
+      <p class="fine no-print"><b>The mission's start QR</b> is the one for Lean X Digital's own booth: search <b>8H18B</b> and print it for the counter. For exhibitors who will not keep a screen open: search a booth, print, and hand them the card for their counter. Each QR is signed for its booth. Scanned at MIHAS it scores +50; anywhere else, +10.</p>
       <label class="no-print">Find booth<input value={q} placeholder="e.g. 7C17 or Mamee" onInput={(e) => setQ((e.target as HTMLInputElement).value)} /></label>
       <div class="beacons">{list.map((b) => <BeaconCard key={b.id} b={b} />)}</div>
     </section>
@@ -151,6 +153,69 @@ function BeaconCard({ b }: { b: Beacon }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => { const c = qrcode(0, 'M'); c.addData(b.url); c.make(); if (ref.current) ref.current.innerHTML = c.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); }, [b.url]);
   return <div class="beacon"><div class="k">Mission X · Find the X</div><h3>{b.name || 'Booth'} <small>{b.id}</small></h3><div class="qr" ref={ref} /><p>Scan for +50 points</p></div>;
+}
+
+/* ---------------- GPS calibration: how a phone's position lands on each level's plan ---------------- */
+
+type CalData = { points: GeoCalPoint[]; geo: GeoCalibration };
+const RECORD_S = 15;
+
+/** Stand at a booth, record ~15 s of GPS, repeat across the level. The fit updates after every point. */
+function Calibrate() {
+  const [data, setData] = useState<CalData | null>(null), [booth, setBooth] = useState(''), [err, setErr] = useState('');
+  const [rec, setRec] = useState<{ left: number; n: number; acc: number | null } | null>(null);
+  const load = () => call<CalData>('GET', '/api/crew/geocal').then(setData, (x) => setErr((x as Error).message));
+  useEffect(() => { void load(); }, []);
+
+  const record = () => {
+    const id = booth.trim().toUpperCase(); setErr('');
+    if (!id) { setErr('Type the number of the booth you are standing at'); return; }
+    if (!('geolocation' in navigator)) { setErr('This browser cannot read GPS'); return; }
+    const fixes: GeolocationCoordinates[] = [], t0 = Date.now();
+    setRec({ left: RECORD_S, n: 0, acc: null });
+    const watch = navigator.geolocation.watchPosition(
+      (p) => { fixes.push(p.coords); setRec({ left: Math.max(0, RECORD_S - Math.round((Date.now() - t0) / 1000)), n: fixes.length, acc: Math.round(p.coords.accuracy) }); },
+      (e) => { setErr(e.code === e.PERMISSION_DENIED ? 'Location is blocked for this page — allow it in the browser settings' : 'No GPS fix — try nearer a door or window'); },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 20_000 });
+    const tick = setInterval(() => setRec((r) => (r ? { ...r, left: Math.max(0, RECORD_S - Math.round((Date.now() - t0) / 1000)) } : r)), 500);
+    setTimeout(async () => {
+      navigator.geolocation.clearWatch(watch); clearInterval(tick); setRec(null);
+      // average the fixes, trusting each by its accuracy; the result is as good as the better fixes, not the worst
+      const good = fixes.filter((f) => f.accuracy <= 60);
+      if (good.length < 3) { setErr(`Only ${good.length} usable fix${good.length === 1 ? '' : 'es'} in ${RECORD_S} s — GPS is weak here. Try a booth nearer an entrance, or wait and record again.`); return; }
+      const w = good.map((f) => 1 / f.accuracy ** 2), W = w.reduce((a, b) => a + b, 0);
+      const lat = good.reduce((a, f, i) => a + f.latitude * w[i]!, 0) / W, lon = good.reduce((a, f, i) => a + f.longitude * w[i]!, 0) / W;
+      const acc = [...good.map((f) => f.accuracy)].sort((a, b) => a - b)[Math.floor(good.length / 2)]!;
+      try { setData(await call<CalData>('POST', '/api/crew/geocal', { stationId: id, lat, lon, acc })); setBooth(''); }
+      catch (x) { setErr((x as Error).message); }
+    }, RECORD_S * 1000);
+  };
+  const remove = async (id: number) => { try { setData(await call<CalData>('POST', '/api/crew/geocal/delete', { id })); } catch (x) { setErr((x as Error).message); } };
+
+  const levels = [1, 2, 3].map((deck) => ({ deck, map: data?.geo.decks[deck], pts: (data?.points ?? []).filter((p) => p.deck === deck) }));
+  const status = (l: (typeof levels)[number]) => {
+    if (!l.map) return l.pts.length ? `${l.pts.length} point${l.pts.length > 1 ? 's' : ''} — not enough yet: add booths far from ${l.pts.length > 1 ? 'these' : 'this one'}` : 'Not set up — players on this level move with the stick';
+    if (l.map.kind === 'borrowed') return '1 point, borrowing the shape of another level — add 2 more for accuracy';
+    if (l.map.kind === 'similarity') return `${l.map.points} points in a line — add one off to the side to fix the stretch`;
+    return `${l.map.points} points · fits within ${l.map.rms.toFixed(1)} m`;
+  };
+  return (
+    <section class="sheet wide">
+      <div class="row"><h2>Calibrate GPS</h2><button class="btn" onClick={load}>Refresh</button></div>
+      <p class="fine">At MIHAS the game moves each visitor's avatar from their phone's GPS. This is where it learns how GPS lines up with the floor plan. On each level: stand right at the front of a booth, type its number, tap Record and keep still for {RECORD_S} seconds. Do at least <b>3 booths far apart</b> per level (for example two corners and the far side). More points, spread out, make it more accurate. If one point shows a big miss, delete it and record it again.</p>
+      <div class="levels">{levels.map((l) => <div key={l.deck} class={'lvl' + (l.map && l.map.kind === 'affine' ? ' ok' : l.map ? ' part' : '')}><strong>Level {l.deck}</strong><small>{status(l)}</small></div>)}</div>
+      {err && <p class="banner bad" role="alert">{err}</p>}
+      <div class="row record">
+        <label>Booth I am standing at<input value={booth} placeholder="e.g. 6A17" autocapitalize="characters" onInput={(e) => setBooth((e.target as HTMLInputElement).value)} disabled={!!rec} /></label>
+        <button class="btn primary big" onClick={record} disabled={!!rec}>{rec ? `Recording… ${rec.left}s` : 'Record here'}</button>
+      </div>
+      {rec && <p class="fine" role="status">{rec.n} fixes so far{rec.acc != null ? ` · last one good to ${rec.acc} m` : ' · waiting for GPS'}. Keep still.</p>}
+      {!!data?.points.length && (
+        <div class="scroll"><table><thead><tr><th>Level</th><th>Booth</th><th>GPS accuracy</th><th></th></tr></thead>
+          <tbody>{data.points.map((p) => <tr key={p.id}><td>{p.deck}</td><td>{p.label}</td><td>±{Math.round(p.acc)} m</td><td class="acts"><button class="chip" onClick={() => remove(p.id)}>Delete</button></td></tr>)}</tbody></table></div>
+      )}
+    </section>
+  );
 }
 
 // real backend, or the in-browser demo when none is configured — decided before the first request

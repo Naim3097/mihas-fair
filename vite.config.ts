@@ -54,6 +54,6 @@ export default defineConfig({
   server: { port: 5173, strictPort: true, host: true, proxy: { '/api': api, '^/p/': api } },
   build: {
     target: 'es2020',
-    rollupOptions: { input: { main: resolve(__dirname, 'index.html'), crew: resolve(__dirname, 'crew.html'), screen: resolve(__dirname, 'screen.html') } },
+    rollupOptions: { input: { main: resolve(__dirname, 'index.html'), crew: resolve(__dirname, 'crew.html'), booth: resolve(__dirname, 'booth.html'), screen: resolve(__dirname, 'screen.html') } },
   },
 });

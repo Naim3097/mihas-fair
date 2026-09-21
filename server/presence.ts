@@ -20,10 +20,14 @@ export interface Presence {
 }
 
 /** On deck the avatar follows a walking person, so the ceiling is walking pace, not joystick pace.
- *  Switching between free roam and deck is a legitimate jump; only sustained deck movement is held to walking pace. */
-function tooFast(prev: { x: number; y: number; deck: boolean; t: number }, p: Hologram, now: number): { moved: number; refuse: boolean } {
+ *  Switching from free roam to deck is a legitimate jump (GPS puts the person where they really are); sustained deck
+ *  movement is held to walking pace, plus the tighter of the two fixes' GPS uncertainty — a fix wobbles inside its
+ *  circle, but the client reports its own sigma, so it only ever buys the smaller one. */
+function tooFast(prev: { x: number; y: number; deck: boolean; sigma: number; t: number }, p: Hologram, now: number): { moved: number; refuse: boolean } {
   const dt = Math.max(0.25, (now - prev.t) / 1000), moved = Math.hypot(p.x - prev.x, p.y - prev.y);
-  return { moved, refuse: moved / dt > (p.deck && prev.deck ? DECK_MAX_SPEED_MPS : MAX_SPEED_MPS) };
+  if (p.deck && !prev.deck) return { moved, refuse: false };
+  if (p.deck) return { moved, refuse: moved > DECK_MAX_SPEED_MPS * dt + Math.min(prev.sigma, p.sigma) };
+  return { moved, refuse: moved / dt > MAX_SPEED_MPS };
 }
 function publicView(e: Hologram, d: number): Hologram & { d: number } {
   const q = e.deck ? 1.5 : 0;
@@ -85,10 +89,10 @@ export class DbPresence implements Presence {
       [p.id, p.callsign, p.cls, p.pose ?? '', p.av, p.x, p.y, p.h, p.deck ? 1 : 0, p.sigma, now]);
   }
   async update(p: Hologram, now: number, isSpawn: boolean) {
-    const prev = await this.db.get<Row>('SELECT x, y, deck, t FROM presence WHERE player_id = ?', [p.id]);
+    const prev = await this.db.get<Row>('SELECT x, y, deck, sigma, t FROM presence WHERE player_id = ?', [p.id]);
     let moved = 0;
     if (prev && !isSpawn && now - prev.t < 30_000) {
-      const r = tooFast({ x: prev.x, y: prev.y, deck: prev.deck === 1, t: prev.t }, p, now); moved = r.moved;
+      const r = tooFast({ x: prev.x, y: prev.y, deck: prev.deck === 1, sigma: prev.sigma, t: prev.t }, p, now); moved = r.moved;
       if (r.refuse) { await this.db.run('UPDATE presence SET t = ? WHERE player_id = ?', [now, p.id]); return null; }
     }
     await this.upsert(p, now);

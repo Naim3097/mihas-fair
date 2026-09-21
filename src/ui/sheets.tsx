@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { onsiteAvailable, setSiteMode, siteMode } from '../onsite';
 import type { EngineApi as Engine } from '../game/engine-api';
 import { setSound, soundOn } from '../sfx';
 import { api, ApiError } from '../net/api';
@@ -159,6 +160,7 @@ export function MyBoothSheet() {
                 <div><span>Visits</span><strong>{s.stamps}</strong></div><div><span>Met in person</span><strong>{s.verifiedContacts}</strong></div><div><span>Cards</span><strong>{s.shares}</strong></div>
               </div>
               {s.status === 'pending' && <p class="fine">Live now. Our crew will confirm it is your booth; then it shows “verified exhibitor”.</p>}
+              <a class="btn big" href="/booth.html" target="_blank" rel="noopener">Open my dashboard · everyone who scanned, logo, printable QR</a>
               <div class="rowb"><strong>Cards left with you ({leads.length})</strong><a class="link" href={`/api/host/leads.csv?station=${encodeURIComponent(s.id)}`}>Export CSV</a></div>
               <div class="leads">
                 {leads.length === 0 ? <p class="fine">None yet. Visitors are offered to leave their card right after they stamp or scan your booth.</p> : leads.map((l) => (
@@ -305,6 +307,7 @@ export function MenuSheet() {
         <button onClick={go('board')}><strong>Leaderboard</strong><small>Top players · most visited booths</small></button>
         <button onClick={go('rules')}><strong>How to play</strong><small>The mission and the points, on one page</small></button>
         <button aria-pressed={soundOn.value} onClick={() => setSound(!soundOn.value)}><strong>Sound · {soundOn.value ? 'on' : 'off'}</strong><small>{soundOn.value ? 'Quiet chimes, and a buzz on phones that can' : 'Silent, no vibration'}</small></button>
+        {onsiteAvailable() && <button onClick={() => { setSiteMode(siteMode.value === 'onsite' ? 'remote' : 'onsite'); modal.value = null; }}><strong>{siteMode.value === 'onsite' ? 'Play from anywhere' : "I'm at MIHAS now"}</strong><small>{siteMode.value === 'onsite' ? 'Roam freely with the stick instead of walking' : 'Your avatar follows you around the halls'}</small></button>}
         <button onClick={switchRole}><strong>{m.cls === 'exhibitor' ? 'Play as a visitor' : 'I am exhibiting'}</strong><small>{m.cls === 'exhibitor' ? 'Do the five-chapter mission' : 'Put your booth in the game'}</small></button>
       </div>
     </Sheet>

@@ -39,20 +39,20 @@ const passportInput = {
   showContact: true, consentMarketing: false, consentNotice: true,
 };
 
-test('the visitor mission: arrive, find the X, collect, connect, make it real â€” with fixed points', async () => {
+test('the points and proofs under the mission: card, stamps, booth QRs, the prize code, swaps â€” and the chapters they tick', async () => {
   const { call, clock } = await rig();
-  const facts = (m: Me) => ({ started: !!m.cls, card: !!m.passport, stamps: m.stamps.length, swaps: m.links, cardsLeft: m.shared.length, claimed: m.docked });
+  const facts = (m: Me) => ({ started: m.mission.started, card: !!m.passport, checkpoints: m.mission.checkpoints.filter((c) => c.done).length, target: m.mission.target, claimed: m.docked });
   const open = (m: Me) => chapters(facts(m)).filter((c) => !c.done).map((c) => c.n);
 
   let r = await call('GET', '/api/me');
   let me = r.json.me as Me;
   assert.match(me.callsign, /^Guest \d{7}$/);
-  assert.deepEqual(open(me), [1, 2, 3, 4, 5]);
+  assert.deepEqual(open(me), [1, 2, 3, 4]);
 
   // chapter 1 â€” arrive: choosing a door costs nothing, pays nothing, and gives a plain name
   assert.equal((await call('POST', '/api/start', { role: 'astronaut' })).json.code, 'bad_role');
   me = (await call('POST', '/api/start', { role: 'visitor' })).json.me as Me;
-  assert.equal(me.xp, 0); assert.match(me.callsign, /^Visitor \d{4}$/); assert.deepEqual(open(me), [2, 3, 4, 5]);
+  assert.equal(me.xp, 0); assert.match(me.callsign, /^Visitor \d{4}$/); assert.deepEqual(open(me), [1, 2, 3, 4], 'choosing a door is not starting the mission');
 
   // walking: too far to stamp; a teleport is refused; hall and landmark points are switched off
   const hero = level.hero, target = level.booths.find((b) => b.id === '8H19')!;
@@ -72,7 +72,7 @@ test('the visitor mission: arrive, find the X, collect, connect, make it real â€
   me = r.json.me as Me;
   assert.deepEqual(r.json.events, [{ action: 'passport', xp: POINTS.card }]);
   assert.ok(me.passport && me.ticket, 'card and prize code issued');
-  assert.equal(me.callsign, 'Aisyah R.'); assert.deepEqual(open(me), [3, 4, 5]);
+  assert.equal(me.callsign, 'Aisyah R.'); assert.deepEqual(open(me), [2, 3, 4], 'registered: next, the start QR at Lean X');
   assert.equal((await call('POST', '/api/passport', passportInput)).json.code, 'dup');
   assert.equal((await call('GET', `/p/${me.passport!.slug}`)).status, 200);
   assert.match((await call('GET', `/p/${me.passport!.slug}/vcard`)).raw, /FN:Aisyah Rahman/);
@@ -89,7 +89,7 @@ test('the visitor mission: arrive, find the X, collect, connect, make it real â€
     assert.equal((await call('POST', '/api/stamp', { stationId: b.id, proof: 'virtual' })).json.events[0].xp, POINTS.stamp);
   }
   me = (await call('GET', '/api/me')).json.me as Me;
-  assert.equal(me.xp, POINTS.card + MISSION_STAMPS * POINTS.stamp); assert.deepEqual(open(me), [4, 5]);
+  assert.equal(me.xp, POINTS.card + MISSION_STAMPS * POINTS.stamp); assert.deepEqual(open(me), [2, 3, 4], 'stamps are free play, not checkpoints');
 
   // a forged booth QR is refused
   clock.advance(60_000);
@@ -105,7 +105,7 @@ test('the visitor mission: arrive, find the X, collect, connect, make it real â€
   assert.equal((await call('POST', '/api/crew/dock', { t: me.ticket!.code }, crewJar)).status, 409);
   me = (await call('GET', '/api/me')).json.me as Me;
   assert.equal(me.docked, true); assert.equal(me.ticket, null);
-  assert.equal(me.xp, POINTS.card + MISSION_STAMPS * POINTS.stamp + POINTS.booth); assert.deepEqual(open(me), [4]);
+  assert.equal(me.xp, POINTS.card + MISSION_STAMPS * POINTS.stamp + POINTS.booth); assert.deepEqual(open(me), [2, 3]);
 
   // a printed booth QR scores 10 from anywhere, and 50 once the phone is known to be at MIHAS
   const beacons = (await call('GET', '/api/crew/beacons', undefined, crewJar)).json.data as { id: string; url: string }[];
@@ -125,7 +125,7 @@ test('the visitor mission: arrive, find the X, collect, connect, make it real â€
   r = await call('POST', '/api/link', { code, fields: ['name', 'company'] }, otherJar);
   assert.deepEqual(r.json.events, [{ action: 'link', xp: POINTS.swap, target: 'Aisyah R.' }]);
   me = (await call('GET', '/api/me')).json.me as Me;
-  assert.deepEqual(open(me), [], 'mission complete');
+  assert.deepEqual(open(me), [2, 3], 'swaps score, but the mission is the checkpoints (server/checkpoints.test.ts)');
   assert.equal(me.xp, POINTS.card + (MISSION_STAMPS + 1) * POINTS.stamp + POINTS.booth + POINTS.scan + POINTS.swap);
 
   // the board: one number, and a sub-line anyone can read

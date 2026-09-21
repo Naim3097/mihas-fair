@@ -43,16 +43,17 @@ export const stampPoints = (presence: Presence) => (presence === 'onsite' ? POIN
 /* ---------------- the mission: one journey, five chapters ---------------- */
 
 export const MISSION_STAMPS = 5;
-export interface MissionFacts { started: boolean; card: boolean; stamps: number; swaps: number; cardsLeft: number; claimed: boolean }
+/** Exhibitor booths each visitor is sent to. Fewer while fewer exhibitors are approved; topped up as more join. */
+export const CHECKPOINTS = 5;
+export interface MissionFacts { started: boolean; card: boolean; checkpoints: number; target: number; claimed: boolean }
 export interface Chapter { n: number; title: string; todo: string; done: boolean }
 /** Chapters 3 and 4 can be finished in either order, and someone standing at the booth may finish 5 early. */
 export function chapters(f: MissionFacts): Chapter[] {
   return [
-    { n: 1, title: 'Arrive', todo: 'Land at MIHAS and take your first steps.', done: f.started },
-    { n: 2, title: 'Find the X', todo: 'Follow the trail to Booth 8H18B and get your free digital business card.', done: f.card },
-    { n: 3, title: 'Collect', todo: `Visit ${MISSION_STAMPS} booths. Walk up to each one and stamp it.`, done: f.stamps >= MISSION_STAMPS },
-    { n: 4, title: 'Connect', todo: 'Swap cards with one person, or leave your card at one booth.', done: f.swaps + f.cardsLeft >= 1 },
-    { n: 5, title: 'Make it real', todo: 'Show your prize code at the real Booth 8H18B, Hall 8.', done: f.claimed },
+    { n: 1, title: 'Find Lean X Digital', todo: 'Follow the trail to Booth 8H18B in Hall 8.', done: f.card || f.started },
+    { n: 2, title: 'Register and start', todo: 'Get your free digital business card, then scan the Lean X Digital QR at the booth.', done: f.card && f.started },
+    { n: 3, title: 'Checkpoints', todo: `Find your ${f.target || CHECKPOINTS} checkpoint booths and scan the QR at each one.`, done: f.target > 0 && f.checkpoints >= f.target },
+    { n: 4, title: 'Claim your prize', todo: 'Back to Booth 8H18B: show your prize code to the Lean X Digital crew.', done: f.claimed },
   ];
 }
 

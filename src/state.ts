@@ -5,7 +5,7 @@ import type { Place } from './game/places';
 import { buzz, sfx } from './sfx';
 
 export type Phase = 'boot' | 'start' | 'play' | 'error';
-export type Modal = null | 'card' | 'prize' | 'claimed' | 'complete' | 'board' | 'booth' | 'claim' | 'mybooth' | 'swap' | 'contacts' | 'map' | 'photo' | 'menu' | 'rules' | 'tour';
+export type Modal = null | 'card' | 'prize' | 'claimed' | 'complete' | 'board' | 'booth' | 'claim' | 'mybooth' | 'swap' | 'contacts' | 'map' | 'photo' | 'menu' | 'rules' | 'tour' | 'scan';
 
 export const phase = signal<Phase>('boot');
 export const level = signal<LevelData | null>(null);
@@ -76,8 +76,9 @@ export function toast(title: string, sub?: string, tone: Toast['tone'] = 'info',
 const ACTION_LABEL: Record<string, string> = {
   passport: 'Your card is ready', dock: 'Claimed at Booth 8H18B', stamp: 'Stamped', scan: 'Scanned at the real booth', verified_contact: 'Met in person',
   share_station: 'Card left', link: 'Cards swapped', station_claim: 'Your booth is online', daily_drop: 'Booth of the day',
+  mission_start: 'Mission started', checkpoint: 'Checkpoint',
 };
-const BIG = new Set(['passport', 'dock', 'station_claim', 'link']);
+const BIG = new Set(['passport', 'dock', 'station_claim', 'link', 'mission_start', 'checkpoint']);
 /** One action can pay several ways at once (a scan that is also the booth of the day). It is still one moment: one toast, one total. */
 export function showEvents(events: XpEvent[] | undefined) {
   const list = events ?? []; if (!list.length) return;
@@ -99,6 +100,6 @@ export const journey = computed<Journey | null>(() => {
   const exhibitor = m.cls === 'exhibitor', b = myBooths.value[0];
   const steps = exhibitor
     ? boothSteps({ online: m.hosting.length > 0, visits: b?.stamps ?? 0, leads: b?.shares ?? 0 })
-    : chapters({ started: !!m.cls, card: !!m.passport, stamps: m.stamps.length, swaps: m.links, cardsLeft: m.shared.length, claimed: m.docked });
+    : chapters({ started: m.mission.started, card: !!m.passport, checkpoints: m.mission.checkpoints.filter((c) => c.done).length, target: m.mission.target, claimed: m.docked });
   return { kind: exhibitor ? 'exhibitor' : 'visitor', steps, now: steps.find((s) => !s.done) ?? null, done: steps.filter((s) => s.done).length };
 });

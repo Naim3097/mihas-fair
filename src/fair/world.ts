@@ -244,6 +244,7 @@ export class FairWorld {
   /** Booths exhibitors have brought online: MIHAS orange on their fascia, and a turning marker where the exhibitor is at the counter. */
   setStations(list: StationView[]) {
     this.booths.setOnline(list.map((s) => s.id));
+    this.booths.setLogos(list.filter((s): s is StationView & { logo: string } => !!s.logo));
     this.pinned = [];
     for (const s of list) { const i = this.boothIndex.get(s.id); if (i != null && s.hosted && this.pinned.length < 256) this.pinned.push(i); }
     this.pins.count = this.pinned.length;

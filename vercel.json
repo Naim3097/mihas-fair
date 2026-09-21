@@ -46,7 +46,7 @@
       ]
     },
     {
-      "source": "/(crew|screen).html",
+      "source": "/(crew|screen|booth).html",
       "headers": [
         {
           "key": "X-Robots-Tag",

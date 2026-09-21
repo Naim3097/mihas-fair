@@ -300,4 +300,36 @@ CREATE TABLE IF NOT EXISTS ceritera_ledger (
   created_at  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ceritera_ledger_player ON ceritera_ledger(player_id, created_at);
+
+-- ---------------------------------------------------------------- Checkpoints
+-- The MIHAS mission: register at Lean X Digital (8H18B) and scan its QR to start, then scan the QR at the exhibitor
+-- booths you were given. A start, the booths each player was given, and every QR scan at an exhibitor's booth
+-- (what the exhibitor's dashboard lists: the visitor agreed at registration that a scan shares their contact).
+CREATE TABLE IF NOT EXISTS mission_starts (
+  player_id   TEXT PRIMARY KEY REFERENCES players(id),
+  started_at  INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS checkpoints (
+  player_id    TEXT NOT NULL REFERENCES players(id),
+  station_id   TEXT NOT NULL,
+  assigned_at  INTEGER NOT NULL,
+  scanned_at   INTEGER,
+  PRIMARY KEY (player_id, station_id)
+);
+CREATE INDEX IF NOT EXISTS checkpoints_station ON checkpoints(station_id);
+CREATE TABLE IF NOT EXISTS booth_scans (
+  station_id  TEXT NOT NULL,
+  player_id   TEXT NOT NULL REFERENCES players(id),
+  proof       TEXT NOT NULL,
+  created_at  INTEGER NOT NULL,
+  PRIMARY KEY (station_id, player_id)
+);
+CREATE INDEX IF NOT EXISTS booth_scans_player ON booth_scans(player_id);
+-- The exhibitor's logo, drawn on their counter and a sign over their booth once the crew approves the booth.
+CREATE TABLE IF NOT EXISTS station_logos (
+  station_id  TEXT PRIMARY KEY,
+  mime        TEXT NOT NULL,
+  data        TEXT NOT NULL,
+  updated_at  INTEGER NOT NULL
+);
 `;

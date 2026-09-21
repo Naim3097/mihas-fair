@@ -55,7 +55,13 @@ export interface Me {
   hidden: boolean;
   /** Last on-site scan: where the person really stood. */
   anchor: { stationId: string; at: number } | null;
+  /** The checkpoint mission: started at Lean X Digital, then the exhibitor booths this player was given. */
+  mission: CheckpointMission;
 }
+
+export interface CheckpointMission { started: boolean; target: number; checkpoints: { stationId: string; company: string; done: boolean }[] }
+/** A visitor who scanned an exhibitor's QR, as that exhibitor's dashboard lists them. */
+export interface BoothScan { name: string; phone: string; email: string; company: string; at: number; checkpoint: boolean }
 
 export interface PassportInput {
   name: string;
@@ -86,13 +92,13 @@ export interface StampRequest { stationId: string; proof: StampProof; beacon?: s
 export interface PresencePing { x: number; y: number; h: number; /** sitting, waving, … — shown to others, nothing more */ pose?: Pose; deck?: boolean; sigma?: number; /** steps counted since the last ping (deck mode) */ steps?: number }
 export interface Hologram { id: string; callsign: string; cls: Role | null; /** an exhibitor's company, for the label over their head */ company?: string; x: number; y: number; h: number; av: string; pose?: Pose; /** really there, following real steps */ deck: boolean; /** position uncertainty in metres */ sigma: number }
 
-export interface CrewTicketView { callsign: string; name: string; company: string; role: string; alreadyDocked: boolean }
+export interface CrewTicketView { callsign: string; name: string; company: string; role: string; alreadyDocked: boolean; /** checkpoints scanned, of how many */ checkpoints?: { started: boolean; done: number; target: number } }
 
 /* ---------------- M2 ---------------- */
 
 export type StationStatus = 'pending' | 'approved' | 'revoked';
 /** Public view of a claimed station — what every player may see. */
-export interface StationView { id: string; company: string; offer: string; link: string; color: number; status: StationStatus; hosted: boolean; level: number }
+export interface StationView { id: string; company: string; offer: string; link: string; color: number; status: StationStatus; hosted: boolean; level: number; /** image URL once the crew has approved the booth */ logo: string | null }
 export interface StationClaimInput { stationId: string; company: string; offer: string; link: string; color: number }
 
 export interface HostCode { stationId: string; url: string; digits: string; expiresInMs: number }

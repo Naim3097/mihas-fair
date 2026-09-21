@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { EngineApi as Engine } from '../game/engine-api';
 import { api, ApiError } from '../net/api';
-import { MISSION_STAMPS, POINTS, ROLE_INFO, chapters, type Role } from '../../shared/rules';
+import { POINTS, ROLE_INFO, chapters, type Role } from '../../shared/rules';
 import type { PassportInput } from '../../shared/types';
 import { atLaunchPad, bootError, bootNote, distToGoal, goalVia, guideOn, guideTarget, herePlace, journey, level, me, modal, moveHint, nearLift, nearStation, online, panelStation, phase, seated, stampedSet, stationMap, toast, toasts } from '../state';
 import { facts } from '../game/facts';
 import { MapSheet, PhotoSheet } from './world-sheets';
 import { DemoChip, TicketDemoHint, TourSheet } from '../demo/Tour';
-import { Qr, Sheet, hex } from './common';
+import { Camera, Qr, Sheet, hex } from './common';
+import { handleScan } from '../scan';
 import { BoardSheet, BoothSheet, ClaimSheet, ContactsSheet, MenuSheet, MyBoothSheet, SwapSheet } from './sheets';
+import { OnsiteGate, SiteChip, SiteChoice } from './onsite';
+import { onsiteAvailable, setSiteMode, siteMode } from '../onsite';
 
 type Eng = { engine: () => Engine | null };
 
@@ -34,6 +37,8 @@ export function App({ engine }: Eng) {
       {m === 'photo' && <PhotoSheet />}
       {m === 'menu' && <MenuSheet />}
       {m === 'tour' && <TourSheet />}
+      {m === 'scan' && <ScanSheet />}
+      {phase.value === 'play' && <OnsiteGate />}
       <Toasts />
     </>
   );
@@ -51,15 +56,17 @@ const Splash = ({ text, error }: { text: string; error?: boolean }) => (
 
 function Start({ engine }: Eng) {
   const [busy, setBusy] = useState<Role | null>(null), was = me.value?.cls ?? null;
+  const where = onsiteAvailable() ? siteMode.value : 'remote';
   const go = async (role: Role) => {
+    if (!where) { toast('First: where are you playing?', 'At MIHAS now, or from elsewhere', 'warn'); return; }
     setBusy(role);
     try {
-      await api.start(role); engine()?.start('short'); phase.value = 'play'; api.track('start', { role });
+      await api.start(role); engine()?.start('short'); setSiteMode(where); phase.value = 'play'; api.track('start', { role, site: where });
       if (role === 'exhibitor') modal.value = me.value?.passport ? 'mybooth' : 'card';
     } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not start', undefined, 'warn'); setBusy(null); }
   };
   const door = (role: Role, title: string, sub: string) => (
-    <button class={'door' + (was === role ? ' on' : '')} disabled={!!busy} onClick={() => go(role)}>
+    <button class={'door' + (was === role ? ' on' : '')} disabled={!!busy || !where} onClick={() => go(role)}>
       <span class="dot" style={{ background: hex(ROLE_INFO[role].color) }} /><strong>{busy === role ? 'Landing…' : title}</strong><small>{sub}</small><span class="go" aria-hidden="true">›</span>
     </button>
   );
@@ -70,6 +77,7 @@ function Start({ engine }: Eng) {
         <div class="k">Mission X · MIHAS 2026{online.value > 1 && <span class="live">{online.value} in the expo now</span>}</div>
         <h1>Find the <b>X</b>.</h1>
         <p class="lead">The whole MIHAS expo, live on your phone. Walk it, stamp booths, meet people — and find the X for your free digital business card.</p>
+        <SiteChoice />
         <div class="doors">
           {door('visitor', was === 'visitor' ? 'Continue visiting' : "I'm visiting", 'One mission, about five minutes. A free gift at the end.')}
           {door('exhibitor', was === 'exhibitor' ? 'Back to my booth' : "I'm exhibiting", 'Put your booth in the game. Collect visitor leads, free.')}
@@ -116,7 +124,7 @@ function Hud({ engine }: Eng) {
     document.addEventListener('pointerdown', away, true); return () => document.removeEventListener('pointerdown', away, true);
   }, [tray]);
   const goal = guideTarget.value, stName = st ? view?.company || st.name || 'Booth ' + st.id : '', total = (level.value?.booths.length ?? 1) - 1;
-  const trail = guideOn.value && distToGoal.value != null && (goal || (!m.passport && j.kind === 'visitor'));
+  const trail = guideOn.value && distToGoal.value != null && (goal || (!m.mission.started && j.kind === 'visitor')); // until the mission starts, the trail leads to Lean X
   const word = j.kind === 'visitor' ? 'Chapter' : 'Step';
 
   // the ending is shown once, the moment the fifth chapter closes and nothing else is on screen
@@ -127,7 +135,14 @@ function Hud({ engine }: Eng) {
   }, [j.now, modal.value]);
 
   const doStamp = async () => { if (!st) return; setStamping(true); await engine()?.stamp(st); setStamping(false); };
-  const toX = () => { const h = level.value!.hero; guideTarget.value = { x: h.dock.x, y: h.dock.y, label: 'The X · Booth 8H18B' }; guideOn.value = true; };
+  const toX = () => { const h = level.value!.hero; guideTarget.value = { x: h.dock.x, y: h.dock.y, label: 'Lean X Digital · Booth 8H18B' }; guideOn.value = true; };
+  const cps = m.mission.checkpoints, left = cps.filter((c) => !c.done);
+  const toNext = () => { // the nearest checkpoint not yet scanned
+    const pos = eng?.position, booths = left.map((c) => level.value!.booths.find((b) => b.id === c.stationId)).filter((b) => !!b);
+    const b = pos ? booths.sort((p, q) => Math.hypot(p!.x - pos.x, p!.y - pos.y) - Math.hypot(q!.x - pos.x, q!.y - pos.y))[0] : booths[0];
+    if (!b) return; const c = cps.find((x) => x.stationId === b.id)!; guideTarget.value = { x: b.x, y: b.y, label: `${c.company} · Booth ${b.id}` }; guideOn.value = true;
+  };
+  const scanBtn = (label: string) => <button class="btn primary" onClick={(e) => { e.stopPropagation(); modal.value = 'scan'; }}>{label}</button>;
 
   return (
     <>
@@ -140,9 +155,14 @@ function Hud({ engine }: Eng) {
         <h2 key={goal ? 'goal' : j.now?.n ?? 0} class="turn">{goal ? goal.label : j.now ? j.now.title : 'Free play'}</h2>
         {!goal && <p>{j.now ? j.now.todo : `${m.stamps.length} of ${total.toLocaleString()} booths stamped. Keep going, meet more people, climb the board.`}</p>}
         {!goal && <div class="dots" role="img" aria-label={`${j.done} of ${j.steps.length} done`}>{j.steps.map((s) => <i key={s.n} class={s.done ? 'on' : s === j.now ? 'now' : ''} />)}</div>}
-        {!goal && j.kind === 'visitor' && j.now?.n === 3 && <div class="via">{Math.min(m.stamps.length, MISSION_STAMPS)} of {MISSION_STAMPS} stamped</div>}
-        {!goal && j.kind === 'visitor' && j.now?.n === 4 && <div class="go-row"><span>Met someone?</span><button class="btn primary" onClick={(e) => { e.stopPropagation(); modal.value = 'swap'; }}>Swap cards</button></div>}
-        {!goal && j.kind === 'visitor' && j.now?.n === 5 && <div class="go-row"><button class="link" onClick={(e) => { e.stopPropagation(); toX(); }}>Guide me to the X</button><button class="btn primary" onClick={(e) => { e.stopPropagation(); modal.value = 'prize'; }}>My prize code</button></div>}
+        {!goal && j.kind === 'visitor' && j.now?.n === 2 && <div class="go-row"><span>{m.passport ? 'At the booth?' : 'At Booth 8H18B?'}</span>{m.passport ? scanBtn('Scan the start QR') : <button class="btn primary" onClick={(e) => { e.stopPropagation(); modal.value = 'card'; }}>Get my free card</button>}</div>}
+        {!goal && j.kind === 'visitor' && j.now?.n === 3 && (
+          <>
+            {cps.length ? <ul class="cps">{cps.map((c) => <li key={c.stationId} class={c.done ? 'done' : ''}><i aria-hidden="true" />{c.company}<small>{c.stationId}</small></li>)}</ul> : <div class="via">Your checkpoints appear here as exhibitors join.</div>}
+            <div class="go-row">{left.length ? <button class="link" onClick={(e) => { e.stopPropagation(); toNext(); }}>Guide me to the next</button> : <span />}{scanBtn('Scan QR')}</div>
+          </>
+        )}
+        {!goal && j.kind === 'visitor' && j.now?.n === 4 && <div class="go-row"><button class="link" onClick={(e) => { e.stopPropagation(); toX(); }}>Guide me to Lean X</button><button class="btn primary" onClick={(e) => { e.stopPropagation(); modal.value = 'prize'; }}>My prize code</button></div>}
         {!goal && j.kind === 'exhibitor' && <div class="go-row"><span /><button class="btn primary" onClick={(e) => { e.stopPropagation(); modal.value = m.passport ? 'mybooth' : 'card'; }}>{m.hosting.length ? 'Open my booth' : 'Set up my booth'}</button></div>}
         {trail && goalVia.value && <div class="via">{goalVia.value}</div>}
         {trail && (
@@ -151,8 +171,9 @@ function Hud({ engine }: Eng) {
         )}
       </div>
 
-      {/* bottom-right, under the thumb: the three things you can always do */}
+      {/* bottom-right, under the thumb: the three things you can always do (and, at MIHAS, which level GPS has you on) */}
       <div class="dock">
+        <SiteChip />
         <DemoChip />
         <button aria-label="Map and search" data-tip="Map and search · M" onClick={() => (modal.value = 'map')}><Icon d={ICONS.map} /></button>
         <div class="express">
@@ -170,7 +191,7 @@ function Hud({ engine }: Eng) {
 
       {/* bottom-centre: the one thing you can do right here */}
       <div class="action">
-        {moveHint.value && !sitting && <p class="hint" role="status">{FINE_POINTER ? <>Click where you want to go, or use <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>. Drag to look around, scroll to zoom.</> : 'Tap where you want to go, or drag the lower left of the screen. Drag elsewhere to look around.'}</p>}
+        {moveHint.value && !sitting && siteMode.value !== 'onsite' && <p class="hint" role="status">{FINE_POINTER ? <>Click where you want to go, or use <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>. Drag to look around, scroll to zoom.</> : 'Tap where you want to go, or drag the lower left of the screen. Drag elsewhere to look around.'}</p>}
         {sitting && <SeatNote />}
         {sitting && <button class="btn big" onClick={() => eng?.stand()}>Stand up<kbd>E</kbd></button>}
         {nearLift.value && <div class="liftrow">{nearLift.value.others.map((l) => <button key={l.deck} class="btn lift" onClick={() => engine()?.useLift(l)}>Level {l.deck}<small>{level.value?.decks.find((d) => d.level === l.deck)?.label.split(' · ')[1]}</small></button>)}</div>}
@@ -209,7 +230,7 @@ function CardForm() {
   const set = (k: keyof PassportInput) => (e: Event) => { const t = e.target as HTMLInputElement, v = t.type === 'checkbox' ? t.checked : t.value; setF((p) => ({ ...p, [k]: v })); };
   const submit = async (e: Event) => {
     e.preventDefault(); setErr(''); setBusy(true);
-    try { await api.card(f); api.track('card'); modal.value = exhibitor ? 'mybooth' : 'prize'; }
+    try { await api.card(f); api.track('card'); modal.value = exhibitor ? 'mybooth' : me.value?.mission.started ? null : 'scan'; if (!exhibitor && !me.value?.mission.started) toast('You are registered', 'Now scan the Lean X Digital QR at the booth to start', 'info', 5000); }
     catch (x) { setErr(x instanceof ApiError ? x.message : 'Something went wrong'); setBusy(false); }
   };
   return (
@@ -225,7 +246,7 @@ function CardForm() {
           <label>Email<input required type="email" autocomplete="email" value={f.email} onInput={set('email')} /></label>
         </div>
         <label class="check"><input type="checkbox" checked={f.showContact} onChange={set('showContact')} /><span>Show my phone and email on my card page</span></label>
-        <label class="check"><input type="checkbox" checked={f.consentNotice} onChange={set('consentNotice')} /><span>I have read the <a href="/privacy.html" target="_blank" rel="noopener">Privacy Notice</a> and agree to Lean X Digital processing my details to run Mission X. My first name and initial show in the game and on the leaderboard.</span></label>
+        <label class="check"><input type="checkbox" checked={f.consentNotice} onChange={set('consentNotice')} /><span>I have read the <a href="/privacy.html" target="_blank" rel="noopener">Privacy Notice</a> and agree to Lean X Digital processing my details to run Mission X. My first name and initial show in the game and on the leaderboard. When I scan an exhibitor's Mission X QR, my name, phone number and email go to that exhibitor.</span></label>
         <label class="check"><input type="checkbox" checked={f.consentMarketing} onChange={set('consentMarketing')} /><span>Optional — Lean X Digital may contact me by WhatsApp or email about its services.</span></label>
         {err && <p class="err" role="alert">{err}</p>}
         <button class="btn primary big" disabled={busy}>{busy ? 'Building your card…' : `Create my card · +${POINTS.card}`}</button>
@@ -289,8 +310,8 @@ function Finish() {
 function Rules() {
   const rows: [string, number][] = [['Stamp a booth in the game', POINTS.stamp], ['Leave your card at a booth', POINTS.leaveCard], ['Scan a booth QR at the real booth', POINTS.scan], ['Swap cards with a person', POINTS.swap], ['Get your digital business card at the X', POINTS.card], ['Show your prize code at the real Booth 8H18B', POINTS.booth]];
   return (
-    <Sheet k="How to play" title="One mission. Five chapters.">
-      <ol class="rules">{chapters({ started: false, card: false, stamps: 0, swaps: 0, cardsLeft: 0, claimed: false }).map((c) => <li key={c.n}><strong>{c.title}</strong><span>{c.todo}</span></li>)}</ol>
+    <Sheet k="How to play" title="One mission. Four steps.">
+      <ol class="rules">{chapters({ started: false, card: false, checkpoints: 0, target: 0, claimed: false }).map((c) => <li key={c.n}><strong>{c.title}</strong><span>{c.todo}</span></li>)}</ol>
       <p class="fine">After the mission it is free play: every action scores, and the board ranks everyone by points.</p>
       <table class="points"><tbody>{rows.map(([what, n]) => <tr key={what}><td>{what}</td><td>+{n}</td></tr>)}</tbody></table>
       <p class="fine">Exhibitors: bring your booth online, show its QR at your counter, and collect the cards visitors leave — free. The board ranks booths by visits.</p>
@@ -301,3 +322,14 @@ function Rules() {
 const Toasts = () => (
   <div class="toasts" aria-live="polite">{toasts.value.map((t) => <div key={t.id} class={'toast ' + t.tone}><strong>{t.title}</strong>{t.sub && <span>{t.sub}</span>}</div>)}</div>
 );
+
+/* ------------------------------------------------------------------ scan any Mission X QR: the start at Lean X, a checkpoint */
+
+function ScanSheet() {
+  return (
+    <Sheet k="Mission X" title="Scan a QR">
+      <p class="lead">Point your camera at the Mission X QR on the booth's counter or screen.</p>
+      <Camera onCode={(t) => { modal.value = null; void handleScan(t); }} onFail={(msg) => { modal.value = null; toast(msg, undefined, 'warn', 5000); }} />
+    </Sheet>
+  );
+}

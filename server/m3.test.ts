@@ -173,7 +173,7 @@ test('mission director: three different offers, one active at a time, progress f
 
 test('ground control: roles follow reality, only Ground sees the target, only the astronaut can finish it, both are paid in full', async () => {
   const { clock, user } = await rig();
-  const host = await user().join('exhibitor', 'Hana Host'), ground = await user().join('visitor'), astro = await user().join('visitor');
+  const host = await user().join('exhibitor', 'Hana Host'), ground = await user().join('visitor'), astro = await user().join('visitor', 'Ali Astro'); // scanning an exhibitor's QR needs a card
   await host.post('/api/station/claim', { stationId: '7C17', company: 'Mamee', offer: '', link: '', color: 0 });
   clock.advance(6000);
 

@@ -3,6 +3,7 @@ import { parseScan } from './ui/common';
 import { demo } from './demo/client';
 import { VENUE_DEFAULT } from '../shared/rules';
 import { level, modal, panelStation, pendingLink, stationMap, toast, me } from './state';
+import { pinToBooth } from './onsite';
 
 /**
  * A printed booth QR can be photographed and passed around, so it only scores as "at the real booth" when the phone is
@@ -31,11 +32,14 @@ export async function handleScan(text: string): Promise<boolean> {
     if (s.kind === 'link') { pendingLink.value = s.code; modal.value = 'swap'; return true; }
     if (s.kind === 'host') await api.stamp({ stationId: s.stationId, proof: 'host', code: s.code });
     else { await confirmAtVenue(); await api.stamp({ stationId: s.stationId, proof: 'beacon', beacon: s.token }); }
+    pinToBooth(s.stationId); // on site: this is exactly where they are, and which level
     // An online booth you have not left your card with yet: offer it straight away.
     const booth = level.value?.booths.find((b) => b.id === s.stationId);
     if (booth && stationMap.value.has(booth.id) && me.value?.passport && !me.value.shared.includes(booth.id)) { panelStation.value = booth; modal.value = 'booth'; }
     return true;
   } catch (e) {
+    // scanned before registering: the card form comes up, and the scan is theirs to repeat once it is done
+    if (e instanceof ApiError && e.code === 'card') { modal.value = 'card'; toast('Register first', e.message, 'warn', 6000); return false; }
     toast(e instanceof ApiError ? e.message : 'That code did not work', undefined, 'warn', 5000);
     return false;
   }

@@ -12,6 +12,7 @@ import { ensureBackend } from './demo/client';
 import { installBack } from './ui/back';
 import { installSfx } from './sfx';
 import { bootError, bootNote, drop, level, me, myBooths, online, phase, stations } from './state';
+import { onsiteAvailable, setSiteMode, siteMode } from './onsite';
 import type { LevelData } from '../shared/types';
 
 let engine: FairEngine | null = null;
@@ -47,7 +48,7 @@ async function boot() {
     if (/[?&](b|h|l)=/.test(query)) {
       history.replaceState(null, '', location.pathname);
       const returning = !!me.value?.cls;
-      if (returning) { engine.start('short'); phase.value = 'play'; }
+      if (returning) { engine.start('short'); if (siteMode.value && onsiteAvailable()) setSiteMode(siteMode.value); phase.value = 'play'; }
       await handleScan(query);
       if (returning) { api.track('boot', { via: 'scan', world: 'nexova' }); return; }
     }

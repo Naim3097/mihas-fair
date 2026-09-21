@@ -12,7 +12,7 @@
     "build": "tsc --noEmit && vite build",
     "start": "tsx server/node.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test content/content.test.ts server/ceritera.test.ts src/ceritera/game/physics.test.ts src/ceritera/game/sim.test.ts src/fair/level.test.ts src/fair/nexo-rig.test.ts server/game.test.ts server/m2.test.ts server/m3.test.ts server/m4.test.ts src/demo/sim.test.ts src/game/places.test.ts src/state.test.ts src/game/remote.test.ts src/game/pick.test.ts src/sfx.test.ts src/game/troupe.test.ts",
+    "test": "tsx --test shared/geo.test.ts server/geo.test.ts server/checkpoints.test.ts content/content.test.ts server/ceritera.test.ts src/ceritera/game/physics.test.ts src/ceritera/game/sim.test.ts src/fair/level.test.ts src/fair/nexo-rig.test.ts server/game.test.ts server/m2.test.ts server/m3.test.ts server/m4.test.ts src/demo/sim.test.ts src/game/places.test.ts src/state.test.ts src/game/remote.test.ts src/game/pick.test.ts src/sfx.test.ts src/game/troupe.test.ts",
     "demo": "npm run build && node tools/serve-dist.mjs",
     "live": "node --import tsx tools/live.mjs"
   },

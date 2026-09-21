@@ -19,6 +19,8 @@ function cleanLink(raw: unknown): string {
 
 export class Stations {
   private cache: { at: number; list: StationView[] } = { at: -1e9, list: [] };
+  /** Told when the crew approves or revokes a booth: the pool of checkpoints changes. */
+  onStatus: () => void = () => {};
   constructor(private g: Game) {}
 
   private sxp(r: StationRow, c: Counts): number {
@@ -41,8 +43,10 @@ export class Stations {
     return out;
   }
 
-  private view(r: StationRow, c: Counts, t: number): StationView {
-    return { id: r.station_id, company: r.company, offer: r.offer, link: r.link, color: r.color, status: r.status, hosted: r.host_seen_at != null && t - r.host_seen_at < HOST_ONLINE_MS, level: stationLevel(this.sxp(r, c)) };
+  private view(r: StationRow & { logo_at?: number | null }, c: Counts, t: number): StationView {
+    // an uploaded logo goes into the world only once the crew has approved the booth
+    const logo = r.status === 'approved' && r.logo_at != null ? `/api/logo/${encodeURIComponent(r.station_id)}?v=${r.logo_at}` : null;
+    return { id: r.station_id, company: r.company, offer: r.offer, link: r.link, color: r.color, status: r.status, hosted: r.host_seen_at != null && t - r.host_seen_at < HOST_ONLINE_MS, level: stationLevel(this.sxp(r, c)), logo };
   }
 
   private owners: { at: number; map: Map<string, string> } = { at: -1e9, map: new Map() };
@@ -59,7 +63,7 @@ export class Stations {
   async list(): Promise<StationView[]> {
     const t = this.g.now();
     if (t - this.cache.at < 5000) return this.cache.list;
-    const rows = await this.g.db.all<StationRow>("SELECT * FROM stations WHERE status != 'revoked'");
+    const rows = await this.g.db.all<StationRow & { logo_at: number | null }>("SELECT s.*, l.updated_at AS logo_at FROM stations s LEFT JOIN station_logos l ON l.station_id = s.station_id WHERE s.status != 'revoked'");
     const counts = await this.counts(rows.map((r) => r.station_id));
     this.cache = { at: t, list: rows.map((r) => this.view(r, counts.get(r.station_id)!, t)) };
     return this.cache.list;
@@ -111,9 +115,10 @@ export class Stations {
   }
 
   async mine(id: string): Promise<HostStation[]> {
-    const rows = await this.g.db.all<StationRow>("SELECT * FROM stations WHERE owner_id = ? AND status != 'revoked' ORDER BY claimed_at", [id]);
+    const rows = await this.g.db.all<StationRow & { logo_at: number | null }>("SELECT s.*, l.updated_at AS logo_at FROM stations s LEFT JOIN station_logos l ON l.station_id = s.station_id WHERE s.owner_id = ? AND s.status != 'revoked' ORDER BY s.claimed_at", [id]);
     const counts = await this.counts(rows.map((r) => r.station_id)), t = this.g.now();
-    return rows.map((r) => { const c = counts.get(r.station_id)!; return { ...this.view(r, c, t), sxp: this.sxp(r, c), stamps: c.stamps, shares: c.shares, verifiedContacts: c.verified, hostMinutes: Math.round(r.host_ms / 60_000) }; });
+    // the owner sees their own logo before approval (the world does not)
+    return rows.map((r) => { const c = counts.get(r.station_id)!; return { ...this.view(r, c, t), logo: r.logo_at != null ? `/api/logo/${encodeURIComponent(r.station_id)}?v=${r.logo_at}` : null, sxp: this.sxp(r, c), stamps: c.stamps, shares: c.shares, verifiedContacts: c.verified, hostMinutes: Math.round(r.host_ms / 60_000) }; });
   }
 
   /** Only what each visitor consented to share with THIS station, and only while the share stands. */
@@ -164,16 +169,17 @@ export class Stations {
   /* ---- crew moderation ---- */
 
   async crewList(): Promise<CrewStationRow[]> {
-    const rows = await this.g.db.all<StationRow & { callsign: string; name: string; pcompany: string }>(
-      `SELECT s.*, pl.callsign, p.name, p.company AS pcompany FROM stations s JOIN players pl ON pl.id = s.owner_id JOIN passports p ON p.player_id = s.owner_id ORDER BY s.claimed_at DESC`);
+    const rows = await this.g.db.all<StationRow & { callsign: string; name: string; pcompany: string; logo_at: number | null }>(
+      `SELECT s.*, pl.callsign, p.name, p.company AS pcompany, l.updated_at AS logo_at FROM stations s JOIN players pl ON pl.id = s.owner_id JOIN passports p ON p.player_id = s.owner_id
+       LEFT JOIN station_logos l ON l.station_id = s.station_id ORDER BY s.claimed_at DESC`);
     const counts = await this.counts(rows.map((r) => r.station_id)), t = this.g.now();
-    return rows.map((r) => ({ ...this.view(r, counts.get(r.station_id)!, t), visits: counts.get(r.station_id)!.stamps, ownerCallsign: r.callsign, ownerName: r.name, ownerCompany: r.pcompany, claimedAt: r.claimed_at }));
+    return rows.map((r) => ({ ...this.view(r, counts.get(r.station_id)!, t), logo: r.logo_at != null ? `/api/logo/${encodeURIComponent(r.station_id)}?v=${r.logo_at}` : null, visits: counts.get(r.station_id)!.stamps, ownerCallsign: r.callsign, ownerName: r.name, ownerCompany: r.pcompany, claimedAt: r.claimed_at }));
   }
 
   async crewSetStatus(stationId: string, status: string): Promise<void> {
     if (status === 'release') await this.g.db.run('DELETE FROM stations WHERE station_id = ?', [stationId]); // frees the booth for its real exhibitor
     else if (status === 'approved' || status === 'revoked' || status === 'pending') await this.g.db.run('UPDATE stations SET status = ? WHERE station_id = ?', [status, stationId]);
     else throw new GameError('bad_status', 'Unknown status');
-    this.cache.at = -1e9;
+    this.cache.at = -1e9; this.onStatus();
   }
 }

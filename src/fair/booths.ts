@@ -240,6 +240,26 @@ export class BoothSet {
     if (this.counters?.instanceColor) this.counters.instanceColor.needsUpdate = true;
   }
 
+  /** Approved exhibitors' logos: on the face of their counter and on a sign hung over the open side of the booth,
+   *  the way Lean X Digital's own booth carries its brand (an island: on all four faces of its tower). */
+  setLogos(list: { id: string; logo: string }[]) {
+    const want = new Map(list.filter((s) => s.id !== this.level.hero.id).map((s) => [s.id, s.logo]));
+    for (const [id, l] of this.logos) if (want.get(id) !== l.url) { disposeGroup(l.group); this.logos.delete(id); }
+    for (const [id, url] of want) {
+      if (this.logos.has(id)) continue;
+      const i = this.cellOfId.get(id), st = i != null ? this.standOfCell.get(i) : undefined; if (!st) continue;
+      const group = new THREE.Group(); this.group.add(group); this.logos.set(id, { url, group });
+      new THREE.TextureLoader().load(url, (tex) => {
+        if (this.logos.get(id)?.group !== group) { tex.dispose(); return; } // replaced while loading
+        tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+        const img = tex.image as { width: number; height: number }, aspect = img.width / Math.max(1, img.height);
+        const art = (maxW: number, maxH: number) => { const w = Math.min(maxW, maxH * aspect), h = w / aspect; return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.02 })); };
+        dressWithLogo(st, group, art);
+      }, undefined, () => { /* a logo that will not load leaves the booth as it was */ });
+    }
+  }
+  private logos = new Map<string, { url: string; group: THREE.Group }>();
+
   /** Stamped cells: a gold band along the top of their fascia. */
   setStamped(ids: Iterable<string>) {
     this.bandAt = [];
@@ -260,6 +280,39 @@ export class BoothSet {
     this.group.traverse((o) => { const m = o as THREE.Mesh; if (!m.isMesh) return; m.geometry?.dispose(); for (const mat of Array.isArray(m.material) ? m.material : [m.material]) { const t = (mat as THREE.MeshBasicMaterial).map; t?.dispose(); mat.dispose(); } });
     this.group.removeFromParent();
   }
+}
+
+function disposeGroup(g: THREE.Group) {
+  g.traverse((o) => { const m = o as THREE.Mesh; if (!m.isMesh) return; m.geometry.dispose(); const mat = m.material as THREE.MeshBasicMaterial; mat.map?.dispose(); mat.dispose(); });
+  g.removeFromParent();
+}
+
+/** Where an exhibitor's logo goes on their stand: the counter's aisle face, and a sign over the front. */
+function dressWithLogo(st: StandInfo, g: THREE.Group, art: (maxW: number, maxH: number) => THREE.Mesh) {
+  const place = (m: THREE.Mesh, x: number, y: number, h: number, side: Side, out = 0) => {
+    const [dx, dy] = DIR[side], p = toWorld(x + dx * out, y + dy * out, h); m.position.set(p.x, p.y, p.z); m.rotation.y = FACE_ROT[side]; g.add(m);
+  };
+  if (st.kind === 'island') { // the tower in the middle: 1.6 m square, 3.6 m tall
+    const cx = (st.rect.x0 + st.rect.x1) / 2, cy = (st.rect.y0 + st.rect.y1) / 2;
+    for (const side of ['N', 'E', 'S', 'W'] as Side[]) place(art(1.4, 1.1), cx, cy, 2.75, side, 0.81);
+    return;
+  }
+  const co = counterOf(st);
+  if (co) { // the counter: 1.2 m along the aisle, 1 m tall; its aisle face is half its depth out from the centre
+    const along = co.face === 'N' || co.face === 'S';
+    place(art(1.1, 0.7), co.x, co.y, 0.55, co.face, (along ? co.rect.y1 - co.rect.y0 : co.rect.x1 - co.rect.x0) / 2 + 0.006);
+  }
+  // the sign: a white board hung over the middle of the front, above the fascia, the logo on both faces
+  const f = st.front, [dx, dy] = DIR[f], x = f === 'E' ? st.rect.x1 : f === 'W' ? st.rect.x0 : st.label.x, y = f === 'N' ? st.rect.y1 : f === 'S' ? st.rect.y0 : st.label.y;
+  const bw = Math.min(2.6, Math.max(1.6, st.label.len - 0.4)), bh = 0.9, cy = WALL_H + 0.15 + bh / 2, inset = -0.35;
+  const board = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, 0.06), new THREE.MeshLambertMaterial({ color: 0xffffff }));
+  place(board, x, y, cy, f, inset);
+  for (const q of [-bw / 2 + 0.15, bw / 2 - 0.15]) { // two hangers up to the rig
+    const along = f === 'N' || f === 'S', hx = x + dx * inset + (along ? q : 0), hy = y + dy * inset + (along ? 0 : -q), p = toWorld(hx, hy, cy + bh / 2 + 0.3);
+    const rod = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.6, 0.02), new THREE.MeshLambertMaterial({ color: FAIR.frame })); rod.position.set(p.x, p.y, p.z); g.add(rod);
+  }
+  place(art(bw - 0.16, bh - 0.14), x, y, cy, f, inset + 0.035);
+  const back = art(bw - 0.16, bh - 0.14); place(back, x, y, cy, f, inset - 0.035); back.rotation.y += Math.PI;
 }
 
 /* ---------------- Lean X Digital's graphics, drawn from the booth design ---------------- */
