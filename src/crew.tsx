@@ -8,7 +8,7 @@ import './ui.css';
 import './crew.css';
 import './demo/demo.css';
 import { demo, demoState, ensureBackend } from './demo/client';
-import type { CrewStationRow, CrewTicketView } from '../shared/types';
+import type { CrewStationRow, CrewTicketView, ReferralRow } from '../shared/types';
 import type { GeoCalPoint, GeoCalibration } from '../shared/geo';
 
 type Res<T> = { ok: true; data: T } | { ok: false; error: string; code: string };
@@ -28,17 +28,17 @@ function extractTicket(raw: string): string {
 
 function Crew() {
   const [authed, setAuthed] = useState<boolean | null>(null);
-  const [tab, setTab] = useState<'scan' | 'leads' | 'stations' | 'review' | 'ops' | 'beacons' | 'calibrate'>('scan');
+  const [tab, setTab] = useState<'scan' | 'leads' | 'stations' | 'review' | 'ops' | 'beacons' | 'calibrate' | 'referrals'>('scan');
   useEffect(() => { call('GET', '/api/crew/check').then(() => setAuthed(true), () => setAuthed(false)); }, []);
   if (authed === null) return <main class="console"><p>Loading…</p></main>;
   if (!authed) return <Login onDone={() => setAuthed(true)} />;
   return (
     <main class="console">
       <header><div class="brand"><span>lean<b>.x</b>digital</span><i /><span>Crew console</span></div>
-        <nav>{([['scan', 'Scan'], ['leads', 'Leads'], ['stations', 'Booths'], ['review', 'Review'], ['ops', 'Live'], ['beacons', 'Booth QRs'], ['calibrate', 'Calibrate GPS']] as const).map(([t, label]) => <button key={t} class={'chip' + (tab === t ? ' on' : '')} onClick={() => setTab(t)}>{label}</button>)}
+        <nav>{([['scan', 'Scan'], ['leads', 'Leads'], ['stations', 'Booths'], ['review', 'Review'], ['ops', 'Live'], ['beacons', 'Booth QRs'], ['referrals', 'Referrals'], ['calibrate', 'Calibrate GPS']] as const).map(([t, label]) => <button key={t} class={'chip' + (tab === t ? ' on' : '')} onClick={() => setTab(t)}>{label}</button>)}
           <button class="chip ghost" onClick={() => call('POST', '/api/crew/logout').finally(() => setAuthed(false))}>Sign out</button></nav></header>
       {demo.value && <p class="demobar"><b>Demo mode.</b> This console talks to the demo world inside this browser — the same one the game tab is playing in. Leads, stations and the accounts under review belong to a simulated cast; your own demo player is in there too.</p>}
-      {tab === 'scan' && <Scan />}{tab === 'leads' && <Leads />}{tab === 'stations' && <StationsTab />}{tab === 'review' && <ReviewTab />}{tab === 'ops' && <OpsTab />}{tab === 'beacons' && <Beacons />}{tab === 'calibrate' && <Calibrate />}
+      {tab === 'scan' && <Scan />}{tab === 'leads' && <Leads />}{tab === 'stations' && <StationsTab />}{tab === 'review' && <ReviewTab />}{tab === 'ops' && <OpsTab />}{tab === 'beacons' && <Beacons />}{tab === 'calibrate' && <Calibrate />}{tab === 'referrals' && <Referrals />}
     </main>
   );
 }
@@ -153,6 +153,25 @@ function BeaconCard({ b }: { b: Beacon }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => { const c = qrcode(0, 'M'); c.addData(b.url); c.make(); if (ref.current) ref.current.innerHTML = c.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); }, [b.url]);
   return <div class="beacon"><div class="k">Mission X · Find the X</div><h3>{b.name || 'Booth'} <small>{b.id}</small></h3><div class="qr" ref={ref} /><p>Scan for +50 points</p></div>;
+}
+
+/** Exhibitors who brought in other exhibitors: the ranking for the special prize. Points count approved booths only. */
+function Referrals() {
+  const [rows, setRows] = useState<ReferralRow[] | null>(null), [err, setErr] = useState('');
+  const load = () => call<ReferralRow[]>('GET', '/api/crew/referrals').then(setRows, (x) => setErr((x as Error).message));
+  useEffect(() => { void load(); }, []);
+  return (
+    <section class="sheet wide">
+      <div class="row"><h2>Referrals</h2><button class="btn" onClick={load}>Refresh</button></div>
+      <p class="fine">Exhibitors earn 10 points for each exhibitor who registers with their link or code, once you approve that booth in <b>Booths</b>. “Waiting” are referred booths you have not approved yet.</p>
+      {err && <p class="banner bad">{err}</p>}
+      {rows && rows.length === 0 && <p class="lead">No referrals yet.</p>}
+      {!!rows?.length && (
+        <div class="scroll"><table><thead><tr><th>#</th><th>Exhibitor</th><th>Booths</th><th>Contact</th><th>Approved</th><th>Waiting</th><th>Points</th></tr></thead>
+          <tbody>{rows.map((r, i) => <tr key={r.email}><td>{i + 1}</td><td>{r.name}<br /><small>{r.company}</small></td><td>{r.booths}</td><td><a href={`tel:${r.phone}`}>{r.phone}</a><br /><a href={`mailto:${r.email}`}>{r.email}</a></td><td>{r.approved}</td><td>{r.pending}</td><td><b>{r.points}</b></td></tr>)}</tbody></table></div>
+      )}
+    </section>
+  );
 }
 
 /* ---------------- GPS calibration: how a phone's position lands on each level's plan ---------------- */

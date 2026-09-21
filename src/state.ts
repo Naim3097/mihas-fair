@@ -5,7 +5,7 @@ import type { Place } from './game/places';
 import { buzz, sfx } from './sfx';
 
 export type Phase = 'boot' | 'start' | 'play' | 'error';
-export type Modal = null | 'card' | 'prize' | 'claimed' | 'complete' | 'board' | 'booth' | 'claim' | 'mybooth' | 'swap' | 'contacts' | 'map' | 'photo' | 'menu' | 'rules' | 'tour' | 'scan';
+export type Modal = null | 'card' | 'prize' | 'claimed' | 'complete' | 'booth' | 'claim' | 'mybooth' | 'swap' | 'contacts' | 'map' | 'photo' | 'menu' | 'rules' | 'tour' | 'scan' | 'jointeam';
 
 export const phase = signal<Phase>('boot');
 export const level = signal<LevelData | null>(null);
@@ -50,6 +50,17 @@ export function markSeen(key: string): boolean {
   try { localStorage.setItem(SEEN, JSON.stringify([...seen.value])); } catch { /* private mode */ }
   return true;
 }
+
+/** An exhibitor's invitation code, from the link they opened (…/?ref=CODE). Kept until they register a booth. */
+const REF_KEY = 'mx_ref';
+export const referral = signal<string>((() => { try { return localStorage.getItem(REF_KEY) ?? ''; } catch { return ''; } })());
+export function setReferral(code: string) {
+  referral.value = code;
+  try { if (code) localStorage.setItem(REF_KEY, code); else localStorage.removeItem(REF_KEY); } catch { /* private mode */ }
+}
+
+/** A booth team invitation from the link a colleague sent (…/?team=CODE), until it is used. */
+export const teamInvite = signal<string | null>(null);
 
 /** An exhibitor registering: what they picked from the exhibitor list, or `manual` when they key it in themselves. */
 export const claimDraft = signal<{ company: string; booths: string[]; manual: boolean } | null>(null);

@@ -77,7 +77,8 @@ test('presence engine: the venue gate decides what a printed beacon is worth; sc
 
   // other players see a real person: solid (deck), at the station, snapped to the 1.5 m lattice
   const b = booth('7C18');
-  let seen = (await watcher.post('/api/presence', { x: b.x + 3, y: b.y, h: 0, spawn: false })).json.data.holograms as Hologram[];
+  const near = await user().join('visitor'); await near.post('/api/venue', AT_MITEC); // someone else at MIHAS: people there see each other
+  let seen = (await near.post('/api/presence', { x: b.x + 3, y: b.y, h: 0, spawn: true, deck: true, sigma: 3 })).json.data.holograms as Hologram[];
   assert.equal(seen.length, 1);
   assert.equal(seen[0]!.deck, true);
   assert.ok(Math.abs(seen[0]!.x - b.x) <= 0.75 && seen[0]!.x % 1.5 === 0);

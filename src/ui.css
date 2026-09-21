@@ -219,3 +219,28 @@ input::placeholder,textarea::placeholder{color:var(--ink-3)}textarea{font-size:1
 /* the booth registration form */
 .fhint{display:block;font-size:12.5px;color:var(--ink-2);font-weight:600;margin-top:4px}.fhint.bad{color:var(--red)}
 .boothpick{margin:0 0 12px}.boothpick .fine{margin:0 0 6px;font-weight:700}
+.opt{font-weight:600;color:var(--ink-3);font-size:12px;margin-left:4px}
+.invite{margin:0 0 10px;padding:10px 12px;border-radius:var(--r-m);background:var(--gold-soft);color:var(--gold-ink);font-size:13.5px;font-weight:600}
+
+/* ---- a quieter HUD: the mission card folds to one line; one big button at most, the rest chips ---- */
+.objective .top .right{display:flex;align-items:center;gap:6px}
+.objective .min{width:28px;height:28px;border-radius:50%;border:0;background:var(--surface-2);display:grid;place-items:center;cursor:pointer;color:var(--ink-2);padding:0}
+.objective .min svg{width:16px;height:16px;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;fill:none}
+.objective.mini{display:flex;align-items:center;gap:10px;width:auto;max-width:min(430px,calc(var(--vw) - 96px - var(--safe-l) - var(--safe-r)));padding:6px 6px 6px 14px;border-radius:999px;cursor:pointer}
+.objective.mini .dots{margin:0;gap:3px;flex:none}.objective.mini .dots i{flex:none;width:12px;height:4px}
+.objective.mini .t{font-weight:800;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1 1 auto}
+.objective.mini .d{font-size:12.5px;font-weight:700;color:var(--ink-2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.objective.mini .btn{min-height:30px;padding:4px 14px;font-size:13px;border-radius:999px;flex:none}
+.objective.mini .score{flex:none;margin-right:6px}
+.chiprow{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}
+.chiprow .chip{box-shadow:var(--shadow);border-color:transparent;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip.act{background:var(--blue);color:#fff;border-color:var(--blue)}.chip.act kbd{margin-left:8px;opacity:.75}.chip.act:disabled{opacity:.6}
+@media (hover:none){.chip kbd,.btn kbd{display:none}}
+/* short screens (a phone held sideways): everything a size down */
+@media (max-height:520px){
+  .objective{top:calc(8px + var(--safe-t));left:calc(8px + var(--safe-l));padding:8px 12px}.objective h2{font-size:16px}.objective .go-row{margin-top:6px;padding-top:6px}
+  .objective.mini{padding:4px 4px 4px 12px}
+  .dock{bottom:calc(8px + var(--safe-b));right:calc(8px + var(--safe-r));gap:8px}.dock button{width:42px;height:42px}.dock svg{width:19px;height:19px}
+  .action{bottom:calc(8px + var(--safe-b))}.action .btn.big{min-height:42px;padding:8px 16px;font-size:15px}
+  .chiprow .chip{min-height:34px}
+}

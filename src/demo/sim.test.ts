@@ -1,5 +1,6 @@
 // The demo world, exercised the way the service worker does it — but in Node, on the same WebAssembly SQLite.
 import { test } from 'node:test';
+import { VENUE_DEFAULT } from '../../shared/rules';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import initSqlJs from 'sql.js';
@@ -60,7 +61,8 @@ test('demo world: seeded, consistent, and every helper works through the real AP
 
   // the world moves and other people are visible
   for (let i = 0; i < 4; i++) { await new Promise((r) => setTimeout(r, 950)); await sim.tick(); }
-  const ping = await call<{ holograms: unknown[]; online: number }>('POST', '/api/presence', { x: level.hero.dock.x, y: level.hero.dock.y, h: 0, spawn: true });
+  await call('POST', '/api/venue', { lat: VENUE_DEFAULT.lat, lon: VENUE_DEFAULT.lon, acc: 12 }); // people meet at MIHAS
+  const ping = await call<{ holograms: unknown[]; online: number }>('POST', '/api/presence', { x: level.hero.dock.x, y: level.hero.dock.y, h: 0, spawn: true, deck: true, sigma: 3 });
   assert.ok(ping.data.online >= 35, `online ${ping.data.online}`); assert.ok(ping.data.holograms.length > 0, 'holograms near the Launch Pad');
 
   // crew docking (helper) — and the crew console's own path stays PIN-protected

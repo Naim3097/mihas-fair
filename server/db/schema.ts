@@ -332,6 +332,33 @@ CREATE TABLE IF NOT EXISTS station_logos (
   data        TEXT NOT NULL,
   updated_at  INTEGER NOT NULL
 );
+-- A company's booth team: whoever registered the booth (the owner) and the colleagues they invite with a link. Members
+-- work the owner's booths — dashboard, QR, visitors, logo, photo, profile — each on their own phone and avatar. Only the
+-- owner adds booths and manages the team. (Not the switched-off visitor teams above.)
+CREATE TABLE IF NOT EXISTS booth_team (
+  member_id  TEXT PRIMARY KEY REFERENCES players(id),
+  owner_id   TEXT NOT NULL REFERENCES players(id),
+  joined_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS booth_team_owner ON booth_team(owner_id);
+CREATE TABLE IF NOT EXISTS booth_team_codes (
+  owner_id    TEXT PRIMARY KEY REFERENCES players(id),
+  code        TEXT NOT NULL UNIQUE,
+  created_at  INTEGER NOT NULL
+);
+-- Exhibitors inviting exhibitors: each has one code; a new exhibitor who registers with it is theirs, once. The
+-- points (REFERRAL_POINTS each) count only referred exhibitors the crew has approved, so they are computed, not stored.
+CREATE TABLE IF NOT EXISTS referral_codes (
+  code        TEXT PRIMARY KEY,
+  player_id   TEXT NOT NULL UNIQUE REFERENCES players(id),
+  created_at  INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS referrals (
+  referred_id  TEXT PRIMARY KEY REFERENCES players(id),
+  referrer_id  TEXT NOT NULL REFERENCES players(id),
+  created_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS referrals_referrer ON referrals(referrer_id);
 -- A photo or artwork of the real booth, hung on the back wall of the virtual one (once approved).
 CREATE TABLE IF NOT EXISTS station_photos (
   station_id  TEXT PRIMARY KEY,

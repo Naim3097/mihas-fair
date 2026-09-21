@@ -30,7 +30,7 @@ function toCsv(cols: string[], rows: Record<string, unknown>[]): string {
 }
 const csvHeaders = (name: string) => ({ 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="${name}"` });
 
-export function createApp({ game, stations, social, crews, venue, director, gc, ops, signer, ceritera, checkpoints, crewPin, publicOrigin, secureCookies, cookies: cookieIO }: AppDeps) {
+export function createApp({ game, stations, social, crews, venue, director, gc, ops, signer, ceritera, checkpoints, referrals, team, crewPin, publicOrigin, secureCookies, cookies: cookieIO }: AppDeps) {
   const app = new Hono<Vars>();
   const cookieOpts = { httpOnly: true, sameSite: 'Lax' as const, secure: secureCookies, path: '/' };
   const cookies: CookieIO = cookieIO ?? { get: (c, name) => getCookie(c, name), set: (c, name, value, maxAge) => setCookie(c, name, value, { ...cookieOpts, maxAge }) };
@@ -103,6 +103,14 @@ export function createApp({ game, stations, social, crews, venue, director, gc, 
     const station = c.req.query('station') ?? '', rows = await checkpoints.scans(pid(c), station);
     return c.body(toCsv(['name', 'phone', 'email', 'company', 'scanned_at', 'checkpoint'], rows.map((r) => ({ ...r, scanned_at: new Date(r.at).toISOString(), checkpoint: r.checkpoint ? 'yes' : '' }))), 200, csvHeaders(`visitors-${station.replace(/[^0-9A-Za-z]/g, "")}.csv`));
   });
+  /* the booth team: colleagues join the owner's booths with a link, each on their own phone */
+  player.get('/host/team', async (c) => ok(c, await team.view(pid(c)), [], false));
+  player.post('/host/team/reset', async (c) => { await team.resetLink(pid(c)); return ok(c, await team.view(pid(c)), [], false); });
+  player.post('/host/team/remove', async (c) => { await team.remove(pid(c), String((await body(c)).key ?? '')); return ok(c, await team.view(pid(c)), [], false); });
+  player.post('/host/team/leave', async (c) => { await team.leave(pid(c)); return ok(c, null); });
+  player.get('/booth-team/peek', async (c) => ok(c, await team.peek(c.req.query('code')), [], false));
+  player.post('/booth-team/join', async (c) => ok(c, await team.join(pid(c), (await body(c)).code)));
+  player.get('/host/referrals', async (c) => ok(c, await referrals.view(pid(c)), [], false));
   player.get('/host/qr', async (c) => ok(c, await checkpoints.printableQr(pid(c), c.req.query('station') ?? ''), [], false));
   player.post('/station/logo', async (c) => { const b = await body(c); await checkpoints.setImage(pid(c), String(b.stationId ?? ''), 'logo', b.image); return ok(c, null, [], false); });
   player.post('/station/photo', async (c) => { const b = await body(c); await checkpoints.setImage(pid(c), String(b.stationId ?? ''), 'photo', b.image); return ok(c, null, [], false); });
@@ -179,6 +187,7 @@ export function createApp({ game, stations, social, crews, venue, director, gc, 
     const t = game.now(), dots = await game.presence.all(t, venue.hidden);
     return c.json({ ok: true, data: { dots, online: dots.length, onsite: dots.filter((d) => d.deck).length, totals: await ops.totals(), board: await ops.board('today', null), booths: await ops.board('stations', null), sectors: await crews.view(), storm: await director.stormView(), drop: await ops.drop(null), joinUrl: publicOrigin } });
   });
+  crew.get('/referrals', async (c) => c.json({ ok: true, data: await referrals.ranking() }));
   crew.get('/geocal', async (c) => c.json({ ok: true, data: { points: await venue.calPoints(), geo: await venue.geo(true) } }));
   crew.post('/geocal', async (c) => { const b = await body(c); await venue.addCalPoint(String(b.stationId ?? ''), { lat: Number(b.lat), lon: Number(b.lon), acc: Number(b.acc) }); return c.json({ ok: true, data: { points: await venue.calPoints(), geo: await venue.geo() } }); });
   crew.post('/geocal/delete', async (c) => { await venue.removeCalPoint(Number((await body(c)).id)); return c.json({ ok: true, data: { points: await venue.calPoints(), geo: await venue.geo() } }); });

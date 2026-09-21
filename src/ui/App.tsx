@@ -2,14 +2,14 @@ import { useEffect, useState } from 'preact/hooks';
 import type { EngineApi as Engine } from '../game/engine-api';
 import { api, ApiError } from '../net/api';
 import { POINTS, ROLE_INFO, chapters, type Role } from '../../shared/rules';
-import type { PassportInput } from '../../shared/types';
-import { atLaunchPad, bootError, bootNote, distToGoal, goalVia, guideOn, guideTarget, herePlace, journey, level, me, modal, moveHint, nearLift, nearStation, online, panelStation, phase, seated, stampedSet, stationMap, toast, toasts } from '../state';
+import type { BoothTeamPeek, PassportInput } from '../../shared/types';
+import { referral, teamInvite, atLaunchPad, bootError, bootNote, distToGoal, goalVia, guideOn, guideTarget, herePlace, journey, level, me, modal, moveHint, nearLift, nearStation, online, panelStation, phase, seated, stampedSet, stationMap, toast, toasts } from '../state';
 import { facts } from '../game/facts';
 import { MapSheet, PhotoSheet } from './world-sheets';
 import { DemoChip, TourSheet } from '../demo/Tour';
 import { Camera, Sheet, hex } from './common';
 import { handleScan } from '../scan';
-import { BoardSheet, BoothSheet, ClaimSheet, ContactsSheet, MenuSheet, MyBoothSheet, SwapSheet } from './sheets';
+import { BoothSheet, ClaimSheet, ContactsSheet, MenuSheet, MyBoothSheet, SwapSheet } from './sheets';
 import { OnsiteGate, SiteChip, SiteChoice } from './onsite';
 import { onsiteAvailable, setSiteMode, siteMode } from '../onsite';
 
@@ -26,7 +26,6 @@ export function App({ engine }: Eng) {
       {m === 'card' && <CardForm />}
       {(m === 'claimed' || m === 'complete') && <Finish />}
       {m === 'rules' && <Rules />}
-      {m === 'board' && <BoardSheet />}
       {m === 'booth' && <BoothSheet engine={engine} />}
       {m === 'claim' && <ClaimSheet />}
       {m === 'mybooth' && <MyBoothSheet />}
@@ -37,6 +36,7 @@ export function App({ engine }: Eng) {
       {m === 'menu' && <MenuSheet />}
       {m === 'tour' && <TourSheet />}
       {m === 'scan' && <ScanSheet />}
+      {m === 'jointeam' && <JoinTeamSheet engine={engine} />}
       {phase.value === 'play' && <OnsiteGate />}
       <Toasts />
     </>
@@ -77,6 +77,7 @@ function Start({ engine }: Eng) {
         <h1>Find the <b>X</b>.</h1>
         <p class="lead">The whole MIHAS expo, live on your phone. Walk it, stamp booths, meet people — and find the X for your free digital business card.</p>
         <SiteChoice />
+        {referral.value && !me.value?.hosting.length && was !== 'visitor' && <p class="invite">An exhibitor invited you to put your booth in the game — choose <b>I'm exhibiting</b>.</p>}
         <div class="doors">
           {door('visitor', was === 'visitor' ? 'Continue visiting' : "I'm visiting", 'Start at Lean X Digital, then scan the QR at 5 exhibitor booths.')}
           {door('exhibitor', was === 'exhibitor' ? 'Back to my booth' : "I'm exhibiting", 'Put your booth in the game. Collect visitor leads, free.')}
@@ -115,6 +116,8 @@ function SeatNote() {
 function Hud({ engine }: Eng) {
   const m = me.value!, j = journey.value!, st = nearStation.value, has = st && stampedSet.value.has(st.id), view = st ? stationMap.value.get(st.id) : undefined;
   const [stamping, setStamping] = useState(false), [open, setOpen] = useState(false), [tray, setTray] = useState(false);
+  const [mini, setMiniState] = useState(() => { try { const v = localStorage.getItem('mx_hud'); if (v) return v === 'mini'; } catch { /* private mode */ } return innerHeight < 520; });
+  const setMini = (v: boolean) => { setMiniState(v); try { localStorage.setItem('mx_hud', v ? 'mini' : 'full'); } catch { /* private mode */ } };
   const place = herePlace.value, sitting = seated.value, eng = engine(), points = useRolling(m.xp);
   const express = (f: () => void) => () => { f(); setTray(false); };
   useEffect(() => { // an open tray is a question; tapping anywhere else is the answer "never mind"
@@ -144,14 +147,26 @@ function Hud({ engine }: Eng) {
 
   return (
     <>
-      {/* top-left: what to do now. One card, nothing else up here. */}
+      {/* top-left: what to do now. One card, nothing else up here — or, folded away, one slim line. */}
+      {mini ? (
+        <div class="objective mini" role="button" tabIndex={0} aria-label="Show the mission" onClick={() => setMini(false)}>
+          {!goal && <div class="dots" aria-hidden="true">{j.steps.map((s) => <i key={s.n} class={s.done ? 'on' : s === j.now ? 'now' : ''} />)}</div>}
+          <span class="t">{goal ? goal.label : j.now ? j.now.title : 'Free play'}</span>
+          {trail && distToGoal.value != null && <span class="d">{distToGoal.value} m</span>}
+          {trail ? <button class="btn primary" onClick={(e) => { e.stopPropagation(); engine()?.autopilot(); }}>Go</button>
+            : !goal && j.kind === 'visitor' && ((j.now?.n === 2 && m.passport) || j.now?.n === 3) ? scanBtn('Scan')
+            : !goal && j.kind === 'exhibitor' ? <button class="btn primary" onClick={(e) => { e.stopPropagation(); modal.value = m.passport ? 'mybooth' : 'card'; }}>Booth</button> : null}
+          <span class="score" title="Points">{points.toLocaleString()}</span>
+        </div>
+      ) : (
       <div class={'objective' + (open ? ' open' : '')} onClick={() => setOpen(!open)}>
         <div class="top">
           <span class="k">{goal ? 'Guiding you to' : j.now ? `${word} ${j.now.n} of ${j.steps.length}` : j.kind === 'visitor' ? 'Mission complete' : 'Your booth is working'}</span>
-          <span class={'score' + (points !== m.xp ? ' up' : '')} title="Points">{points.toLocaleString()}</span>
+          <span class="right"><span class={'score' + (points !== m.xp ? ' up' : '')} title="Points">{points.toLocaleString()}</span>
+            <button class="min" aria-label="Fold the mission card away" onClick={(e) => { e.stopPropagation(); setMini(true); }}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12" /></svg></button></span>
         </div>
         <h2 key={goal ? 'goal' : j.now?.n ?? 0} class="turn">{goal ? goal.label : j.now ? j.now.title : 'Free play'}</h2>
-        {!goal && <p>{j.now ? j.now.todo : `${m.stamps.length} of ${total.toLocaleString()} booths stamped. Keep going, meet more people, climb the board.`}</p>}
+        {!goal && <p>{j.now ? j.now.todo : `${m.stamps.length} of ${total.toLocaleString()} booths stamped. Keep exploring and meet the people you find.`}</p>}
         {!goal && <div class="dots" role="img" aria-label={`${j.done} of ${j.steps.length} done`}>{j.steps.map((s) => <i key={s.n} class={s.done ? 'on' : s === j.now ? 'now' : ''} />)}</div>}
         {!goal && j.kind === 'visitor' && j.now?.n === 2 && <div class="go-row"><span>{m.passport ? 'At the booth?' : 'At Booth 8H18A?'}</span>{m.passport ? scanBtn('Scan the start QR') : <button class="btn primary" onClick={(e) => { e.stopPropagation(); modal.value = 'card'; }}>Get my free card</button>}</div>}
         {!goal && j.kind === 'visitor' && j.now?.n === 3 && (
@@ -167,6 +182,7 @@ function Hud({ engine }: Eng) {
             <span>{goal && <button class="link" style={{ marginRight: '12px' }} onClick={(e) => { e.stopPropagation(); guideTarget.value = null; }}>Cancel</button>}<button class="btn primary" onClick={(e) => { e.stopPropagation(); engine()?.autopilot(); }}>Take me there</button></span></div>
         )}
       </div>
+      )}
 
       {/* bottom-right, under the thumb: the three things you can always do (and, at MIHAS, which level GPS has you on) */}
       <div class="dock">
@@ -194,11 +210,13 @@ function Hud({ engine }: Eng) {
         {nearLift.value && <div class="liftrow">{nearLift.value.others.map((l) => <button key={l.deck} class="btn lift" onClick={() => engine()?.useLift(l)}>Level {l.deck}<small>{level.value?.decks.find((d) => d.level === l.deck)?.label.split(' · ')[1]}</small></button>)}</div>}
         {atLaunchPad.value && !m.passport && <button class="btn primary big" onClick={() => (modal.value = 'card')}>Get my free card</button>}
         {atLaunchPad.value && m.passport && !m.mission.started && j.kind === 'visitor' && <button class="btn primary big" onClick={() => (modal.value = 'scan')}>Scan the start QR</button>}
-        {!sitting && place?.verb === 'photo' && <button class="btn primary big" onClick={() => void eng?.photo()}>Take a photo<kbd>E</kbd></button>}
-        {!sitting && (place?.verb === 'sit' || place?.verb === 'watch') && !(st && !has) && <button class="btn primary big" onClick={() => eng?.sit()}>{place.verb === 'watch' ? 'Sit and watch' : 'Sit down'}<kbd>E</kbd></button>}
-        {!atLaunchPad.value && st && !has && <button class="btn primary big" disabled={stamping} onClick={doStamp}>{stamping ? 'Stamping…' : `Stamp · +${POINTS.stamp}`}{!stamping && <kbd>E</kbd>}</button>}
-        {!atLaunchPad.value && st && (
-          <button class={'chip' + (has ? ' on' : '')} onClick={() => { panelStation.value = st; modal.value = 'booth'; }}>{stName}{view ? (view.hosted ? ' · at the counter now' : ' · online') : ''} ›</button>
+        {!sitting && (st || place?.verb) && (
+          <div class="chiprow">
+            {place?.verb === 'photo' && <button class="chip act" onClick={() => void eng?.photo()}>Take a photo<kbd>E</kbd></button>}
+            {(place?.verb === 'sit' || place?.verb === 'watch') && !(st && !has) && <button class="chip act" onClick={() => eng?.sit()}>{place.verb === 'watch' ? 'Sit and watch' : 'Sit down'}<kbd>E</kbd></button>}
+            {!atLaunchPad.value && st && !has && <button class="chip act" disabled={stamping} onClick={doStamp}>{stamping ? 'Stamping…' : `Stamp +${POINTS.stamp}`}{!stamping && <kbd>E</kbd>}</button>}
+            {!atLaunchPad.value && st && <button class={'chip' + (has ? ' on' : '')} onClick={() => { panelStation.value = st; modal.value = 'booth'; }}>{stName}{view ? (view.hosted ? ' · at the counter' : ' · online') : ''} ›</button>}
+          </div>
         )}
       </div>
     </>
@@ -227,7 +245,7 @@ function CardForm() {
   const set = (k: keyof PassportInput) => (e: Event) => { const t = e.target as HTMLInputElement, v = t.type === 'checkbox' ? t.checked : t.value; setF((p) => ({ ...p, [k]: v })); };
   const submit = async (e: Event) => {
     e.preventDefault(); setErr(''); setBusy(true);
-    try { await api.card(f); api.track('card'); modal.value = exhibitor ? 'mybooth' : me.value?.mission.started ? null : 'scan'; if (!exhibitor && !me.value?.mission.started) toast('You are registered', 'Now scan the Lean X Digital QR at the booth to start', 'info', 5000); }
+    try { await api.card(f); api.track('card'); if (teamInvite.value) { modal.value = 'jointeam'; return; } modal.value = exhibitor ? 'mybooth' : me.value?.mission.started ? null : 'scan'; if (!exhibitor && !me.value?.mission.started) toast('You are registered', 'Now scan the Lean X Digital QR at the booth to start', 'info', 5000); }
     catch (x) { setErr(x instanceof ApiError ? x.message : 'Something went wrong'); setBusy(false); }
   };
   return (
@@ -243,7 +261,7 @@ function CardForm() {
           <label>Email<input required type="email" autocomplete="email" value={f.email} onInput={set('email')} /></label>
         </div>
         <label class="check"><input type="checkbox" checked={f.showContact} onChange={set('showContact')} /><span>Show my phone and email on my card page</span></label>
-        <label class="check"><input type="checkbox" checked={f.consentNotice} onChange={set('consentNotice')} /><span>I have read the <a href="/privacy.html" target="_blank" rel="noopener">Privacy Notice</a> and agree to Lean X Digital processing my details to run Mission X. My first name and initial show in the game and on the leaderboard. When I scan an exhibitor's Mission X QR, my name, phone number and email go to that exhibitor.</span></label>
+        <label class="check"><input type="checkbox" checked={f.consentNotice} onChange={set('consentNotice')} /><span>I have read the <a href="/privacy.html" target="_blank" rel="noopener">Privacy Notice</a> and agree to Lean X Digital processing my details to run Mission X. My first name and initial show in the game. When I scan an exhibitor's Mission X QR, my name, phone number and email go to that exhibitor.</span></label>
         <label class="check"><input type="checkbox" checked={f.consentMarketing} onChange={set('consentMarketing')} /><span>Optional — Lean X Digital may contact me by WhatsApp or email about its services.</span></label>
         {err && <p class="err" role="alert">{err}</p>}
         <button class="btn primary big" disabled={busy}>{busy ? 'Building your card…' : `Create my card · +${POINTS.card}`}</button>
@@ -287,9 +305,9 @@ function Rules() {
   return (
     <Sheet k="How to play" title="One mission. Three steps.">
       <ol class="rules">{chapters({ started: false, card: false, checkpoints: 0, target: 0, claimed: false }).map((c) => <li key={c.n}><strong>{c.title}</strong><span>{c.todo}</span></li>)}</ol>
-      <p class="fine">After the mission it is free play: every action scores, and the board ranks everyone by points.</p>
+      <p class="fine">After the mission it is free play: walk the halls, stamp booths, meet people.</p>
       <table class="points"><tbody>{rows.map(([what, n]) => <tr key={what}><td>{what}</td><td>+{n}</td></tr>)}</tbody></table>
-      <p class="fine">Exhibitors: bring your booth online, show its QR at your counter, and collect the cards visitors leave — free. The board ranks booths by visits.</p>
+      <p class="fine">Exhibitors: bring your booth online, put its QR on your counter, and everyone who scans it lands on your dashboard — free.</p>
     </Sheet>
   );
 }
@@ -305,6 +323,32 @@ function ScanSheet() {
     <Sheet k="Mission X" title="Scan a QR">
       <p class="lead">Point your camera at the Mission X QR on the booth's counter or screen.</p>
       <Camera onCode={(t) => { modal.value = null; void handleScan(t); }} onFail={(msg) => { modal.value = null; toast(msg, undefined, 'warn', 5000); }} />
+    </Sheet>
+  );
+}
+
+/* ------------------------------------------------------------------ joining a colleague's booth team */
+
+function JoinTeamSheet({ engine }: Eng) {
+  const code = teamInvite.value, m = me.value, [peek, setPeek] = useState<BoothTeamPeek | null>(null), [err, setErr] = useState(''), [busy, setBusy] = useState(false);
+  useEffect(() => { if (code) api.teamPeek(code).then(setPeek, (e) => setErr(e instanceof ApiError ? e.message : 'This team link did not work')); }, [code]);
+  const close = () => { teamInvite.value = null; modal.value = null; };
+  const card = async () => { try { if (!m?.cls) await api.start('exhibitor'); modal.value = 'card'; } catch (e) { setErr(e instanceof ApiError ? e.message : 'Could not continue'); } };
+  const join = async () => {
+    if (!code) return; setBusy(true); setErr('');
+    try {
+      const p = await api.teamJoin(code); teamInvite.value = null; api.track('team_join');
+      if (phase.value !== 'play') { engine()?.start('short'); phase.value = 'play'; }
+      toast(`You are on the ${p.company} team`, 'Your booth, its QR and its visitors are in My booth', 'xp', 5000); modal.value = 'mybooth';
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Could not join'); setBusy(false); }
+  };
+  return (
+    <Sheet k="Booth team" title={peek ? `Join the ${peek.company} team` : 'Join a booth team'} onClose={close}>
+      {peek && <p class="lead">{peek.ownerName ? `${peek.ownerName} invited you to` : 'You are invited to'} work booth {peek.booths.join(', ')} in the game with them: its QR, the visitors who scan it, and its logo and photo — on your own phone, as your own astronaut.</p>}
+      {err && <p class="err" role="alert">{err}</p>}
+      {peek && !m?.passport && <><p class="fine">First, your card — so your team knows who you are. One minute.</p><button class="btn primary big" onClick={card}>Fill in my card</button></>}
+      {peek && m?.passport && <button class="btn primary big" disabled={busy} onClick={join}>{busy ? 'Joining…' : `Join as ${m.passport.name}`}</button>}
+      <button class="link" onClick={close}>Not now</button>
     </Sheet>
   );
 }

@@ -45,6 +45,10 @@ export const stampPoints = (presence: Presence) => (presence === 'onsite' ? POIN
 export const MISSION_STAMPS = 5;
 /** Exhibitor booths each visitor is sent to. Fewer while fewer exhibitors are approved; topped up as more join. */
 export const CHECKPOINTS = 5;
+/** How many colleagues one company's booth team can have, besides the owner. */
+export const BOOTH_TEAM_MAX = 20;
+/** Points an exhibitor earns for each exhibitor they bring into the game (counted once that booth is approved). */
+export const REFERRAL_POINTS = 10;
 export interface MissionFacts { started: boolean; card: boolean; checkpoints: number; target: number; claimed: boolean }
 export interface Chapter { n: number; title: string; todo: string; done: boolean }
 /** Chapters 3 and 4 can be finished in either order, and someone standing at the booth may finish 5 early. */

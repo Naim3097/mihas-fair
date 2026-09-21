@@ -141,12 +141,11 @@ test('more exhibitors than checkpoints: each visitor gets five at random; fewer 
   assert.ok(ids.slice(0, 3).every((id) => m.checkpoints.some((c) => c.stationId === id)), 'the first ones are kept');
 });
 
-test("an exhibitor who plays the mission is never sent to their own booth", async () => {
+test('exhibitors are here with a booth: the visitor mission is not for them', async () => {
   const r = await rig();
   const ex = await exhibitors(r, ['7C17', '7C19']);
   for (const id of ['7C17', '7C19']) await r.crew.call('POST', '/api/crew/stations/status', { stationId: id, status: 'approved' });
   const owner = ex[0]!.u;
-  await owner.call('POST', '/api/start', { role: 'visitor' });
-  await owner.call('POST', '/api/stamp', { stationId: level.hero.id, proof: 'beacon', beacon: await r.beacon(level.hero.id) });
-  assert.deepEqual((await owner.me()).mission.checkpoints.map((c) => c.stationId), ['7C19']);
+  assert.equal((await owner.call('POST', '/api/stamp', { stationId: level.hero.id, proof: 'beacon', beacon: await r.beacon(level.hero.id) })).json.code, 'exhibitor');
+  assert.equal((await owner.me()).mission.started, false);
 });

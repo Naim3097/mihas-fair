@@ -6,11 +6,11 @@ import { api, ApiError } from '../net/api';
 import { handleScan } from '../scan';
 import { boothList, directory, type Listed } from '../exhibitors';
 import { shrink } from './images';
-import { Camera, FieldPicker, Qr, Sheet, hex, useCountdown } from './common';
+import { Camera, FieldPicker, Qr, Sheet, useCountdown } from './common';
 import { POINTS, ROLE_INFO, type ShareField } from '../../shared/rules';
-import type { BoardRow, Booth, Contact, LinkCode, LinkPeek } from '../../shared/types';
+import type { Booth, Contact, LinkCode, LinkPeek } from '../../shared/types';
 import { LinkDemoHint, StationDemoHint } from '../demo/Tour';
-import { claimDraft, drop, guideOn, guideTarget, journey, level, me, modal, myBooths, nearStation, online, panelStation, pendingLink, stampedSet, stationMap, stations, toast } from '../state';
+import { claimDraft, referral, setReferral, drop, guideOn, guideTarget, journey, level, me, modal, myBooths, nearStation, online, panelStation, pendingLink, stampedSet, stationMap, stations, toast } from '../state';
 
 type Eng = { engine: () => Engine | null };
 const fail = (e: unknown, fallback: string) => toast(e instanceof ApiError ? e.message : fallback, undefined, 'warn', 4500);
@@ -89,7 +89,8 @@ export function ClaimSheet() {
   const chosen = fixed ?? (manual ? typedBooth : lv.booths.find((b) => b.id === boothId));
   const existing = chosen ? sm.get(chosen.id) : undefined, mine = !!chosen && m.hosting.includes(chosen.id);
   const [f, setF] = useState({ company: existing?.company ?? draft?.company ?? fixed?.name ?? m.passport?.company ?? '', offer: existing?.offer ?? '', link: existing?.link ?? '', color: existing?.color ?? 0x1e9e6a });
-  const [logo, setLogo] = useState<File | null>(null), [photo, setPhoto] = useState<File | null>(null);
+  const [logo, setLogo] = useState<File | null>(null), [photo, setPhoto] = useState<File | null>(null), [ref, setRef] = useState(referral.value);
+  const firstBooth = m.hosting.length === 0; // an invitation counts for an exhibitor's first booth only
   const [err, setErr] = useState(''), [busy, setBusy] = useState(false);
   const put = (k: 'company' | 'offer' | 'link') => (e: Event) => { const v = (e.target as HTMLInputElement).value; setF((p) => ({ ...p, [k]: v })); };
   const file = (set: (f: File | null) => void) => (e: Event) => set((e.target as HTMLInputElement).files?.[0] ?? null);
@@ -99,7 +100,8 @@ export function ClaimSheet() {
     if (!chosen) { setErr(manual && typedId ? `Booth ${typedId} is not on the floor plan — check the number on your fascia board` : 'Enter your booth number'); return; }
     setBusy(true);
     try {
-      await api.claim({ stationId: chosen.id, ...f });
+      await api.claim({ stationId: chosen.id, ...f, ref: firstBooth ? ref.trim().toUpperCase() : undefined });
+      if (firstBooth) setReferral('');
       if (logo) await api.boothImage(chosen.id, 'logo', await shrink(logo, 'logo'));
       if (photo) await api.boothImage(chosen.id, 'photo', await shrink(photo, 'photo'));
       await Promise.all([refreshStations(), refreshMyBooths()]); api.track('booth_online', { id: chosen.id, listed: !manual });
@@ -125,6 +127,7 @@ export function ClaimSheet() {
         <label>One line for visitors<input maxLength={120} placeholder="e.g. Free samples at 3 pm" value={f.offer} onInput={put('offer')} /></label>
         <label>Website<input maxLength={200} inputMode="url" placeholder="yourcompany.com" value={f.link} onInput={put('link')} /></label>
         <label>Logo<input type="file" accept="image/png,image/jpeg,image/webp" onChange={file(setLogo)} /><small class="fhint">On your counter and a sign over your booth in the game. PNG with a transparent background looks best.</small></label>
+        {firstBooth && !mine && <label>Invited by another exhibitor? <span class="opt">optional</span><input maxLength={8} autocapitalize="characters" placeholder="Their referral code" value={ref} onInput={(e) => setRef((e.target as HTMLInputElement).value)} /><small class="fhint">{ref ? 'They get points for bringing you in — thank you.' : 'Leave empty if nobody invited you.'}</small></label>}
         <label>Photo of your booth<input type="file" accept="image/png,image/jpeg,image/webp" onChange={file(setPhoto)} /><small class="fhint">Your booth's backdrop or a photo of it: it goes on the back wall of your virtual booth.</small></label>
         {err && <p class="err" role="alert">{err}</p>}
         <button class="btn primary big" disabled={busy}>{busy ? 'Saving…' : mine ? 'Save' : 'Bring it online'}</button>
@@ -195,9 +198,9 @@ export function MyBoothSheet() {
               {s.status === 'pending' && <p class="fine">Live now. Our crew will confirm it is your booth; then it becomes a checkpoint and your logo and photo go up.</p>}
               <div class="stack">
                 <a class="btn primary big" href="/booth.html" target="_blank" rel="noopener">Open my dashboard</a>
-                <p class="fine">Print your QR, see everyone who scanned (name, phone, email), change your logo and booth photo.</p>
+                <p class="fine">Print your QR, see everyone who scanned (name, phone, email), change your logo and booth photo, {m.teamMember ? 'see your team' : 'add your team (each on their own phone)'} — and invite other exhibitors: +10 points for each one who joins.</p>
                 <button class="btn big" onClick={() => { claimDraft.value = null; panelStation.value = level.value?.booths.find((b) => b.id === s.id) ?? null; modal.value = 'claim'; }}>Edit booth profile</button>
-                <button class="btn big" onClick={() => setAdding(true)}>Add another booth</button>
+                {!m.teamMember && <button class="btn big" onClick={() => setAdding(true)}>Add another booth</button>}
               </div>
             </div>
           </div>
@@ -301,22 +304,8 @@ export function ContactsSheet() {
   );
 }
 
-/* ------------------------------------------------------------------ the board + menu */
+/* ------------------------------------------------------------------ the menu */
 
-export function BoardSheet() {
-  const [tab, setTab] = useState<'xp' | 'stations'>(me.value?.cls === 'exhibitor' ? 'stations' : 'xp'), [rows, setRows] = useState<BoardRow[] | null>(null);
-  useEffect(() => { setRows(null); api.board(tab).then(setRows, () => setRows([])); }, [tab]);
-  return (
-    <Sheet k="Leaderboard" title={tab === 'xp' ? 'Top players' : 'Most visited booths'} wide>
-      <div class="seg"><button class={tab === 'xp' ? 'on' : ''} onClick={() => setTab('xp')}><strong>Players</strong><small>by points</small></button><button class={tab === 'stations' ? 'on' : ''} onClick={() => setTab('stations')}><strong>Booths</strong><small>by visits</small></button></div>
-      {!rows ? <p class="lead">Loading…</p> : rows.length === 0 ? <p class="lead">{tab === 'xp' ? 'Nobody yet — be the first.' : 'No booth is online yet. Exhibiting? Bring yours online from the menu.'}</p> : (
-        <ol class="board">{rows.map((r, i) => (
-          <li key={r.title + i} class={r.you ? 'you' : ''}><span class="pos">{i + 1}</span><div><strong style={r.cls ? { color: hex(ROLE_INFO[r.cls].color) } : {}}>{r.title}{r.you ? ' · you' : ''}</strong><small>{r.sub}</small></div><em>{r.value.toLocaleString()} <small>{r.unit}</small></em></li>
-        ))}</ol>
-      )}
-    </Sheet>
-  );
-}
 
 export function MenuSheet() {
   const m = me.value!, go = (x: typeof modal.value) => () => (modal.value = x);
@@ -330,7 +319,6 @@ export function MenuSheet() {
         <button onClick={go('swap')}><strong>Swap cards</strong><small>Met someone? Exchange cards · +{POINTS.swap} each</small></button>
         <button onClick={go('contacts')}><strong>My contacts</strong><small>{m.links} people · {m.shared.length} booths</small></button>
         <button onClick={go('map')}><strong>Map</strong><small>All three levels · search · places to go</small></button>
-        <button onClick={go('board')}><strong>Leaderboard</strong><small>Top players · most visited booths</small></button>
         <button onClick={go('rules')}><strong>How to play</strong><small>The mission and the points, on one page</small></button>
         <button aria-pressed={soundOn.value} onClick={() => setSound(!soundOn.value)}><strong>Sound · {soundOn.value ? 'on' : 'off'}</strong><small>{soundOn.value ? 'Quiet chimes, and a buzz on phones that can' : 'Silent, no vibration'}</small></button>
         {onsiteAvailable() && <button onClick={() => { setSiteMode(siteMode.value === 'onsite' ? 'remote' : 'onsite'); modal.value = null; }}><strong>{siteMode.value === 'onsite' ? 'Play from anywhere' : "I'm at MIHAS now"}</strong><small>{siteMode.value === 'onsite' ? 'Roam freely with the stick instead of walking' : 'Your avatar follows you around the halls'}</small></button>}

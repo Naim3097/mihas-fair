@@ -3,6 +3,7 @@
 // and topped up as more exhibitors are approved. Every QR scan at an exhibitor's booth lands on that exhibitor's
 // dashboard with the visitor's name, phone and email: agreeing to that is part of registering.
 import { Game, GameError } from './game.js';
+import type { BoothTeam } from './team.js';
 import type { BoothScan, CheckpointMission, XpEvent } from '../shared/types.js';
 import { CHECKPOINTS } from '../shared/rules.js';
 
@@ -13,7 +14,7 @@ const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 
 export class Checkpoints {
   private approved: { at: number; rows: { station_id: string; company: string; owner_id: string }[] } = { at: -1e9, rows: [] };
-  constructor(private g: Game) {}
+  constructor(private g: Game, private team: BoothTeam) {}
 
   /** Booths the crew has approved, Lean X's own excepted. Cached briefly: every /me asks. */
   private async approvedBooths(): Promise<{ station_id: string; company: string; owner_id: string }[]> {
@@ -31,6 +32,7 @@ export class Checkpoints {
 
   /** The Lean X Digital QR, scanned at the booth. Registering comes first: the card is what exhibitors receive. */
   async start(id: string, t: number): Promise<XpEvent[]> {
+    if (await this.team.isExhibitor(id)) throw new GameError('exhibitor', 'The mission is for visitors — you are here with a booth. Your visitors show up on your dashboard.');
     await this.g.requirePassport(id).catch(() => { throw new GameError('card', 'Register first: fill in your free card here at the booth, then scan the QR again'); });
     if (await this.started(id)) throw new GameError('dup', 'Your mission has already started — head to your checkpoints');
     await this.g.db.run('INSERT INTO mission_starts (player_id, started_at) VALUES (?,?) ON CONFLICT DO NOTHING', [id, t]);
@@ -91,7 +93,7 @@ export class Checkpoints {
 
   private async owner(ownerId: string, stationId: string): Promise<void> {
     const r = await this.g.db.get<{ owner_id: string; status: string }>('SELECT owner_id, status FROM stations WHERE station_id = ?', [stationId]);
-    if (!r || r.owner_id !== ownerId || r.status === 'revoked') throw new GameError('not_host', 'This is not your booth', 403);
+    if (!r || r.owner_id !== (await this.team.ownerFor(ownerId)) || r.status === 'revoked') throw new GameError('not_host', 'This is not your booth', 403);
   }
 
   /** The exhibitor's own printable QR: the same signed booth code the crew prints. */

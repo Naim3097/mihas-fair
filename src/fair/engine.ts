@@ -15,7 +15,7 @@ import type { EngineApi } from '../game/engine-api';
 import { hallCards, hallLine } from '../game/facts';
 import { NavGrid, pathLength, pointAlong, type P2 } from '../game/nav';
 import { BoothPicker } from '../game/pick';
-import { placeAt, taken, type Seat } from '../game/places';
+import { placeAt, type Seat } from '../game/places';
 import { RemoteTrack } from '../game/remote';
 import { atLaunchPad, currentDeck, distToGoal, goalVia, guideOn, guideTarget, herePlace, markSeen, me, modal, moveHint, myBooths, nearLift, nearStation, online, panelStation, photoShot, seated, seen, stampedSet, stationMap, stations, toast } from '../state';
 import type { Library } from '../ceritera/game/anim';
@@ -324,7 +324,7 @@ export class FairEngine implements EngineApi {
 
   private freeSeats(pl: NonNullable<typeof herePlace.value>): Seat[] {
     const sitters = [...this.holos.values()].filter((o) => o.pose === 'sit');
-    return pl.seats.filter((s, i) => !taken(pl, i) && !sitters.some((o) => Math.hypot(o.tx - s.x, o.ty - s.y) < 0.7));
+    return pl.seats.filter((s) => !sitters.some((o) => Math.hypot(o.tx - s.x, o.ty - s.y) < 0.7));
   }
   sit() {
     const pl = herePlace.value; if (!this.started || !pl || this.seat) return;

@@ -1,5 +1,6 @@
 import type { GeoCalibration } from '../../shared/geo';
-import type { ApiResult, BoardKind, BoardRow, Contact, Hologram, HostCode, HostLead, HostStation, LinkCode, LinkPeek, PassportInput, PresencePing, StampRequest, StationClaimInput, StationView, TodayView } from '../../shared/types';
+import type { BoothTeamPeek } from '../../shared/types';
+import type { ApiResult, Contact, Hologram, HostCode, HostLead, HostStation, LinkCode, LinkPeek, PassportInput, PresencePing, StampRequest, StationClaimInput, StationView, TodayView } from '../../shared/types';
 import type { Role } from '../../shared/rules';
 import type { ShareField } from '../../shared/rules';
 import { me, showEvents } from '../state';
@@ -31,7 +32,6 @@ export const api = {
   /** How a GPS fix at MITEC lands on each level's plan (the crew's calibration). */
   geo: () => call<GeoCalibration & { radiusM: number }>('GET', '/api/geo', undefined, true),
   today: () => call<TodayView>('GET', '/api/today'),
-  board: (kind: BoardKind) => call<BoardRow[]>('GET', `/api/boards?board=${kind}`),
   track: (name: string, props?: unknown) => { void call('POST', '/api/event', { name, props }, true).catch(() => {}); },
 
   /* booths that are online, and the exhibitor's side of them */
@@ -43,6 +43,8 @@ export const api = {
   takeBackCard: (stationId: string) => call<null>('POST', '/api/station/unshare', { stationId }),
   myBooths: () => call<HostStation[]>('GET', '/api/host/stations'),
   boothQr: (stationId: string) => call<HostCode>('GET', `/api/host/code?station=${q(stationId)}`),
+  teamPeek: (code: string) => call<BoothTeamPeek>('GET', `/api/booth-team/peek?code=${q(code)}`, undefined, true),
+  teamJoin: (code: string) => call<BoothTeamPeek>('POST', '/api/booth-team/join', { code }),
   /** The booth's fixed QR: printed once and left on the counter. */
   fixedQr: (stationId: string) => call<{ stationId: string; url: string }>('GET', `/api/host/qr?station=${q(stationId)}`, undefined, true),
   leads: (stationId: string) => call<HostLead[]>('GET', `/api/host/leads?station=${q(stationId)}`),

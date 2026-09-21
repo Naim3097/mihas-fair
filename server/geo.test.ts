@@ -112,3 +112,20 @@ test('switching from free roam to following GPS jumps straight to where the pers
   await ping(152, 61, true);
   assert.deepEqual(await s.game.presence.position(id, now), { x: 152, y: 61 });
 });
+
+test('people meet people at MIHAS: players there see each other; a player from elsewhere sees nobody and is seen by nobody', async () => {
+  let now = Date.UTC(2026, 8, 23, 3, 0, 0);
+  const s = buildServices({ ...(await testStores()), secret: 'test-secret', level, publicOrigin: 'http://x.test', now: () => now });
+  const make = async () => { const id = await s.game.createGuest(); await s.game.start(id, 'visitor'); return id; };
+  const [here1, here2, away] = [await make(), await make(), await make()];
+  for (const id of [here1, here2]) assert.equal((await s.venue.checkIn(id, { lat: lat0, lon: lon0, acc: 20 })).onsite, true);
+  const at = { x: 100, y: 60, h: 0 };
+  const ping = (id: string, dx: number, deck: boolean) => { now += 500; return s.game.ping(id, { ...at, x: at.x + dx, deck, sigma: deck ? 4 : undefined }, false); };
+  await ping(here1, 0, true); await ping(away, 2, false);
+  const seenByHere2 = (await ping(here2, 1, true)).holograms;
+  assert.equal(seenByHere2.length, 1, 'only the other person at MIHAS');
+  assert.equal(seenByHere2[0]!.deck, true);
+  assert.deepEqual((await ping(away, 2, false)).holograms, [], 'from elsewhere: alone');
+  // a player at MIHAS whose GPS is not placing them yet (free roam) is not shown either
+  assert.deepEqual((await ping(here1, 0, false)).holograms, []);
+});

@@ -5,7 +5,7 @@
 // floor lettering and the sky.
 import * as THREE from 'three';
 import type { Booth, LevelData, StationView } from '../../shared/types';
-import { taken, type Place, type Tone } from '../game/places';
+import { type Place, type Tone } from '../game/places';
 import { BoothSet } from './booths';
 import { directory } from '../exhibitors';
 import { FAIR } from './palette';
@@ -161,7 +161,7 @@ export class FairWorld {
     m.rotation.x = -Math.PI / 2; m.rotation.z = rot; m.position.copy(W(x, y, 0.03)); m.renderOrder = 2; this.scene.add(m);
   }
 
-  /** Cafés, lounges, stages, kitchens: their floors, furniture and a quiet grey crowd, a handful of instanced meshes. */
+  /** Cafés, lounges, stages, kitchens: their floors and furniture, a handful of instanced meshes. */
   private furnish() {
     const floor = this.decal({ color: FAIR.area }), M = new THREE.Matrix4(), C = new THREE.Color();
     const white = this.flat(0xffffff), boxGeo = new THREE.BoxGeometry(1, 1, 1), roundGeo = new THREE.CylinderGeometry(0.5, 0.5, 1, 14);
@@ -179,12 +179,7 @@ export class FairWorld {
       this.labels.push({ text: pl.name, pos: W(cx, cy, pl.open ? 4.4 : 2.8), kind: 'area' });
       if (pl.spot) this.backdrop(pl);
     }
-    const crowd = this.places.flatMap((pl) => pl.seats.filter((_, i) => taken(pl, i)));
-    if (crowd.length) {
-      const grey = this.flat(0xb7bcc6), bodies = new THREE.InstancedMesh(new THREE.CapsuleGeometry(0.3, 0.4, 3, 10), grey, crowd.length), heads = new THREE.InstancedMesh(new THREE.SphereGeometry(0.34, 12, 9), grey, crowd.length);
-      crowd.forEach((s, i) => { bodies.setMatrixAt(i, M.makeRotationY(s.h).setPosition(W(s.x, s.y, s.z + 0.35))); heads.setMatrixAt(i, M.makeRotationY(s.h).setPosition(W(s.x, s.y, s.z + 1.05))); });
-      for (const m of [bodies, heads]) { m.computeBoundingSphere(); this.scene.add(m); }
-    }
+    // No scenery people: every figure in the fair is a real player.
   }
 
   private backdrop(pl: Place) {

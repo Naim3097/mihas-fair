@@ -185,11 +185,13 @@ test('the exhibitor journey: light up, get scanned, lead', async () => {
 test('expression: a pose is seen by players nearby; anything else is dropped', async () => {
   const { call } = await rig(), a = new Map<string, string>(), b = new Map<string, string>(), s = level.spawns.short;
   await call('POST', '/api/start', { role: 'visitor' }, a); await call('POST', '/api/start', { role: 'visitor' }, b);
-  await call('POST', '/api/presence', { x: s.x, y: s.y, h: 0, spawn: true, pose: 'wave' }, a);
-  let seen = (await call('POST', '/api/presence', { x: s.x + 1, y: s.y, h: 0, spawn: true }, b)).json.data.holograms;
+  // people meet at MIHAS: both are there, their avatars following their GPS
+  for (const j of [a, b]) await call('POST', '/api/venue', { lat: VENUE_DEFAULT.lat, lon: VENUE_DEFAULT.lon, acc: 20 }, j);
+  await call('POST', '/api/presence', { x: s.x, y: s.y, h: 0, spawn: true, pose: 'wave', deck: true, sigma: 3 }, a);
+  let seen = (await call('POST', '/api/presence', { x: s.x + 1, y: s.y, h: 0, spawn: true, deck: true, sigma: 3 }, b)).json.data.holograms;
   assert.equal(seen[0].pose, 'wave');
-  await call('POST', '/api/presence', { x: s.x, y: s.y, h: 0, pose: '<script>' }, a);
-  seen = (await call('POST', '/api/presence', { x: s.x + 1, y: s.y, h: 0 }, b)).json.data.holograms;
+  await call('POST', '/api/presence', { x: s.x, y: s.y, h: 0, pose: '<script>', deck: true, sigma: 3 }, a);
+  seen = (await call('POST', '/api/presence', { x: s.x + 1, y: s.y, h: 0, deck: true, sigma: 3 }, b)).json.data.holograms;
   assert.equal(seen[0].pose, undefined);
   assert.equal(((await call('GET', '/api/me', undefined, a)).json.me as Me).xp, 0, 'expression earns nothing');
 });

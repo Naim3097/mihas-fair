@@ -6,6 +6,9 @@ import type { Stations } from './stations.js';
 import type { BoardKind, BoardRow, DailyDrop, FlagKey, ReviewRow, TeamView, TrustView, XpEvent } from '../shared/types.js';
 import { FLAG_KEYS, TEAM_MAX, TEAM_SCORERS, TRUST_MIN, TRUST_W, type Role } from '../shared/rules.js';
 
+/** The visitor boards are for visitors: whoever runs a booth, or works on a booth team, is not on them. */
+const notExhibitor = (col: string) => `${col} NOT IN (SELECT owner_id FROM stations WHERE status != 'revoked') AND ${col} NOT IN (SELECT member_id FROM booth_team)`;
+
 export class LiveOps {
   private flagCache: { at: number; v: Record<FlagKey, boolean> } | null = null;
   private lastSpeedFlag = new Map<string, number>();
@@ -101,10 +104,10 @@ export class LiveOps {
       return out.sort((a, b) => b.value - a.value).slice(0, 20);
     }
     const sql: Record<'xp' | 'today' | 'explorer' | 'connector', string> = {
-      xp: 'SELECT id, xp AS v FROM players WHERE xp > 0 AND id NOT IN (SELECT player_id FROM bans) ORDER BY xp DESC, created_at LIMIT 25',
-      today: `SELECT player_id AS id, SUM(xp) AS v FROM xp_ledger WHERE voided = 0 AND created_at >= ${d0} AND player_id NOT IN (SELECT player_id FROM bans) GROUP BY player_id ORDER BY v DESC LIMIT 25`,
-      explorer: `SELECT player_id AS id, COUNT(*) AS v FROM stamps WHERE created_at >= ${d0} AND player_id NOT IN (SELECT player_id FROM bans) GROUP BY player_id ORDER BY v DESC, MAX(created_at) LIMIT 25`,
-      connector: `SELECT id, COUNT(*) AS v FROM (SELECT a_id AS id, created_at FROM links UNION ALL SELECT b_id, created_at FROM links) AS ends WHERE created_at >= ${d0} AND id NOT IN (SELECT player_id FROM bans) GROUP BY id ORDER BY v DESC LIMIT 25`,
+      xp: `SELECT id, xp AS v FROM players WHERE xp > 0 AND id NOT IN (SELECT player_id FROM bans) AND ${notExhibitor('id')} ORDER BY xp DESC, created_at LIMIT 25`,
+      today: `SELECT player_id AS id, SUM(xp) AS v FROM xp_ledger WHERE voided = 0 AND created_at >= ${d0} AND player_id NOT IN (SELECT player_id FROM bans) AND ${notExhibitor('player_id')} GROUP BY player_id ORDER BY v DESC LIMIT 25`,
+      explorer: `SELECT player_id AS id, COUNT(*) AS v FROM stamps WHERE created_at >= ${d0} AND player_id NOT IN (SELECT player_id FROM bans) AND ${notExhibitor('player_id')} GROUP BY player_id ORDER BY v DESC, MAX(created_at) LIMIT 25`,
+      connector: `SELECT id, COUNT(*) AS v FROM (SELECT a_id AS id, created_at FROM links UNION ALL SELECT b_id, created_at FROM links) AS ends WHERE created_at >= ${d0} AND id NOT IN (SELECT player_id FROM bans) AND ${notExhibitor('id')} GROUP BY id ORDER BY v DESC LIMIT 25`,
     };
     const unit = { xp: 'points', today: 'points today', explorer: 'stamps today', connector: 'swaps today' }[kind];
     const out: BoardRow[] = [];

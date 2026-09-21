@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { VENUE_DEFAULT } from '../shared/rules.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -192,8 +193,9 @@ test('avatar editor (switched off in the simple game): catalog-validated, reward
   assert.deepEqual((await a.me()).avatar, look);
 
   const s = level.spawns.short;
-  await a.post('/api/presence', { x: s.x, y: s.y, h: 0, spawn: true });
-  const seen = (await b.post('/api/presence', { x: s.x + 1, y: s.y, h: 0, spawn: true })).json.data.holograms;
+  for (const u of [a, b]) await u.post('/api/venue', { lat: VENUE_DEFAULT.lat, lon: VENUE_DEFAULT.lon, acc: 20 }); // seen by people at MIHAS
+  await a.post('/api/presence', { x: s.x, y: s.y, h: 0, spawn: true, deck: true, sigma: 3 });
+  const seen = (await b.post('/api/presence', { x: s.x + 1, y: s.y, h: 0, spawn: true, deck: true, sigma: 3 })).json.data.holograms;
   assert.equal(seen[0].av, '3.0.1.5.6.0.0.0.0');
 });
 

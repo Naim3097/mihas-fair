@@ -8,7 +8,7 @@ import './screen.css';
 import './demo/demo.css';
 import { demo, demoState, ensureBackend } from './demo/client';
 import { World, toWorld } from './game/world';
-import { Qr, hex } from './ui/common';
+import { Qr } from './ui/common';
 import { ROLE_INFO } from '../shared/rules';
 import { THEME } from './theme';
 import type { LevelData, ScreenView, StationView } from '../shared/types';
@@ -92,9 +92,6 @@ function Screen() {
       </header>
 
       <aside class="mc-left">
-        <h3>Top players today</h3>
-        <ol>{(v?.board ?? []).slice(0, 8).map((r, i) => <li key={r.title}><span>{i + 1}</span><strong style={r.cls ? { color: hex(ROLE_INFO[r.cls].color) } : {}}>{r.title}</strong><em>{r.value.toLocaleString()}</em></li>)}</ol>
-        {v && v.board.length === 0 && <p>Nobody on the board yet — be the first.</p>}
         <h3>Most visited booths</h3>
         <ol>{(v?.booths ?? []).slice(0, 5).map((r, i) => <li key={r.title + i}><span>{i + 1}</span><strong>{r.title}</strong><em>{r.value.toLocaleString()}</em></li>)}</ol>
         {v && v.booths.length === 0 && <p>No booth is online yet. Exhibiting? Scan and bring yours in.</p>}

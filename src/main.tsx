@@ -11,7 +11,7 @@ import { handleScan } from './scan';
 import { ensureBackend } from './demo/client';
 import { installBack } from './ui/back';
 import { installSfx } from './sfx';
-import { bootError, bootNote, drop, level, me, myBooths, online, phase, stations } from './state';
+import { bootError, bootNote, drop, level, me, modal, myBooths, online, phase, setReferral, stations, teamInvite } from './state';
 import { onsiteAvailable, setSiteMode, siteMode } from './onsite';
 import type { LevelData } from '../shared/types';
 
@@ -44,6 +44,12 @@ async function boot() {
     try { engine = new FairEngine(document.getElementById('stage')!, fairLevelData(lv), pickQuality()); }
     catch { bootError.value = 'This browser cannot open the 3D fair. Try opening the link in Chrome or Safari.'; phase.value = 'error'; return; }
     poll();
+    // an exhibitor's invitation link: remember whose it was for when this person registers a booth
+    const ref = new URLSearchParams(location.search).get('ref');
+    if (ref && /^[A-Za-z0-9]{4,8}$/.test(ref)) { setReferral(ref.toUpperCase()); history.replaceState(null, '', location.pathname); }
+    // a colleague's booth team link: offer to join once the page is up
+    const team = new URLSearchParams(location.search).get('team');
+    if (team && /^[A-Za-z0-9]{6,10}$/.test(team)) { teamInvite.value = team.toUpperCase(); history.replaceState(null, '', location.pathname); }
     const query = location.search;
     if (/[?&](b|h|l)=/.test(query)) {
       history.replaceState(null, '', location.pathname);
@@ -53,6 +59,7 @@ async function boot() {
       if (returning) { api.track('boot', { via: 'scan', world: 'nexova' }); return; }
     }
     phase.value = 'start';
+    if (teamInvite.value) modal.value = 'jointeam';
     api.track('boot', { q: pickQuality(), world: 'nexova', returning: (me.value?.xp ?? 0) > 0 });
   } catch (e) {
     bootError.value = e instanceof ApiError || (e instanceof Error && /demo/i.test(e.message)) ? e.message : 'Could not reach the fair. Check your connection.';

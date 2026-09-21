@@ -2,6 +2,7 @@
 // ("station" in code and tables = a booth that is online.)
 import type { Stmt } from './db/types.js';
 import { Game, GameError, cleanFields, cleanText } from './game.js';
+import type { BoothTeam } from './team.js';
 import type { CrewStationRow, HostCode, HostLead, HostStation, StationClaimInput, StationStatus, StationView, XpEvent } from '../shared/types.js';
 import { HOST_ONLINE_MS, HOST_WINDOW_MS, MAX_STATIONS_PER_OWNER, POINTS, SXP, stationLevel, type ShareField } from '../shared/rules.js';
 
@@ -25,7 +26,9 @@ export class Stations {
   private cache: { at: number; list: StationView[] } = { at: -1e9, list: [] };
   /** Told when the crew approves or revokes a booth: the pool of checkpoints changes. */
   onStatus: () => void = () => {};
-  constructor(private g: Game) {}
+  /** Told when an exhibitor brings their first booth online, with the referral code they registered with. */
+  onFirstClaim: (id: string, ref: unknown) => Promise<void> = async () => {};
+  constructor(private g: Game, private team: BoothTeam) {}
 
   private sxp(r: StationRow, c: Counts): number {
     const profile = r.offer && r.link ? SXP.profile : 0;
@@ -59,7 +62,10 @@ export class Stations {
     const t = this.g.now();
     if (t - this.owners.at < 30_000) return this.owners.map;
     const rows = await this.g.db.all<{ owner_id: string; company: string }>("SELECT owner_id, company FROM stations WHERE status != 'revoked' AND company != ''");
-    this.owners = { at: t, map: new Map(rows.map((r) => [r.owner_id, r.company])) };
+    const map = new Map(rows.map((r) => [r.owner_id, r.company]));
+    // the booth team wears the company name too
+    for (const m of await this.g.db.all<{ member_id: string; owner_id: string }>('SELECT member_id, owner_id FROM booth_team')) { const c = map.get(m.owner_id); if (c) map.set(m.member_id, c); }
+    this.owners = { at: t, map };
     return this.owners.map;
   }
 
@@ -85,6 +91,14 @@ export class Stations {
 
     const t = this.g.now();
     const existing = await this.g.db.get<StationRow>('SELECT * FROM stations WHERE station_id = ?', [booth.id]);
+    const owner = await this.team.ownerFor(id);
+    // the team edits its booths' profile; only the owner brings new booths online
+    if (existing && existing.owner_id === owner && existing.status !== 'revoked') {
+      await this.g.db.run('UPDATE stations SET company = ?, offer = ?, link = ?, color = ? WHERE station_id = ?', [company, offer, link, color, booth.id]);
+      this.cache.at = -1e9; this.owners.at = -1e9;
+      return [];
+    }
+    if (owner !== id) throw new GameError('not_owner', 'Only the person who registered your booth can add another one');
     if (existing && existing.owner_id !== id) throw new GameError('taken', existing.status === 'revoked' ? 'This booth is locked — talk to the crew at 8H18A' : 'Someone already brought this booth online. If that is wrong, see the crew at 8H18A.', 409);
     if (existing?.status === 'revoked') throw new GameError('revoked', 'This claim was removed by the crew — see us at 8H18A', 403);
     if (existing) { // owner editing their profile
@@ -100,12 +114,13 @@ export class Stations {
     stmts.push(["UPDATE players SET cls = 'exhibitor' WHERE id = ?", [id]]); // whoever runs a booth is an exhibitor, whichever door they came in by
     await this.g.db.batch(stmts);
     this.cache.at = -1e9;
+    if (first) await this.onFirstClaim(id, input.ref);
     return first ? [{ action: 'station_claim', xp: POINTS.boothOnline, target: company }] : [];
   }
 
   private async owned(id: string, stationId: string): Promise<StationRow> {
     const r = await this.g.db.get<StationRow>('SELECT * FROM stations WHERE station_id = ?', [stationId]);
-    if (!r || r.owner_id !== id || r.status === 'revoked') throw new GameError('not_host', 'This is not your booth', 403);
+    if (!r || r.owner_id !== (await this.team.ownerFor(id)) || r.status === 'revoked') throw new GameError('not_host', 'This is not your booth', 403);
     return r;
   }
 
@@ -119,7 +134,7 @@ export class Stations {
   }
 
   async mine(id: string): Promise<HostStation[]> {
-    const rows = await this.g.db.all<StationRow & Pics>(`SELECT s.*, l.updated_at AS logo_at, ph.updated_at AS photo_at FROM stations s ${PICS} WHERE s.owner_id = ? AND s.status != 'revoked' ORDER BY s.claimed_at`, [id]);
+    const rows = await this.g.db.all<StationRow & Pics>(`SELECT s.*, l.updated_at AS logo_at, ph.updated_at AS photo_at FROM stations s ${PICS} WHERE s.owner_id = ? AND s.status != 'revoked' ORDER BY s.claimed_at`, [await this.team.ownerFor(id)]);
     const counts = await this.counts(rows.map((r) => r.station_id)), t = this.g.now();
     const scans = new Map((await this.g.db.all<{ k: string; n: number }>(`SELECT station_id AS k, COUNT(*) AS n FROM booth_scans WHERE station_id IN (${rows.map(() => '?').join(',') || "''"}) GROUP BY station_id`, rows.map((r) => r.station_id))).map((r) => [r.k, r.n]));
     // the owner sees their own logo before approval (the world does not)
@@ -145,7 +160,7 @@ export class Stations {
     await this.g.requirePassport(id);
     const st = await this.g.db.get<StationRow>('SELECT * FROM stations WHERE station_id = ?', [stationId]);
     if (!st || st.status === 'revoked') throw new GameError('not_hosted', 'This booth is not online yet');
-    if (st.owner_id === id) throw new GameError('own_station', 'This is your own booth');
+    if (st.owner_id === (await this.team.ownerFor(id))) throw new GameError('own_station', 'This is your own booth');
     if (!(await this.g.db.get('SELECT 1 AS x FROM stamps WHERE player_id = ? AND station_id = ?', [id, stationId]))) throw new GameError('need_stamp', 'Stamp the booth first');
     const fields = cleanFields(fieldsIn).join(','), t = this.g.now();
     const prior = await this.g.db.get<{ id: number }>('SELECT id FROM card_shares WHERE from_player = ? AND to_station = ?', [id, stationId]);

@@ -27,6 +27,8 @@ export interface GameHooks {
   onImplausible?(id: string, detail: string): Promise<void>;
   /** exhibitor player id → company, for the label over their hologram */
   companies?(): Promise<Map<string, string>>;
+  /** Whose booths this player works: themselves, or the owner of the booth team they joined (server/team.ts). */
+  teamOwner?(id: string): Promise<string>;
   /** The checkpoint mission (server/checkpoints.ts). */
   mission?: {
     start(id: string, t: number): Promise<XpEvent[]>;
@@ -137,7 +139,7 @@ export class Game {
       this.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM links WHERE a_id = ? OR b_id = ?', [id, id]),
       this.db.all<{ to_station: string }>('SELECT to_station FROM card_shares WHERE from_player = ? AND to_station IS NOT NULL AND revoked_at IS NULL', [id]),
       this.db.all<{ station_id: string }>('SELECT station_id FROM verified_contacts WHERE player_id = ?', [id]),
-      this.db.all<{ station_id: string }>("SELECT station_id FROM stations WHERE owner_id = ? AND status != 'revoked'", [id]),
+      this.db.all<{ station_id: string }>("SELECT station_id FROM stations WHERE owner_id = ? AND status != 'revoked'", [(await this.hooks.teamOwner?.(id)) ?? id]),
     ]);
     const docked = p.docked_at != null;
     const t = this.now(), anchor = (await this.hooks.anchorOf?.(id)) ?? null;
@@ -159,6 +161,7 @@ export class Game {
       shared: shared.map((s) => s.to_station),
       verified: verified.map((s) => s.station_id),
       hosting: hosting.map((s) => s.station_id),
+      teamMember: ((await this.hooks.teamOwner?.(id)) ?? id) !== id,
       mission: (await this.hooks.mission?.view(id)) ?? { started: false, target: 0, checkpoints: [] },
     };
   }
@@ -231,7 +234,9 @@ export class Game {
       events.push(...(await this.discover(id, pos.x, pos.y, t, deck ? 'onsite' : 'remote')));
       events.push(...((await this.hooks.afterPing?.({ id, x: pos.x, y: pos.y, deck, movedM: moved, steps: deck && Number.isFinite(pos.steps) ? pos.steps! : 0, t })) ?? []));
     } else await this.hooks.onImplausible?.(id, `to ${pos.x.toFixed(0)},${pos.y.toFixed(0)}${deck ? ' on deck' : ''}`);
-    const holograms = await this.presence.near(id, pos.x, pos.y, t, this.hooks.hiddenSet?.() ?? new Set());
+    // People meet people at MIHAS: a player the server knows is at MITEC (their avatar following their GPS) sees the
+    // others who are; a player from elsewhere explores alone — seeing nobody, seen by nobody.
+    const holograms = deck ? (await this.presence.near(id, pos.x, pos.y, t, this.hooks.hiddenSet?.() ?? new Set())).filter((h) => h.deck) : [];
     if (holograms.some((h) => h.cls === 'exhibitor')) {
       const companies = (await this.hooks.companies?.()) ?? new Map<string, string>();
       for (const h of holograms) if (h.cls === 'exhibitor') for (const [owner, company] of companies) if (owner.startsWith(h.id)) { h.company = company; break; }
@@ -322,7 +327,7 @@ export class Game {
     } else if (req.proof === 'host') {
       const claim = await this.db.get<{ owner_id: string; status: string }>('SELECT owner_id, status FROM stations WHERE station_id = ?', [station.id]);
       if (!claim || claim.status === 'revoked') throw new GameError('not_hosted', 'This booth is not online yet');
-      if (claim.owner_id === id) throw new GameError('own_station', 'This is your own booth — the QR is for your visitors');
+      if (claim.owner_id === ((await this.hooks.teamOwner?.(id)) ?? id)) throw new GameError('own_station', 'This is your own booth — the QR is for your visitors');
       if (!(await this.hostCodeValid(station.id, req.code, t))) throw new GameError('bad_code', 'That code has expired — scan the booth QR again');
       presence = 'onsite';
     } else if (req.proof === 'virtual') {

@@ -47,3 +47,13 @@ tr.dim{opacity:.45}b.good{color:var(--green)}b.bad{color:var(--red)}
 .visitors .who,.visitors .how,.visitors .when{display:grid;gap:2px;min-width:0}.visitors .who span,.visitors .when span:first-child{font-size:13px;color:var(--ink-2)}
 .visitors a{color:var(--blue-ink);font-weight:600;overflow-wrap:anywhere}.visitors .when{justify-items:end;text-align:right}
 @media (max-width:640px){.visitors li{grid-template-columns:1fr}.visitors .when{justify-items:start;text-align:left;grid-auto-flow:column;justify-content:space-between}.console{padding:12px}.console .sheet{padding:16px}}
+.invite-card .points{font-size:28px;font-weight:800;color:var(--blue-ink)}.invite-card .points small{font-size:13px;color:var(--ink-2)}
+.reflink{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;justify-content:space-between;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-m);padding:10px 12px;margin:10px 0}
+.reflink code{font-size:13px;overflow-wrap:anywhere}.reflink span{font-size:13px;color:var(--ink-2)}.reflink b{letter-spacing:.12em;color:var(--ink)}
+.stack.two{grid-template-columns:1fr 1fr}@media (max-width:520px){.stack.two{grid-template-columns:1fr}}
+.joined{list-style:none;padding:0;margin:12px 0 0;display:grid;gap:6px}
+.joined li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-m)}.joined li span:not(.badge){color:var(--ink-2);font-size:13px}.joined .badge{margin-left:auto}
+.console .sheet > .row{flex-wrap:wrap;gap:8px 12px}.console .sheet > .row h2{flex:1 1 180px;margin:0}
+.teamlink{display:grid;grid-template-columns:auto 1fr;gap:12px 16px;align-items:center;margin:8px 0}.teamlink .qr{width:132px;margin:0}
+@media (max-width:560px){.teamlink{grid-template-columns:1fr}.teamlink .qr{margin:0 auto}}
+.joined li .chip{margin-left:auto}
