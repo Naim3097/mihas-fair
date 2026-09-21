@@ -4,11 +4,13 @@ import type { EngineApi as Engine } from '../game/engine-api';
 import { setSound, soundOn } from '../sfx';
 import { api, ApiError } from '../net/api';
 import { handleScan } from '../scan';
+import { boothList, directory, type Listed } from '../exhibitors';
+import { shrink } from './images';
 import { Camera, FieldPicker, Qr, Sheet, hex, useCountdown } from './common';
 import { POINTS, ROLE_INFO, type ShareField } from '../../shared/rules';
-import type { BoardRow, Booth, Contact, HostCode, HostLead, LinkCode, LinkPeek } from '../../shared/types';
-import { HostDemoHint, LinkDemoHint, StationDemoHint } from '../demo/Tour';
-import { drop, guideOn, guideTarget, journey, level, me, modal, myBooths, nearStation, online, panelStation, pendingLink, stampedSet, stationMap, stations, toast } from '../state';
+import type { BoardRow, Booth, Contact, LinkCode, LinkPeek } from '../../shared/types';
+import { LinkDemoHint, StationDemoHint } from '../demo/Tour';
+import { claimDraft, drop, guideOn, guideTarget, journey, level, me, modal, myBooths, nearStation, online, panelStation, pendingLink, stampedSet, stationMap, stations, toast } from '../state';
 
 type Eng = { engine: () => Engine | null };
 const fail = (e: unknown, fallback: string) => toast(e instanceof ApiError ? e.message : fallback, undefined, 'warn', 4500);
@@ -67,7 +69,7 @@ export function BoothSheet({ engine }: Eng) {
               </div>
             </div>
           )}
-          {st && stamped && !m.passport && <p class="fine">Get your free card at the X — Booth 8H18B — and you can leave it with exhibitors.</p>}
+          {st && stamped && !m.passport && <p class="fine">Get your free card at the X — Booth 8H18A — and you can leave it with exhibitors.</p>}
           <StationDemoHint stationId={b.id} onDigits={setDigits} />
 
           {!st && <button class="btn big" onClick={() => (modal.value = m.passport ? 'claim' : 'card')}>Exhibiting here? Bring this booth online</button>}
@@ -78,66 +80,98 @@ export function BoothSheet({ engine }: Eng) {
 }
 
 export function ClaimSheet() {
-  const b = panelStation.value, m = me.value!, existing = b ? stationMap.value.get(b.id) : undefined;
-  const [f, setF] = useState({ company: existing?.company ?? (b?.name || m.passport?.company) ?? '', offer: existing?.offer ?? '', link: existing?.link ?? '', color: existing?.color ?? 0x1e9e6a });
+  const m = me.value!, lv = level.value!, sm = stationMap.value, draft = claimDraft.value, fixed = panelStation.value;
+  // editing a booth, or one picked by its number, is fixed; a registration from the list may offer several booths
+  const options = fixed ? [fixed.id] : (draft?.booths ?? []).filter((id) => lv.booths.some((b) => b.id === id && b.id !== lv.hero.id));
+  const [boothId, setBoothId] = useState(options.find((id) => !sm.has(id)) ?? options[0] ?? ''), [typed, setTyped] = useState('');
+  const manual = !fixed && options.length === 0, typedId = typed.trim().toUpperCase().replace(/\s+/g, '');
+  const typedBooth = typedId ? lv.booths.find((b) => b.id === typedId && b.id !== lv.hero.id) : undefined;
+  const chosen = fixed ?? (manual ? typedBooth : lv.booths.find((b) => b.id === boothId));
+  const existing = chosen ? sm.get(chosen.id) : undefined, mine = !!chosen && m.hosting.includes(chosen.id);
+  const [f, setF] = useState({ company: existing?.company ?? draft?.company ?? fixed?.name ?? m.passport?.company ?? '', offer: existing?.offer ?? '', link: existing?.link ?? '', color: existing?.color ?? 0x1e9e6a });
+  const [logo, setLogo] = useState<File | null>(null), [photo, setPhoto] = useState<File | null>(null);
   const [err, setErr] = useState(''), [busy, setBusy] = useState(false);
   const put = (k: 'company' | 'offer' | 'link') => (e: Event) => { const v = (e.target as HTMLInputElement).value; setF((p) => ({ ...p, [k]: v })); };
-  if (!b) return null;
+  const file = (set: (f: File | null) => void) => (e: Event) => set((e.target as HTMLInputElement).files?.[0] ?? null);
+  const close = () => { claimDraft.value = null; modal.value = m.hosting.length ? 'mybooth' : null; };
   const submit = async (e: Event) => {
-    e.preventDefault(); setErr(''); setBusy(true);
-    try { await api.claim({ stationId: b.id, ...f }); await Promise.all([refreshStations(), refreshMyBooths()]); api.track('booth_online', { id: b.id }); modal.value = 'mybooth'; }
-    catch (x) { setErr(x instanceof ApiError ? x.message : 'Could not save'); setBusy(false); }
+    e.preventDefault(); setErr('');
+    if (!chosen) { setErr(manual && typedId ? `Booth ${typedId} is not on the floor plan — check the number on your fascia board` : 'Enter your booth number'); return; }
+    setBusy(true);
+    try {
+      await api.claim({ stationId: chosen.id, ...f });
+      if (logo) await api.boothImage(chosen.id, 'logo', await shrink(logo, 'logo'));
+      if (photo) await api.boothImage(chosen.id, 'photo', await shrink(photo, 'photo'));
+      await Promise.all([refreshStations(), refreshMyBooths()]); api.track('booth_online', { id: chosen.id, listed: !manual });
+      claimDraft.value = null; modal.value = 'mybooth';
+    } catch (x) { setErr(x instanceof ApiError || x instanceof Error ? x.message : 'Could not save'); setBusy(false); }
   };
+  const where = (b: Booth) => `Booth ${b.id} · Hall ${b.hall} · Level ${b.deck}`;
   return (
-    <Sheet k={`Booth ${b.id} · Hall ${b.hall} · Level ${b.deck}`} title={existing ? 'Booth profile' : 'Light up your booth'} onClose={() => (modal.value = m.hosting.length ? 'mybooth' : null)}>
+    <Sheet k={chosen ? where(chosen) : 'Register your booth'} title={mine ? 'Booth profile' : 'Light up your booth'} onClose={close}>
       <form onSubmit={submit}>
-        {!existing && <p class="lead">Your booth glows for every player, becomes a stop on their mission, and the cards they leave come to you — free.</p>}
+        {!mine && <p class="lead">Your booth glows for every player, becomes a checkpoint on their mission once we approve it, and everyone who scans your QR comes to you — free.</p>}
         <label>Company name on the booth<input required maxLength={80} value={f.company} onInput={put('company')} /></label>
+        {!fixed && options.length > 1 && (
+          <div class="boothpick"><p class="fine">Which of your booths carries your QR?</p>
+            <div class="pills">{options.map((id) => <button type="button" key={id} class={'chip' + (id === boothId ? ' on' : '')} disabled={sm.has(id) && !m.hosting.includes(id)} onClick={() => setBoothId(id)}>{id}{sm.has(id) && !m.hosting.includes(id) ? ' · taken' : ''}</button>)}</div></div>
+        )}
+        {manual && (
+          <label>Booth number
+            <input required maxLength={8} autocapitalize="characters" placeholder="e.g. 7C17" value={typed} onInput={(e) => setTyped((e.target as HTMLInputElement).value)} />
+            <small class={'fhint' + (typedId && !typedBooth ? ' bad' : '')}>{!typedId ? (draft && !draft.manual ? 'Your listed booth is not on our game map yet: enter the booth number on your fascia board.' : 'The number on your fascia board.') : typedBooth ? `${where(typedBooth)}${sm.has(typedBooth.id) && !m.hosting.includes(typedBooth.id) ? ' · already online' : ''}` : 'Not on the floor plan — check the number'}</small>
+          </label>
+        )}
         <label>One line for visitors<input maxLength={120} placeholder="e.g. Free samples at 3 pm" value={f.offer} onInput={put('offer')} /></label>
         <label>Website<input maxLength={200} inputMode="url" placeholder="yourcompany.com" value={f.link} onInput={put('link')} /></label>
+        <label>Logo<input type="file" accept="image/png,image/jpeg,image/webp" onChange={file(setLogo)} /><small class="fhint">On your counter and a sign over your booth in the game. PNG with a transparent background looks best.</small></label>
+        <label>Photo of your booth<input type="file" accept="image/png,image/jpeg,image/webp" onChange={file(setPhoto)} /><small class="fhint">Your booth's backdrop or a photo of it: it goes on the back wall of your virtual booth.</small></label>
         {err && <p class="err" role="alert">{err}</p>}
-        <button class="btn primary big" disabled={busy}>{busy ? 'Saving…' : existing ? 'Save' : 'Bring it online'}</button>
-        {!existing && <p class="fine">Our crew checks every booth. One that is not yours is removed.</p>}
+        <button class="btn primary big" disabled={busy}>{busy ? 'Saving…' : mine ? 'Save' : 'Bring it online'}</button>
+        {!mine && <p class="fine">Our crew checks every booth before it becomes a checkpoint. Your logo and photo show in the game once it is approved. You can change them any time on your dashboard.</p>}
       </form>
     </Sheet>
   );
 }
 
-/* ------------------------------------------------------------------ the exhibitor's side */
-
+/** Registering: search the MIHAS exhibitor list by company or booth number, or key it in if it is not there. */
 function BoothPicker() {
-  const [q, setQ] = useState(''), lv = level.value, sm = stationMap.value;
-  const hits = useMemo(() => {
-    const t = q.trim().toLowerCase(); if (!lv || t.length < 2) return [] as Booth[];
-    return lv.booths.filter((b) => b.id !== lv.hero.id && (b.id.toLowerCase().includes(t) || b.name.toLowerCase().includes(t))).slice(0, 20);
-  }, [q, lv]);
+  const [q, setQ] = useState(''), [dir, setDir] = useState<Listed[]>([]), lv = level.value, sm = stationMap.value;
+  useEffect(() => { void directory().then(setDir); }, []);
+  const t = q.trim().toLowerCase(), T = t.toUpperCase().replace(/\s+/g, '');
+  const companies = useMemo(() => (t.length < 2 ? [] : dir.filter((e) => e.company.toLowerCase().includes(t) || e.booths.some((b) => b.startsWith(T))).slice(0, 12)), [t, dir]);
+  const booths = useMemo(() => (!lv || T.length < 2 || !/^\d/.test(T) ? [] : lv.booths.filter((b) => b.id !== lv.hero.id && b.id.startsWith(T)).slice(0, 8)), [T, lv]);
+  const pick = (company: string, ids: string[], manual: boolean) => { claimDraft.value = { company, booths: ids, manual }; panelStation.value = null; modal.value = 'claim'; };
   return (
     <>
-      <label>Your booth number or company<input autofocus value={q} placeholder="e.g. 7C17" onInput={(e) => setQ((e.target as HTMLInputElement).value)} /></label>
+      <label>Your company name or booth number<input autofocus value={q} placeholder="e.g. Afyaa or 7C17" onInput={(e) => setQ((e.target as HTMLInputElement).value)} /></label>
       <div class="results">
-        {hits.map((b) => <button key={b.id} class="result" disabled={sm.has(b.id)} onClick={() => { panelStation.value = b; modal.value = 'claim'; }}><strong>{b.name || `Booth ${b.id}`}</strong><small>Booth {b.id} · Hall {b.hall} · Level {b.deck}{sm.has(b.id) ? ' · already online' : ''}</small></button>)}
-        {q.trim().length >= 2 && hits.length === 0 && <p class="fine">No booth matches on any of the three levels. Check the number on your fascia board.</p>}
+        {companies.map((e) => (
+          <button key={e.company} class="result" onClick={() => pick(e.company, e.onPlan, false)}>
+            <strong>{e.company}</strong><small>{[e.halls, e.booths.length ? `Booth ${boothList(e.booths)}` : ''].filter(Boolean).join(' · ')}{e.onPlan.length && e.onPlan.every((id) => sm.has(id)) ? ' · already online' : ''}</small>
+          </button>
+        ))}
+        {booths.map((b) => <button key={b.id} class="result" disabled={sm.has(b.id)} onClick={() => { claimDraft.value = null; panelStation.value = b; modal.value = 'claim'; }}><strong>Booth {b.id}</strong><small>Hall {b.hall} · Level {b.deck}{b.name ? ` · ${b.name}` : ''}{sm.has(b.id) ? ' · already online' : ''}</small></button>)}
+        {t.length >= 2 && !companies.length && !booths.length && <p class="fine">Not in our list of MIHAS exhibitors.</p>}
       </div>
+      <button type="button" class="link" onClick={() => pick(/^\d/.test(q.trim()) ? '' : q.trim(), /^\d/.test(T) ? [T] : [], true)}>My company or booth is not listed — enter the details myself</button>
     </>
   );
 }
 
 export function MyBoothSheet() {
   const m = me.value!, mine = myBooths.value, [loaded, setLoaded] = useState(false), [sel, setSel] = useState<string | null>(null), [adding, setAdding] = useState(false);
-  const [code, setCode] = useState<{ c: HostCode; until: number } | null>(null), [leads, setLeads] = useState<HostLead[]>([]);
-  const left = useCountdown(code?.until ?? 0), j = journey.value;
+  const [qr, setQr] = useState<string | null>(null), j = journey.value;
 
   useEffect(() => { void refreshMyBooths().then(() => setLoaded(true)); }, []);
   useEffect(() => { if (!sel && mine[0]) setSel(mine[0].id); }, [mine]);
-  useEffect(() => { // asking for the QR doubles as "someone is at the counter"
+  useEffect(() => { // the fixed QR: the same one the exhibitor prints; the counts refresh while this is open
     if (!sel) return; let stop = false;
-    const pull = async () => { try { const c = await api.boothQr(sel); if (!stop) setCode({ c, until: Date.now() + c.expiresInMs }); } catch (e) { fail(e, 'Could not load your booth QR'); } };
-    const pullLeads = () => api.leads(sel).then((l) => !stop && setLeads(l), () => {});
-    void pull(); void pullLeads(); void refreshStations();
-    const a = setInterval(pull, 10_000), b = setInterval(() => { void pullLeads(); void refreshMyBooths(); }, 15_000);
-    return () => { stop = true; clearInterval(a); clearInterval(b); };
+    api.fixedQr(sel).then((r) => !stop && setQr(r.url), (e) => fail(e, 'Could not load your booth QR'));
+    void refreshStations();
+    const t = setInterval(() => void refreshMyBooths(), 20_000);
+    return () => { stop = true; clearInterval(t); };
   }, [sel]);
-  useEffect(() => { if (code && left === 0 && sel) api.boothQr(sel).then((c) => setCode({ c, until: Date.now() + c.expiresInMs }), () => {}); }, [left]);
 
   const s = mine.find((x) => x.id === sel);
   if (!m.passport) return <Sheet k="My booth" title="First, your card"><p class="lead">It tells visitors and our crew who is behind the booth. One minute.</p><button class="btn primary big" onClick={() => (modal.value = 'card')}>Create my card</button></Sheet>;
@@ -151,27 +185,20 @@ export function MyBoothSheet() {
           {mine.length > 1 && <div class="pills">{mine.map((x) => <button key={x.id} class={'chip' + (x.id === sel ? ' on' : '')} onClick={() => setSel(x.id)}>{x.id}</button>)}</div>}
           <div class="hostgrid">
             <div class="center">
-              {code && <Qr text={code.c.url} label="Booth QR" />}
-              <div class="code">{code ? code.c.digits.replace(/(\d{3})/, '$1 ') : '··· ···'}</div>
-              <p class="fine">Your booth QR. Keep this screen open on a phone or tablet at your counter. Visitors scan it for +{POINTS.scan}; you see who really came. It refreshes itself ({left}s).</p>
+              {qr ? <Qr text={qr} label="Booth QR" /> : <div class="qr" />}
+              <p class="fine">Your booth QR. It never changes: print it once from your dashboard and stand it on your counter. Visitors scan it for their checkpoint, and you get their details.</p>
             </div>
             <div>
               <div class="stats three">
-                <div><span>Visits</span><strong>{s.stamps}</strong></div><div><span>Met in person</span><strong>{s.verifiedContacts}</strong></div><div><span>Cards</span><strong>{s.shares}</strong></div>
+                <div><span>Scanned your QR</span><strong>{s.scans}</strong></div><div><span>Visits</span><strong>{s.stamps}</strong></div><div><span>Status</span><strong class="small">{s.status === 'approved' ? 'Approved' : s.status === 'pending' ? 'Pending' : s.status}</strong></div>
               </div>
-              {s.status === 'pending' && <p class="fine">Live now. Our crew will confirm it is your booth; then it shows “verified exhibitor”.</p>}
-              <a class="btn big" href="/booth.html" target="_blank" rel="noopener">Open my dashboard · everyone who scanned, logo, printable QR</a>
-              <div class="rowb"><strong>Cards left with you ({leads.length})</strong><a class="link" href={`/api/host/leads.csv?station=${encodeURIComponent(s.id)}`}>Export CSV</a></div>
-              <div class="leads">
-                {leads.length === 0 ? <p class="fine">None yet. Visitors are offered to leave their card right after they stamp or scan your booth.</p> : leads.map((l) => (
-                  <div key={l.callsign} class="leadrow"><strong>{l.name}{l.verified && <em> · met in person</em>}</strong><span>{[l.role, l.company].filter(Boolean).join(' · ')}</span><span>{[l.phone, l.email].filter(Boolean).join(' · ')}</span></div>
-                ))}
-              </div>
+              {s.status === 'pending' && <p class="fine">Live now. Our crew will confirm it is your booth; then it becomes a checkpoint and your logo and photo go up.</p>}
               <div class="stack">
-                <button class="btn big" onClick={() => { panelStation.value = level.value?.booths.find((b) => b.id === s.id) ?? null; modal.value = 'claim'; }}>Edit booth profile</button>
+                <a class="btn primary big" href="/booth.html" target="_blank" rel="noopener">Open my dashboard</a>
+                <p class="fine">Print your QR, see everyone who scanned (name, phone, email), change your logo and booth photo.</p>
+                <button class="btn big" onClick={() => { claimDraft.value = null; panelStation.value = level.value?.booths.find((b) => b.id === s.id) ?? null; modal.value = 'claim'; }}>Edit booth profile</button>
                 <button class="btn big" onClick={() => setAdding(true)}>Add another booth</button>
               </div>
-              <HostDemoHint onLead={() => { api.leads(s.id).then(setLeads, () => {}); void refreshMyBooths(); }} />
             </div>
           </div>
         </>
@@ -203,7 +230,7 @@ export function SwapSheet() {
   useEffect(() => { const c = pendingLink.value; if (c && m.passport) { pendingLink.value = null; void look(c); } }, []);
   const doSwap = async () => { if (!peek) return; setBusy(true); try { await api.swap(peek.code, mine); api.track('swap'); setPeek(null); modal.value = 'contacts'; } catch (e) { fail(e, 'Could not swap cards'); } setBusy(false); };
 
-  if (!m.passport) return <Sheet k="Swap cards" title="You need your card first"><p class="lead">Your digital business card is what you swap. It is free at the X — Booth 8H18B.</p><button class="btn primary big" onClick={() => { guideTarget.value = null; guideOn.value = true; modal.value = null; }}>Guide me to the X</button></Sheet>;
+  if (!m.passport) return <Sheet k="Swap cards" title="You need your card first"><p class="lead">Your digital business card is what you swap. It is free at the X — Booth 8H18A.</p><button class="btn primary big" onClick={() => { guideTarget.value = null; guideOn.value = true; modal.value = null; }}>Guide me to the X</button></Sheet>;
 
   if (peek) return (
     <Sheet k="Swap cards" title={`Swap with ${peek.p.callsign}?`} onClose={() => setPeek(null)}>
@@ -299,7 +326,6 @@ export function MenuSheet() {
       <div class="menu">
         {drop.value && !drop.value.done && <button class="wide" onClick={() => { const d = drop.value!; guideTarget.value = { x: d.x, y: d.y, label: d.label }; guideOn.value = true; modal.value = null; }}><strong>Booth of the day · +{drop.value.bonus}</strong><small>{drop.value.label} · scan its QR at the real booth today</small></button>}
         {m.passport && <a href={m.passport.url} target="_blank" rel="noopener"><strong>My card</strong><small>Your digital business card · link and QR</small></a>}
-        {m.passport && !m.docked && <button onClick={go('prize')}><strong>My prize code</strong><small>Show it at the real Booth 8H18B</small></button>}
         {(m.cls === 'exhibitor' || m.hosting.length > 0) && <button onClick={go(m.passport ? 'mybooth' : 'card')}><strong>My booth</strong><small>{m.hosting.length ? m.hosting.join(', ') + ' · QR and leads' : 'Bring it online'}</small></button>}
         <button onClick={go('swap')}><strong>Swap cards</strong><small>Met someone? Exchange cards · +{POINTS.swap} each</small></button>
         <button onClick={go('contacts')}><strong>My contacts</strong><small>{m.links} people · {m.shared.length} booths</small></button>

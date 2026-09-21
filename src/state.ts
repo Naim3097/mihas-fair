@@ -51,6 +51,9 @@ export function markSeen(key: string): boolean {
   return true;
 }
 
+/** An exhibitor registering: what they picked from the exhibitor list, or `manual` when they key it in themselves. */
+export const claimDraft = signal<{ company: string; booths: string[]; manual: boolean } | null>(null);
+
 /** A card-swap code that arrived in the URL (scanned with the phone's own camera). */
 export const pendingLink = signal<string | null>(null);
 
@@ -74,7 +77,7 @@ export function toast(title: string, sub?: string, tone: Toast['tone'] = 'info',
 }
 
 const ACTION_LABEL: Record<string, string> = {
-  passport: 'Your card is ready', dock: 'Claimed at Booth 8H18B', stamp: 'Stamped', scan: 'Scanned at the real booth', verified_contact: 'Met in person',
+  passport: 'Your card is ready', dock: 'Claimed at Booth 8H18A', stamp: 'Stamped', scan: 'Scanned at the real booth', verified_contact: 'Met in person',
   share_station: 'Card left', link: 'Cards swapped', station_claim: 'Your booth is online', daily_drop: 'Booth of the day',
   mission_start: 'Mission started', checkpoint: 'Checkpoint',
 };
@@ -99,7 +102,7 @@ export const journey = computed<Journey | null>(() => {
   if (!m) return null;
   const exhibitor = m.cls === 'exhibitor', b = myBooths.value[0];
   const steps = exhibitor
-    ? boothSteps({ online: m.hosting.length > 0, visits: b?.stamps ?? 0, leads: b?.shares ?? 0 })
+    ? boothSteps({ online: m.hosting.length > 0, visits: b?.scans ?? 0, leads: b?.scans ?? 0 })
     : chapters({ started: m.mission.started, card: !!m.passport, checkpoints: m.mission.checkpoints.filter((c) => c.done).length, target: m.mission.target, claimed: m.docked });
   return { kind: exhibitor ? 'exhibitor' : 'visitor', steps, now: steps.find((s) => !s.done) ?? null, done: steps.filter((s) => s.done).length };
 });

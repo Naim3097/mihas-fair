@@ -37,10 +37,14 @@ export const api = {
   /* booths that are online, and the exhibitor's side of them */
   stations: () => call<StationView[]>('GET', '/api/stations'),
   claim: (c: StationClaimInput) => call<null>('POST', '/api/station/claim', c),
+  /** The booth's logo or a photo of the real booth, as a data URL (see ui/images.ts). */
+  boothImage: (stationId: string, kind: 'logo' | 'photo', image: string) => call<null>('POST', `/api/station/${kind}`, { stationId, image }, true),
   leaveCard: (stationId: string, fields: ShareField[]) => call<null>('POST', '/api/station/share', { stationId, fields }),
   takeBackCard: (stationId: string) => call<null>('POST', '/api/station/unshare', { stationId }),
   myBooths: () => call<HostStation[]>('GET', '/api/host/stations'),
   boothQr: (stationId: string) => call<HostCode>('GET', `/api/host/code?station=${q(stationId)}`),
+  /** The booth's fixed QR: printed once and left on the counter. */
+  fixedQr: (stationId: string) => call<{ stationId: string; url: string }>('GET', `/api/host/qr?station=${q(stationId)}`, undefined, true),
   leads: (stationId: string) => call<HostLead[]>('GET', `/api/host/leads?station=${q(stationId)}`),
 
   /* swapping cards with people */

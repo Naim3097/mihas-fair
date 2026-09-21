@@ -24,7 +24,7 @@ a.primary{background:#2457f5;color:#fff;border-color:#2457f5}.foot{margin-top:20
 <a class="btn primary" href="${origin}/p/${esc(p.slug)}/vcard">Save contact</a>
 ${wa ? `<a class="btn" href="${esc(wa)}">WhatsApp</a>` : ''}${p.email ? `<a class="btn" href="mailto:${esc(p.email)}">Email</a>` : ''}
 </div>
-<div class="foot">Built live at MIHAS 2026 by <a href="https://www.nexova.my">nexova</a> · Lean X Digital, Booth 8H18B</div>
+<div class="foot">Built live at MIHAS 2026 by <a href="https://www.nexova.my">nexova</a> · Lean X Digital, Booth 8H18A</div>
 </main></body></html>`;
 }
 

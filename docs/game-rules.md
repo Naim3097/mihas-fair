@@ -4,7 +4,7 @@ This page is the whole game. If something is not here, it is not in the game.
 The numbers live in [`shared/rules.ts`](../shared/rules.ts); the words on screen live in `src/ui/`.
 
 **In one sentence:** walk the MIHAS expo on your phone, stamp booths, swap cards — and find the X for your free
-digital business card and a gift at the real Booth 8H18B.
+digital business card and a gift at the real Booth 8H18A.
 
 ## Two doors
 
@@ -23,11 +23,11 @@ Anyone can switch doors from the menu. Whoever brings a booth online becomes an 
 One instruction on screen at a time, and five dots that fill in.
 
 1. **Arrive** — land at the Hall 8 entrance and walk.
-2. **Find the X** — follow the trail to Booth 8H18B. Reward: your free digital business card (its own link, QR and
+2. **Find the X** — follow the trail to Booth 8H18A. Reward: your free digital business card (its own link, QR and
    contact file). This is the only form in the game.
 3. **Collect** — walk up to any five booths and stamp them.
 4. **Connect** — swap cards with one person, or leave your card at one booth that is online.
-5. **Make it real** — show your prize code at the real Booth 8H18B. Our crew scans it; you get your gift.
+5. **Make it real** — show your prize code at the real Booth 8H18A. Our crew scans it; you get your gift.
 
 Chapters 3 and 4 can be done in either order, and someone standing at the booth can do 5 early.
 Someone playing from home before the show finishes 1–4 and sees chapter 5 waiting: *that* is the invitation to MIHAS.
@@ -44,7 +44,7 @@ After the mission it is free play: the same actions keep scoring.
 | Scan a booth QR at the real booth | 50 |
 | Swap cards with a person | 50 |
 | Get your digital business card at the X | 200 |
-| Show your prize code at the real Booth 8H18B | 500 |
+| Show your prize code at the real Booth 8H18A | 500 |
 
 Exhibitors also get 100 when their booth first comes online. The crew can name a **booth of the day**; scanning its
 QR at the real booth that day pays a bonus they choose.
@@ -86,7 +86,7 @@ Our crew confirms each booth ("verified exhibitor") and removes one that is not 
 | We say | We never say |
 |---|---|
 | booth | station |
-| the X · Booth 8H18B | Launch Pad |
+| the X · Booth 8H18A | Launch Pad |
 | my digital business card · my card | Passport |
 | prize code | Golden Ticket |
 | claimed at the booth | docked |

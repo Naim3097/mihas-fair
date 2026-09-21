@@ -143,7 +143,7 @@ function Beacons() {
   return (
     <section class="sheet wide">
       <div class="row"><h2>Printed booth QRs</h2><button class="btn" onClick={() => print()}>Print</button></div>
-      <p class="fine no-print"><b>The mission's start QR</b> is the one for Lean X Digital's own booth: search <b>8H18B</b> and print it for the counter. For exhibitors who will not keep a screen open: search a booth, print, and hand them the card for their counter. Each QR is signed for its booth. Scanned at MIHAS it scores +50; anywhere else, +10.</p>
+      <p class="fine no-print"><b>The mission's start QR</b> is the one for Lean X Digital's own booth: search <b>8H18A</b> and print it for the counter. For exhibitors who will not keep a screen open: search a booth, print, and hand them the card for their counter. Each QR is signed for its booth. Scanned at MIHAS it scores +50; anywhere else, +10.</p>
       <label class="no-print">Find booth<input value={q} placeholder="e.g. 7C17 or Mamee" onInput={(e) => setQ((e.target as HTMLInputElement).value)} /></label>
       <div class="beacons">{list.map((b) => <BeaconCard key={b.id} b={b} />)}</div>
     </section>

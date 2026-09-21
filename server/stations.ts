@@ -7,6 +7,10 @@ import { HOST_ONLINE_MS, HOST_WINDOW_MS, MAX_STATIONS_PER_OWNER, POINTS, SXP, st
 
 interface StationRow { station_id: string; owner_id: string; company: string; offer: string; link: string; color: number; status: StationStatus; claimed_at: number; host_seen_at: number | null; host_ms: number }
 interface Counts { stamps: number; shares: number; verified: number }
+type Pics = { logo_at?: number | null; photo_at?: number | null };
+const pic = (r: { station_id: string } & Pics, kind: 'logo' | 'photo') => { const at = kind === 'logo' ? r.logo_at : r.photo_at; return at != null ? `/api/${kind}/${encodeURIComponent(r.station_id)}?v=${at}` : null; };
+/** Joins the image timestamps onto station rows (alias s). */
+const PICS = 'LEFT JOIN station_logos l ON l.station_id = s.station_id LEFT JOIN station_photos ph ON ph.station_id = s.station_id';
 
 function cleanLink(raw: unknown): string {
   const s = cleanText(raw, 200);
@@ -43,10 +47,10 @@ export class Stations {
     return out;
   }
 
-  private view(r: StationRow & { logo_at?: number | null }, c: Counts, t: number): StationView {
-    // an uploaded logo goes into the world only once the crew has approved the booth
-    const logo = r.status === 'approved' && r.logo_at != null ? `/api/logo/${encodeURIComponent(r.station_id)}?v=${r.logo_at}` : null;
-    return { id: r.station_id, company: r.company, offer: r.offer, link: r.link, color: r.color, status: r.status, hosted: r.host_seen_at != null && t - r.host_seen_at < HOST_ONLINE_MS, level: stationLevel(this.sxp(r, c)), logo };
+  private view(r: StationRow & Pics, c: Counts, t: number): StationView {
+    // uploaded images go into the world only once the crew has approved the booth
+    const ok = r.status === 'approved', logo = ok ? pic(r, 'logo') : null, photo = ok ? pic(r, 'photo') : null;
+    return { id: r.station_id, company: r.company, offer: r.offer, link: r.link, color: r.color, status: r.status, hosted: r.host_seen_at != null && t - r.host_seen_at < HOST_ONLINE_MS, level: stationLevel(this.sxp(r, c)), logo, photo };
   }
 
   private owners: { at: number; map: Map<string, string> } = { at: -1e9, map: new Map() };
@@ -63,7 +67,7 @@ export class Stations {
   async list(): Promise<StationView[]> {
     const t = this.g.now();
     if (t - this.cache.at < 5000) return this.cache.list;
-    const rows = await this.g.db.all<StationRow & { logo_at: number | null }>("SELECT s.*, l.updated_at AS logo_at FROM stations s LEFT JOIN station_logos l ON l.station_id = s.station_id WHERE s.status != 'revoked'");
+    const rows = await this.g.db.all<StationRow & Pics>(`SELECT s.*, l.updated_at AS logo_at, ph.updated_at AS photo_at FROM stations s ${PICS} WHERE s.status != 'revoked'`);
     const counts = await this.counts(rows.map((r) => r.station_id));
     this.cache = { at: t, list: rows.map((r) => this.view(r, counts.get(r.station_id)!, t)) };
     return this.cache.list;
@@ -81,8 +85,8 @@ export class Stations {
 
     const t = this.g.now();
     const existing = await this.g.db.get<StationRow>('SELECT * FROM stations WHERE station_id = ?', [booth.id]);
-    if (existing && existing.owner_id !== id) throw new GameError('taken', existing.status === 'revoked' ? 'This booth is locked — talk to the crew at 8H18B' : 'Someone already brought this booth online. If that is wrong, see the crew at 8H18B.', 409);
-    if (existing?.status === 'revoked') throw new GameError('revoked', 'This claim was removed by the crew — see us at 8H18B', 403);
+    if (existing && existing.owner_id !== id) throw new GameError('taken', existing.status === 'revoked' ? 'This booth is locked — talk to the crew at 8H18A' : 'Someone already brought this booth online. If that is wrong, see the crew at 8H18A.', 409);
+    if (existing?.status === 'revoked') throw new GameError('revoked', 'This claim was removed by the crew — see us at 8H18A', 403);
     if (existing) { // owner editing their profile
       await this.g.db.run('UPDATE stations SET company = ?, offer = ?, link = ?, color = ? WHERE station_id = ?', [company, offer, link, color, booth.id]);
       this.cache.at = -1e9;
@@ -115,10 +119,11 @@ export class Stations {
   }
 
   async mine(id: string): Promise<HostStation[]> {
-    const rows = await this.g.db.all<StationRow & { logo_at: number | null }>("SELECT s.*, l.updated_at AS logo_at FROM stations s LEFT JOIN station_logos l ON l.station_id = s.station_id WHERE s.owner_id = ? AND s.status != 'revoked' ORDER BY s.claimed_at", [id]);
+    const rows = await this.g.db.all<StationRow & Pics>(`SELECT s.*, l.updated_at AS logo_at, ph.updated_at AS photo_at FROM stations s ${PICS} WHERE s.owner_id = ? AND s.status != 'revoked' ORDER BY s.claimed_at`, [id]);
     const counts = await this.counts(rows.map((r) => r.station_id)), t = this.g.now();
+    const scans = new Map((await this.g.db.all<{ k: string; n: number }>(`SELECT station_id AS k, COUNT(*) AS n FROM booth_scans WHERE station_id IN (${rows.map(() => '?').join(',') || "''"}) GROUP BY station_id`, rows.map((r) => r.station_id))).map((r) => [r.k, r.n]));
     // the owner sees their own logo before approval (the world does not)
-    return rows.map((r) => { const c = counts.get(r.station_id)!; return { ...this.view(r, c, t), logo: r.logo_at != null ? `/api/logo/${encodeURIComponent(r.station_id)}?v=${r.logo_at}` : null, sxp: this.sxp(r, c), stamps: c.stamps, shares: c.shares, verifiedContacts: c.verified, hostMinutes: Math.round(r.host_ms / 60_000) }; });
+    return rows.map((r) => { const c = counts.get(r.station_id)!; return { ...this.view(r, c, t), scans: scans.get(r.station_id) ?? 0, logo: pic(r, 'logo'), photo: pic(r, 'photo'), sxp: this.sxp(r, c), stamps: c.stamps, shares: c.shares, verifiedContacts: c.verified, hostMinutes: Math.round(r.host_ms / 60_000) }; });
   }
 
   /** Only what each visitor consented to share with THIS station, and only while the share stands. */
@@ -163,17 +168,17 @@ export class Stations {
   async ranked(limit: number): Promise<HostStation[]> {
     const rows = await this.g.db.all<StationRow>("SELECT * FROM stations WHERE status != 'revoked'");
     const counts = await this.counts(rows.map((r) => r.station_id)), t = this.g.now();
-    return rows.map((r) => { const c = counts.get(r.station_id)!; return { ...this.view(r, c, t), sxp: this.sxp(r, c), stamps: c.stamps, shares: c.shares, verifiedContacts: c.verified, hostMinutes: Math.round(r.host_ms / 60_000) }; }).sort((a, b) => b.sxp - a.sxp).slice(0, limit);
+    return rows.map((r) => { const c = counts.get(r.station_id)!; return { ...this.view(r, c, t), scans: 0, sxp: this.sxp(r, c), stamps: c.stamps, shares: c.shares, verifiedContacts: c.verified, hostMinutes: Math.round(r.host_ms / 60_000) }; }).sort((a, b) => b.sxp - a.sxp).slice(0, limit);
   }
 
   /* ---- crew moderation ---- */
 
   async crewList(): Promise<CrewStationRow[]> {
-    const rows = await this.g.db.all<StationRow & { callsign: string; name: string; pcompany: string; logo_at: number | null }>(
-      `SELECT s.*, pl.callsign, p.name, p.company AS pcompany, l.updated_at AS logo_at FROM stations s JOIN players pl ON pl.id = s.owner_id JOIN passports p ON p.player_id = s.owner_id
-       LEFT JOIN station_logos l ON l.station_id = s.station_id ORDER BY s.claimed_at DESC`);
+    const rows = await this.g.db.all<StationRow & Pics & { callsign: string; name: string; pcompany: string }>(
+      `SELECT s.*, pl.callsign, p.name, p.company AS pcompany, l.updated_at AS logo_at, ph.updated_at AS photo_at FROM stations s JOIN players pl ON pl.id = s.owner_id JOIN passports p ON p.player_id = s.owner_id
+       ${PICS} ORDER BY s.claimed_at DESC`);
     const counts = await this.counts(rows.map((r) => r.station_id)), t = this.g.now();
-    return rows.map((r) => ({ ...this.view(r, counts.get(r.station_id)!, t), logo: r.logo_at != null ? `/api/logo/${encodeURIComponent(r.station_id)}?v=${r.logo_at}` : null, visits: counts.get(r.station_id)!.stamps, ownerCallsign: r.callsign, ownerName: r.name, ownerCompany: r.pcompany, claimedAt: r.claimed_at }));
+    return rows.map((r) => ({ ...this.view(r, counts.get(r.station_id)!, t), logo: pic(r, 'logo'), photo: pic(r, 'photo'), visits: counts.get(r.station_id)!.stamps, ownerCallsign: r.callsign, ownerName: r.name, ownerCompany: r.pcompany, claimedAt: r.claimed_at }));
   }
 
   async crewSetStatus(stationId: string, status: string): Promise<void> {

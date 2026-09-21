@@ -28,7 +28,7 @@ export const POINTS = {
   swap: 50,
   /** get your digital business card at the X */
   card: 200,
-  /** show your prize code at the real Booth 8H18B */
+  /** show your prize code at the real Booth 8H18A */
   booth: 500,
   /** bring your own booth online (exhibitors) */
   boothOnline: 100,
@@ -50,10 +50,9 @@ export interface Chapter { n: number; title: string; todo: string; done: boolean
 /** Chapters 3 and 4 can be finished in either order, and someone standing at the booth may finish 5 early. */
 export function chapters(f: MissionFacts): Chapter[] {
   return [
-    { n: 1, title: 'Find Lean X Digital', todo: 'Follow the trail to Booth 8H18B in Hall 8.', done: f.card || f.started },
+    { n: 1, title: 'Find Lean X Digital', todo: 'Follow the trail to Booth 8H18A in Hall 8.', done: f.card || f.started },
     { n: 2, title: 'Register and start', todo: 'Get your free digital business card, then scan the Lean X Digital QR at the booth.', done: f.card && f.started },
     { n: 3, title: 'Checkpoints', todo: `Find your ${f.target || CHECKPOINTS} checkpoint booths and scan the QR at each one.`, done: f.target > 0 && f.checkpoints >= f.target },
-    { n: 4, title: 'Claim your prize', todo: 'Back to Booth 8H18B: show your prize code to the Lean X Digital crew.', done: f.claimed },
   ];
 }
 
@@ -62,8 +61,8 @@ export interface BoothFacts { online: boolean; visits: number; leads: number }
 export function boothSteps(f: BoothFacts): Chapter[] {
   return [
     { n: 1, title: 'Light up', todo: 'Find your booth number and bring it online.', done: f.online },
-    { n: 2, title: 'Get scanned', todo: 'Show your booth QR at the counter. Visitors scan it.', done: f.visits >= 1 },
-    { n: 3, title: 'Lead', todo: 'Visitors leave their cards. Your list grows; export it any time.', done: f.leads >= 1 },
+    { n: 2, title: 'Put your QR out', todo: 'Print your booth QR and stand it on your counter. It never changes.', done: f.visits >= 1 },
+    { n: 3, title: 'Collect visitors', todo: 'Everyone who scans it lands on your dashboard with their name, phone and email.', done: f.leads >= 1 },
   ];
 }
 

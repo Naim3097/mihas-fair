@@ -98,11 +98,11 @@ export interface CrewTicketView { callsign: string; name: string; company: strin
 
 export type StationStatus = 'pending' | 'approved' | 'revoked';
 /** Public view of a claimed station — what every player may see. */
-export interface StationView { id: string; company: string; offer: string; link: string; color: number; status: StationStatus; hosted: boolean; level: number; /** image URL once the crew has approved the booth */ logo: string | null }
+export interface StationView { id: string; company: string; offer: string; link: string; color: number; status: StationStatus; hosted: boolean; level: number; /** image URLs once the crew has approved the booth */ logo: string | null; photo: string | null }
 export interface StationClaimInput { stationId: string; company: string; offer: string; link: string; color: number }
 
 export interface HostCode { stationId: string; url: string; digits: string; expiresInMs: number }
-export interface HostStation extends StationView { sxp: number; stamps: number; shares: number; verifiedContacts: number; hostMinutes: number }
+export interface HostStation extends StationView { sxp: number; stamps: number; shares: number; verifiedContacts: number; hostMinutes: number; /** visitors who scanned the booth's QR */ scans: number }
 export interface HostLead { callsign: string; name: string; company: string; role: string; phone: string; email: string; verified: boolean; at: number }
 
 export interface SharedCard { name?: string; company?: string; role?: string; phone?: string; email?: string }

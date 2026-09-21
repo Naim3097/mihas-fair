@@ -32,8 +32,8 @@ test('stands: cells of one exhibitor join, partitions go where a neighbour is, f
   assert.ok(yapiem.cells.every((c) => c.inner.size >= 1), 'no cell of a block stands alone');
   const hero = stands.find((s) => s.cells.some((c) => c.b.id === level.hero.id))!;
   assert.equal(hero.cells.length, 1);
-  assert.deepEqual([...hero.cells[0]!.open].sort(), ['W'], 'booth 8H18B opens to the west aisle, as the plan draws it');
-  assert.deepEqual([...hero.cells[0]!.walled].sort(), ['E', 'N', 'S']);
+  assert.deepEqual([...hero.cells[0]!.open].sort(), ['S', 'W'], 'booth 8H18A is a corner: open to the west aisle and the south one, as the plan draws it');
+  assert.deepEqual([...hero.cells[0]!.walled].sort(), ['E', 'N']);
   assert.equal(hero.front, 'W');
   const kinds = new Map<string, number>();
   for (const s of stands) kinds.set(s.kind, (kinds.get(s.kind) ?? 0) + 1);

@@ -274,7 +274,7 @@ export class World {
     this.roofs.setMatrixAt(n, new THREE.Matrix4().makeScale(s, 1, s).setPosition(p));
   }
 
-  /** Booth 8H18B, built by hand: open to the west aisle, our crew inside, and the X turning above it. */
+  /** Booth 8H18A, built by hand: open to the west aisle, our crew inside, and the X turning above it. */
   private theX() {
     const { w: BW, d: BD } = this.level.booth, hero = this.hero; hero.position.copy(this.heroPos); this.scene.add(hero);
     const white = this.flat(0xffffff), ink = this.flat(THEME.ink);
@@ -283,7 +283,7 @@ export class World {
     const g = art.getContext('2d')!; g.fillStyle = '#fff'; g.fillRect(0, 0, 1024, 820); g.textAlign = 'center'; g.fillStyle = css(THEME.ink);
     g.font = '800 96px Urbanist, Arial'; g.fillText('lean.x digital', 512, 330); g.font = '600 60px Urbanist, Arial'; g.fillStyle = css(THEME.inkSoft); g.fillText('nexova', 512, 430);
     const tex = new THREE.CanvasTexture(art); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
-    // 8H18B is mid-row: walls N, E (back) and S; the open side faces the west aisle.
+    // 8H18A is mid-row: walls N, E (back) and S; the open side faces the west aisle.
     const back = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.5, BD - 0.1), [white, new THREE.MeshBasicMaterial({ map: tex }), white, white, white, white]); back.position.set(BW / 2 - 0.06, 1.35, 0);
     hero.add(pad, back);
     for (const s of [-1, 1]) { const side = new THREE.Mesh(new THREE.BoxGeometry(BW, 2.5, 0.1), white); side.position.set(0, 1.35, s * (BD / 2 - 0.05)); hero.add(side); }

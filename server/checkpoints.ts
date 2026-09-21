@@ -1,4 +1,4 @@
-// The MIHAS mission: register at Lean X Digital (8H18B) and scan its QR to start; then scan the QR at the exhibitor
+// The MIHAS mission: register at Lean X Digital (8H18A) and scan its QR to start; then scan the QR at the exhibitor
 // booths you were given. Checkpoints are drawn at random from the booths the crew has approved, up to CHECKPOINTS each,
 // and topped up as more exhibitors are approved. Every QR scan at an exhibitor's booth lands on that exhibitor's
 // dashboard with the visitor's name, phone and email: agreeing to that is part of registering.
@@ -6,18 +6,20 @@ import { Game, GameError } from './game.js';
 import type { BoothScan, CheckpointMission, XpEvent } from '../shared/types.js';
 import { CHECKPOINTS } from '../shared/rules.js';
 
-const LOGO_MAX_BYTES = 400_000;
+const IMAGE_MAX_BYTES = { logo: 400_000, photo: 900_000 } as const;
+const IMAGE_TABLE = { logo: 'station_logos', photo: 'station_photos' } as const;
+export type BoothImage = keyof typeof IMAGE_TABLE;
 const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 
 export class Checkpoints {
-  private approved: { at: number; rows: { station_id: string; company: string }[] } = { at: -1e9, rows: [] };
+  private approved: { at: number; rows: { station_id: string; company: string; owner_id: string }[] } = { at: -1e9, rows: [] };
   constructor(private g: Game) {}
 
   /** Booths the crew has approved, Lean X's own excepted. Cached briefly: every /me asks. */
-  private async approvedBooths(): Promise<{ station_id: string; company: string }[]> {
+  private async approvedBooths(): Promise<{ station_id: string; company: string; owner_id: string }[]> {
     const t = this.g.now();
     if (t - this.approved.at < 10_000) return this.approved.rows;
-    const rows = await this.g.db.all<{ station_id: string; company: string }>("SELECT station_id, company FROM stations WHERE status = 'approved' AND station_id != ?", [this.g.level.hero.id]);
+    const rows = await this.g.db.all<{ station_id: string; company: string; owner_id: string }>("SELECT station_id, company, owner_id FROM stations WHERE status = 'approved' AND station_id != ?", [this.g.level.hero.id]);
     this.approved = { at: t, rows };
     return rows;
   }
@@ -41,7 +43,7 @@ export class Checkpoints {
   private async topUp(id: string, t: number): Promise<void> {
     const have = await this.g.db.all<{ station_id: string }>('SELECT station_id FROM checkpoints WHERE player_id = ?', [id]);
     if (have.length >= CHECKPOINTS) return;
-    const mine = new Set(have.map((r) => r.station_id)), pool = (await this.approvedBooths()).filter((r) => !mine.has(r.station_id));
+    const mine = new Set(have.map((r) => r.station_id)), pool = (await this.approvedBooths()).filter((r) => !mine.has(r.station_id) && r.owner_id !== id); // never your own booth
     for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j]!, pool[i]!]; }
     const add = pool.slice(0, CHECKPOINTS - have.length);
     if (add.length) await this.g.db.batch(add.map((r) => ['INSERT INTO checkpoints (player_id, station_id, assigned_at) VALUES (?,?,?) ON CONFLICT DO NOTHING', [id, r.station_id, t]]));
@@ -74,7 +76,7 @@ export class Checkpoints {
     await this.g.db.run('UPDATE checkpoints SET scanned_at = ? WHERE player_id = ? AND station_id = ?', [t, id, stationId]);
     const m = await this.view(id), done = m.checkpoints.filter((c) => c.done).length;
     const company = m.checkpoints.find((c) => c.stationId === stationId)?.company ?? stationId;
-    return [{ action: 'checkpoint', xp: 0, target: company, note: done >= m.target ? 'All checkpoints done — claim your prize at Booth 8H18B' : `${done} of ${m.target} checkpoints` }];
+    return [{ action: 'checkpoint', xp: 0, target: company, note: done >= m.target ? 'All checkpoints done — claim your prize at Booth 8H18A' : `${done} of ${m.target} checkpoints` }];
   }
 
   /** The exhibitor's dashboard: everyone who scanned this booth's QR, newest first. Only the booth's owner may ask. */
@@ -98,18 +100,19 @@ export class Checkpoints {
     return { stationId, url: `${this.g.publicOrigin}/?b=${encodeURIComponent(await this.g.beaconToken(stationId))}` };
   }
 
-  /** A logo as a data URL (the phone resizes it first). Shown in the world once the crew approves the booth. */
-  async setLogo(ownerId: string, stationId: string, dataUrl: unknown): Promise<void> {
+  /** The logo, or a photo of the real booth, as a data URL (the browser resizes it first). Shown in the world once the
+   *  crew approves the booth: the logo on the counter and a sign over it, the photo on the back wall. */
+  async setImage(ownerId: string, stationId: string, kind: BoothImage, dataUrl: unknown): Promise<void> {
     await this.owner(ownerId, stationId);
     const m = /^data:(image\/[a-z]+);base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl ?? ''));
-    if (!m || !LOGO_TYPES.includes(m[1]!)) throw new GameError('logo', 'Upload a PNG, JPG or WebP image');
-    if (m[2]!.length * 0.75 > LOGO_MAX_BYTES) throw new GameError('logo', 'That image is too large — try a smaller logo');
-    await this.g.db.run('INSERT INTO station_logos (station_id, mime, data, updated_at) VALUES (?,?,?,?) ON CONFLICT(station_id) DO UPDATE SET mime = excluded.mime, data = excluded.data, updated_at = excluded.updated_at',
+    if (!m || !LOGO_TYPES.includes(m[1]!)) throw new GameError(kind, 'Upload a PNG, JPG or WebP image');
+    if (m[2]!.length * 0.75 > IMAGE_MAX_BYTES[kind]) throw new GameError(kind, 'That image is too large — try a smaller one');
+    await this.g.db.run(`INSERT INTO ${IMAGE_TABLE[kind]} (station_id, mime, data, updated_at) VALUES (?,?,?,?) ON CONFLICT(station_id) DO UPDATE SET mime = excluded.mime, data = excluded.data, updated_at = excluded.updated_at`,
       [stationId, m[1]!, m[2]!, this.g.now()]);
   }
 
-  async logo(stationId: string): Promise<{ mime: string; bytes: Uint8Array } | null> {
-    const r = await this.g.db.get<{ mime: string; data: string }>('SELECT mime, data FROM station_logos WHERE station_id = ?', [stationId]);
+  async image(stationId: string, kind: BoothImage): Promise<{ mime: string; bytes: Uint8Array } | null> {
+    const r = await this.g.db.get<{ mime: string; data: string }>(`SELECT mime, data FROM ${IMAGE_TABLE[kind]} WHERE station_id = ?`, [stationId]);
     return r ? { mime: r.mime, bytes: Uint8Array.from(atob(r.data), (c) => c.charCodeAt(0)) } : null;
   }
 

@@ -101,7 +101,7 @@ function Screen() {
       </aside>
 
       <aside class="mc-right">
-        <div class="mc-join"><Qr text={v?.joinUrl ?? location.origin} label="Join Mission X" /><strong>Play the expo.</strong><span>Scan · no app · find the <b>X</b> at 8H18B</span></div>
+        <div class="mc-join"><Qr text={v?.joinUrl ?? location.origin} label="Join Mission X" /><strong>Play the expo.</strong><span>Scan · no app · find the <b>X</b> at 8H18A</span></div>
         <div class="mc-stats">
           <div><strong>{v?.totals.players ?? 0}</strong><span>players</span></div><div><strong>{v?.totals.stations ?? 0}</strong><span>booths online</span></div>
           <div><strong>{v?.totals.stamps ?? 0}</strong><span>stamps</span></div><div><strong>{v?.totals.links ?? 0}</strong><span>cards swapped</span></div>
@@ -110,7 +110,7 @@ function Screen() {
 
       <footer>
                 {v?.drop && <span class="tick">★ Booth of the day · {v.drop.label} · {v.drop.title} · +{v.drop.bonus}</span>}
-        <span class="tick">✕ Find the X · Booth 8H18B · Hall 8 · your free digital business card</span>
+        <span class="tick">✕ Find the X · Booth 8H18A · Hall 8 · your free digital business card</span>
       </footer>
     </div>
   );

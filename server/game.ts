@@ -112,7 +112,7 @@ export class Game {
 
   async requirePassport(id: string): Promise<PassportRow> {
     const p = await this.passportOf(id);
-    if (!p) throw new GameError('need_passport', 'Get your digital business card first — it is free at the X, Booth 8H18B', 403);
+    if (!p) throw new GameError('need_passport', 'Get your digital business card first — it is free at the X, Booth 8H18A', 403);
     return p;
   }
 
@@ -333,7 +333,7 @@ export class Game {
       throw new GameError('bad_proof', 'Unknown proof');
     }
 
-    // the Lean X Digital QR, scanned at 8H18B: the start of the mission, not a stamp
+    // the Lean X Digital QR, scanned at 8H18A: the start of the mission, not a stamp
     if (req.proof !== 'virtual' && station.id === this.level.hero.id && this.hooks.mission) {
       const ev = await this.hooks.mission.start(id, t);
       if (presence === 'onsite') await this.hooks.onOnsiteProof?.(id, station.id, t);
@@ -341,7 +341,7 @@ export class Game {
     }
     // a QR at an exhibitor's booth hands the visitor's card to the exhibitor, so it needs a card
     const boothQr = req.proof !== 'virtual' && !!(await this.hooks.mission?.isExhibitorBooth(station.id));
-    if (boothQr && !(await this.passportOf(id))) throw new GameError('card', 'Register first at the Lean X Digital booth (8H18B) — then scan this booth again');
+    if (boothQr && !(await this.passportOf(id))) throw new GameError('card', 'Register first at the Lean X Digital booth (8H18A) — then scan this booth again');
     const scannedBefore = boothQr && !!(await this.hooks.mission?.scannedBefore(id, station.id));
 
     const events: XpEvent[] = [];

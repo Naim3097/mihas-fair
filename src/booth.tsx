@@ -4,10 +4,12 @@
 import { render } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { Qr } from './ui/common';
+import { shrink } from './ui/images';
 import './ui.css';
 import './crew.css';
 import { ensureBackend } from './demo/client';
-import type { BoothScan, HostCode, HostStation, Me } from '../shared/types';
+import qrcode from 'qrcode-generator';
+import type { BoothScan, HostStation, Me } from '../shared/types';
 
 type Res<T> = { ok: true; data: T; me?: Me } | { ok: false; error: string; code: string };
 async function call<T>(method: string, path: string, body?: unknown): Promise<{ data: T; me?: Me }> {
@@ -17,20 +19,10 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<{ 
   return { data: j.data, me: j.me };
 }
 const q = encodeURIComponent;
+/** The QR as an image to download: large enough to print crisp at A5. */
+const qrPng = (url: string) => { const c = qrcode(0, 'M'); c.addData(url); c.make(); return c.createDataURL(16, 4); };
 const when = (t: number) => new Date(t).toLocaleString('en-MY', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 
-/** A logo as a PNG or WebP data URL no bigger than 512 px a side, so it uploads fast and draws crisp in the game. */
-async function shrink(file: File): Promise<string> {
-  const url = URL.createObjectURL(file);
-  try {
-    const img = await new Promise<HTMLImageElement>((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => no(new Error('That file is not an image we can read')); i.src = url; });
-    const k = Math.min(1, 512 / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement('canvas');
-    c.width = Math.max(1, Math.round(img.naturalWidth * k)); c.height = Math.max(1, Math.round(img.naturalHeight * k));
-    c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
-    const png = c.toDataURL('image/png');
-    return png.length < 450_000 ? png : c.toDataURL('image/webp', 0.88);
-  } finally { URL.revokeObjectURL(url); }
-}
 
 function Dashboard() {
   const [me, setMe] = useState<Me | null>(null), [booths, setBooths] = useState<HostStation[] | null>(null), [sel, setSel] = useState<string | null>(null), [err, setErr] = useState('');
@@ -60,25 +52,25 @@ function Dashboard() {
 }
 
 function Booth({ b, onChange }: { b: HostStation; onChange: () => void }) {
-  const [code, setCode] = useState<HostCode | null>(null), [printable, setPrintable] = useState<string | null>(null), [scans, setScans] = useState<BoothScan[]>([]);
-  const [busy, setBusy] = useState(false), [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null), [printing, setPrinting] = useState(false);
+  const [printable, setPrintable] = useState<string | null>(null), [scans, setScans] = useState<BoothScan[]>([]);
+  const [busy, setBusy] = useState<'logo' | 'photo' | null>(null), [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null), [printing, setPrinting] = useState(false);
   useEffect(() => {
     let stop = false;
-    const pullCode = () => call<HostCode>('GET', `/api/host/code?station=${q(b.id)}`).then((r) => !stop && setCode(r.data), () => {});
-    const pullScans = () => call<BoothScan[]>('GET', `/api/host/scans?station=${q(b.id)}`).then((r) => !stop && setScans(r.data), () => {});
-    void pullCode(); void pullScans();
+    const pullScans = () => { if (!document.hidden) void call<BoothScan[]>('GET', `/api/host/scans?station=${q(b.id)}`).then((r) => !stop && setScans(r.data), () => {}); };
+    pullScans();
     call<{ url: string }>('GET', `/api/host/qr?station=${q(b.id)}`).then((r) => !stop && setPrintable(r.data.url), () => {});
-    const a = setInterval(pullCode, 10_000), c = setInterval(pullScans, 15_000); // asking for the live code also tells the game someone is at the counter
-    return () => { stop = true; clearInterval(a); clearInterval(c); };
+    const c = setInterval(pullScans, 15_000);
+    return () => { stop = true; clearInterval(c); };
   }, [b.id]);
   useEffect(() => { if (!printing) return; const done = () => setPrinting(false); addEventListener('afterprint', done); print(); return () => removeEventListener('afterprint', done); }, [printing]);
 
-  const upload = async (e: Event) => {
+  const upload = (kind: 'logo' | 'photo') => async (e: Event) => {
     const f = (e.target as HTMLInputElement).files?.[0]; if (!f) return;
-    setBusy(true); setMsg(null);
-    try { await call('POST', '/api/station/logo', { stationId: b.id, image: await shrink(f) }); setMsg({ ok: true, text: b.status === 'approved' ? 'Logo saved — it is on your booth in the game now.' : 'Logo saved. It appears on your booth in the game once Lean X Digital approves your booth.' }); onChange(); }
+    setBusy(kind); setMsg(null);
+    const what = kind === 'logo' ? 'Logo' : 'Booth photo';
+    try { await call('POST', `/api/station/${kind}`, { stationId: b.id, image: await shrink(f, kind) }); setMsg({ ok: true, text: b.status === 'approved' ? `${what} saved — it is on your booth in the game now.` : `${what} saved. It appears on your booth in the game once Lean X Digital approves your booth.` }); onChange(); }
     catch (x) { setMsg({ ok: false, text: (x as Error).message }); }
-    finally { setBusy(false); (e.target as HTMLInputElement).value = ''; }
+    finally { setBusy(null); (e.target as HTMLInputElement).value = ''; }
   };
   const cps = scans.filter((s) => s.checkpoint).length;
 
@@ -93,16 +85,25 @@ function Booth({ b, onChange }: { b: HostStation; onChange: () => void }) {
       <div class="dash">
         <section class="sheet">
           <h2>Your booth QR</h2>
-          <div class="center">{code ? <Qr text={code.url} label="Live booth QR" /> : <div class="qr" />}<div class="code">{code ? code.digits.replace(/(\d{3})/, '$1 ') : '··· ···'}</div></div>
-          <p class="fine">Keep this page open on a tablet or phone at your counter: the QR changes every 30 seconds, so it only works for people who are really here. No screen? Print the fixed QR instead.</p>
-          <button class="btn big" disabled={!printable} onClick={() => setPrinting(true)}>Print a QR for my counter</button>
+          <div class="center">{printable ? <Qr text={printable} label="Booth QR" /> : <div class="qr" />}</div>
+          <p class="fine">This QR is yours for the whole show and never changes. Print it, or download it for your own artwork, and put it on your counter where visitors can scan it.</p>
+          <div class="stack">
+            <button class="btn primary big" disabled={!printable} onClick={() => setPrinting(true)}>Print my QR</button>
+            <a class={'btn big' + (printable ? '' : ' disabled')} href={printable ? qrPng(printable) : undefined} download={`mission-x-qr-${b.id}.gif`}>Download QR image</a>
+          </div>
         </section>
 
         <section class="sheet">
-          <h2>Your logo in the game</h2>
-          <div class="logo-box">{b.logo ? <img src={b.logo} alt={`${b.company} logo`} /> : <span>No logo yet</span>}</div>
-          <p class="fine">It goes on your counter and on a sign above your booth in the game, like the Lean X Digital booth{b.status === 'approved' ? '' : ', once your booth is approved'}. A PNG with a transparent background looks best.</p>
-          <label class="btn big file">{busy ? 'Uploading…' : 'Upload logo'}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={upload} /></label>
+          <h2>Your booth in the game</h2>
+          <div class="pics">
+            <div><div class="logo-box">{b.logo ? <img src={b.logo} alt={`${b.company} logo`} /> : <span>No logo yet</span>}</div>
+              <label class="btn big file">{busy === 'logo' ? 'Uploading…' : 'Upload logo'}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={!!busy} onChange={upload('logo')} /></label>
+              <p class="fine">On your counter and a sign over your booth. PNG with a transparent background looks best.</p></div>
+            <div><div class="logo-box photo">{b.photo ? <img src={b.photo} alt={`${b.company} booth`} /> : <span>No booth photo yet</span>}</div>
+              <label class="btn big file">{busy === 'photo' ? 'Uploading…' : 'Upload booth photo'}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={!!busy} onChange={upload('photo')} /></label>
+              <p class="fine">Your backdrop or a photo of your booth, on the back wall of your virtual booth.</p></div>
+          </div>
+          {b.status !== 'approved' && <p class="fine">Shown in the game once your booth is approved.</p>}
           {msg && <p class={'banner ' + (msg.ok ? 'ok' : 'bad')} role="status">{msg.text}</p>}
         </section>
       </div>
@@ -111,8 +112,13 @@ function Booth({ b, onChange }: { b: HostStation; onChange: () => void }) {
         <div class="row"><h2>Visitors who scanned your QR ({scans.length})</h2><a class="btn" href={`/api/host/scans.csv?station=${q(b.id)}`}>Download CSV</a></div>
         <p class="fine">{cps} of them had your booth as a checkpoint. Visitors agree to share their name, phone and email with you when they register at Lean X Digital.</p>
         {scans.length === 0 ? <p class="lead">No scans yet. Put your QR where visitors can see it.</p> : (
-          <div class="scroll"><table><thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Company</th><th>Scanned</th><th></th></tr></thead>
-            <tbody>{scans.map((s) => <tr key={s.at + s.email}><td>{s.name}</td><td><a href={`tel:${s.phone}`}>{s.phone}</a></td><td><a href={`mailto:${s.email}`}>{s.email}</a></td><td>{s.company}</td><td>{when(s.at)}</td><td>{s.checkpoint && <span class="badge approved">Checkpoint</span>}</td></tr>)}</tbody></table></div>
+          <ul class="visitors">{scans.map((s) => (
+            <li key={s.at + s.email}>
+              <div class="who"><strong>{s.name}</strong>{s.company && <span>{s.company}</span>}</div>
+              <div class="how"><a href={`tel:${s.phone}`}>{s.phone}</a><a href={`mailto:${s.email}`}>{s.email}</a></div>
+              <div class="when"><span>{when(s.at)}</span>{s.checkpoint && <span class="badge approved">Checkpoint</span>}</div>
+            </li>
+          ))}</ul>
         )}
       </section>
     </>

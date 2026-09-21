@@ -56,7 +56,7 @@ test('station: claim, rotating host code, verified contact, consented lead, revo
   const host = await user().join('exhibitor', 'Hana Host'), visitor = await user().join('visitor', 'Vik Visitor'), guest = await user().join('visitor', 'No Passport', false);
 
   assert.equal((await guest.post('/api/station/claim', { stationId: '7C17', company: 'Squatters', offer: '', link: '', color: 0 })).json.code, 'need_passport');
-  assert.equal((await host.post('/api/station/claim', { stationId: '8H18B', company: 'Cheeky', offer: '', link: '', color: 0 })).json.code, 'reserved');
+  assert.equal((await host.post('/api/station/claim', { stationId: '8H18A', company: 'Cheeky', offer: '', link: '', color: 0 })).json.code, 'reserved');
   assert.equal((await host.post('/api/station/claim', { stationId: '7C17', company: 'Mamee', offer: 'x', link: 'javascript:alert(1)', color: 0 })).json.code, 'link');
 
   let r = await host.post('/api/station/claim', { stationId: '7C17', company: 'Mamee <b>Double</b> Decker', offer: 'Free samples at 3pm', link: 'mamee.com', color: 0xff6600 });

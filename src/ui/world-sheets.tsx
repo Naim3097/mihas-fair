@@ -49,7 +49,7 @@ export function MapSheet({ engine }: Eng) {
     const booth = lv.booths.filter((b) => b.deck === deck).map((b) => ({ b, k: Math.hypot(b.x - x, b.y - y) })).sort((a, b) => a.k - b.k)[0];
     const place = places.find((p) => p.deck === deck && x >= p.rect.x0 && x <= p.rect.x1 && y >= p.rect.y0 && y <= p.rect.y1);
     if (place) return go((place.rect.x0 + place.rect.x1) / 2, (place.rect.y0 + place.rect.y1) / 2, place.name);
-    if (booth && booth.k < 3.5) return booth.b.id === lv.hero.id ? go(lv.hero.dock.x, lv.hero.dock.y, 'The X · Booth 8H18B') : go(booth.b.x, booth.b.y, name(booth.b));
+    if (booth && booth.k < 3.5) return booth.b.id === lv.hero.id ? go(lv.hero.dock.x, lv.hero.dock.y, 'The X · Booth 8H18A') : go(booth.b.x, booth.b.y, name(booth.b));
     if (x >= d.x0 && x <= d.x1 && y >= d.y0 && y <= d.y1) go(x, y, 'A spot on the map');
   };
 
@@ -72,7 +72,7 @@ export function MapSheet({ engine }: Eng) {
           <div ref={wrap} class="mapwrap"><canvas ref={canvas} class="map" onClick={tap} role="img" aria-label={`Map of level ${deck}. Tap to set a trail.`} /></div>
           <p class="fine">Tap anywhere to be guided there. White booths, <b class="gold-t">gold</b> once you have stamped them, <b class="green-t">green</b> when the exhibitor is online. Blue dots are lifts.</p>
           <div class="results flow" style={{ marginTop: '12px' }}>
-            {deck === 2 && <button class="result hero" onClick={() => go(lv.hero.dock.x, lv.hero.dock.y, 'The X · Booth 8H18B')}><strong>The X — Lean X Digital · nexova</strong><small>Booth 8H18B · Hall 8 · your free digital business card</small></button>}
+            {deck === 2 && <button class="result hero" onClick={() => go(lv.hero.dock.x, lv.hero.dock.y, 'The X · Booth 8H18A')}><strong>The X — Lean X Digital · nexova</strong><small>Booth 8H18A · Hall 8 · your free digital business card</small></button>}
             {places.filter((p) => p.deck === deck).map((p) => <button key={p.id} class={'result' + (been.has(`place:${p.id}`) ? ' seen' : '')} onClick={() => go((p.rect.x0 + p.rect.x1) / 2, (p.rect.y0 + p.rect.y1) / 2, p.name)}><strong>{p.name}</strong><small>{p.blurb}</small></button>)}
             {halls.filter((h) => h.level === deck).map((h) => { const r = lv.halls.find((k) => k.id === h.hall)!; return <button key={h.hall} class={'result' + (been.has(`hall:${h.hall}`) ? ' seen' : '')} onClick={() => go((r.x0 + r.x1) / 2, r.y0 + (r.y1 - r.y0) * 0.28, `Hall ${h.hall}`)}><strong>Hall {h.hall}</strong><small>{hallLine(h)}</small></button>; })}
           </div>
@@ -91,7 +91,7 @@ export function PhotoSheet() {
     <Sheet k="Photo" title="You, at MIHAS 2026">
       <img class="shot" src={url} alt="Your astronaut waving at MIHAS 2026" />
       <div class="stack">
-        {canShare && <button class="btn primary big" onClick={async () => { try { await navigator.share({ files: [await file()], title: 'Mission X at MIHAS 2026', text: 'Find the X — Booth 8H18B, MIHAS 2026.' }); } catch { /* closed the share sheet */ } }}>Share</button>}
+        {canShare && <button class="btn primary big" onClick={async () => { try { await navigator.share({ files: [await file()], title: 'Mission X at MIHAS 2026', text: 'Find the X — Booth 8H18A, MIHAS 2026.' }); } catch { /* closed the share sheet */ } }}>Share</button>}
         <a class={'btn big' + (canShare ? '' : ' primary')} href={url} download="mission-x-mihas-2026.jpg">Save to this device</a>
       </div>
       <p class="fine">Nothing is uploaded: the picture is made on your device and stays there unless you share it.</p>

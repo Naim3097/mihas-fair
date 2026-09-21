@@ -86,7 +86,9 @@ export function planStands(level: LevelData): StandInfo[] {
     const openCount: Record<Side, number> = { N: 0, E: 0, S: 0, W: 0 };
     let anyWalled = false;
     for (const c of cells) { for (const s of c.open) openCount[s]++; if (c.walled.size) anyWalled = true; }
-    const front = (['S', 'N', 'W', 'E'] as Side[]).reduce((a, s) => (openCount[s] > openCount[a] ? s : a));
+    // Lean X's booth faces the side the plan says it opens to, even as a corner booth open on two sides
+    const heroFront = g.cells.length === 1 && booths[g.cells[0]!]!.id === level.hero.id && openCount[level.hero.open as Side] > 0 ? (level.hero.open as Side) : null;
+    const front = heroFront ?? (['S', 'N', 'W', 'E'] as Side[]).reduce((a, s) => (openCount[s] > openCount[a] ? s : a));
     const kind: Archetype = !anyWalled ? 'island' : cells.length >= 3 ? 'block' : cells.length === 1 && cells[0]!.open.size >= 2 ? 'corner' : 'shell';
     const xs = cells.map((c) => c.b.x), ys = cells.map((c) => c.b.y);
     const rect = { x0: Math.min(...xs) - W / 2, y0: Math.min(...ys) - d / 2, x1: Math.max(...xs) + W / 2, y1: Math.max(...ys) + d / 2 };

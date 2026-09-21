@@ -130,7 +130,7 @@ export class DemoSim {
       if (bot.kind === 'suspect' && n % 21 === 0) await ops.speedFlag(bot.id, 'to 188,61 (demo: jumped across the hall)');
     }
 
-    // --- some visitors already made it real at 8H18B
+    // --- some visitors already made it real at 8H18A
     for (const b of roster.filter((x) => x.kind === 'onsite' && x.passport).slice(0, 7)) { const me = await game.me(b.id); if (me.ticket) await quiet(() => game.crewDock(me.ticket!.code)); }
 
     // --- now: the booth of the day, next to the X

@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import type { Booth, LevelData, StationView } from '../../shared/types';
 import { taken, type Place, type Tone } from '../game/places';
 import { BoothSet } from './booths';
+import { directory } from '../exhibitors';
 import { FAIR } from './palette';
 import { css } from '../theme';
 import { DECK_MARGIN, GLASS_H, toWorld, type FairLevel } from './level';
@@ -221,6 +222,7 @@ export class FairWorld {
   private stands(fair: FairLevel) {
     this.level.booths.forEach((b, i) => this.boothIndex.set(b.id, i));
     this.booths = new BoothSet(this.level, fair.stands, this.lean); this.scene.add(this.booths.group);
+    void directory().then((list) => this.booths?.setDirectory(list)); // Lean X's exhibitor list names the booths the plan left blank
     this.pins = new THREE.InstancedMesh(new THREE.OctahedronGeometry(0.55), this.flat(FAIR.orange), 256);
     this.pins.count = 0; this.pins.frustumCulled = false; this.scene.add(this.pins);
   }
@@ -244,7 +246,7 @@ export class FairWorld {
   /** Booths exhibitors have brought online: MIHAS orange on their fascia, and a turning marker where the exhibitor is at the counter. */
   setStations(list: StationView[]) {
     this.booths.setOnline(list.map((s) => s.id));
-    this.booths.setLogos(list.filter((s): s is StationView & { logo: string } => !!s.logo));
+    this.booths.setLogos(list);
     this.pinned = [];
     for (const s of list) { const i = this.boothIndex.get(s.id); if (i != null && s.hosted && this.pinned.length < 256) this.pinned.push(i); }
     this.pins.count = this.pinned.length;
@@ -252,7 +254,7 @@ export class FairWorld {
 
   setStamped(ids: Iterable<string>) { this.booths.setStamped(ids); }
 
-  /** Booth 8H18B, built by hand: open to the west aisle, the X turning above it. */
+  /** Booth 8H18A, built by hand: open to the west aisle, the X turning above it. */
   private theX() {
     const hero = new THREE.Group(); hero.position.copy(this.heroPos); this.scene.add(hero);
     const X = new THREE.Group(), bar = (color: number, rz: number, depth: number) => { const m = new THREE.Mesh(new THREE.BoxGeometry(1.1, 5.4, depth), this.flat(color)); m.rotation.z = rz; return m; };

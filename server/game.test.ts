@@ -47,12 +47,12 @@ test('the points and proofs under the mission: card, stamps, booth QRs, the priz
   let r = await call('GET', '/api/me');
   let me = r.json.me as Me;
   assert.match(me.callsign, /^Guest \d{7}$/);
-  assert.deepEqual(open(me), [1, 2, 3, 4]);
+  assert.deepEqual(open(me), [1, 2, 3]);
 
   // chapter 1 — arrive: choosing a door costs nothing, pays nothing, and gives a plain name
   assert.equal((await call('POST', '/api/start', { role: 'astronaut' })).json.code, 'bad_role');
   me = (await call('POST', '/api/start', { role: 'visitor' })).json.me as Me;
-  assert.equal(me.xp, 0); assert.match(me.callsign, /^Visitor \d{4}$/); assert.deepEqual(open(me), [1, 2, 3, 4], 'choosing a door is not starting the mission');
+  assert.equal(me.xp, 0); assert.match(me.callsign, /^Visitor \d{4}$/); assert.deepEqual(open(me), [1, 2, 3], 'choosing a door is not starting the mission');
 
   // walking: too far to stamp; a teleport is refused; hall and landmark points are switched off
   const hero = level.hero, target = level.booths.find((b) => b.id === '8H19')!;
@@ -72,7 +72,7 @@ test('the points and proofs under the mission: card, stamps, booth QRs, the priz
   me = r.json.me as Me;
   assert.deepEqual(r.json.events, [{ action: 'passport', xp: POINTS.card }]);
   assert.ok(me.passport && me.ticket, 'card and prize code issued');
-  assert.equal(me.callsign, 'Aisyah R.'); assert.deepEqual(open(me), [2, 3, 4], 'registered: next, the start QR at Lean X');
+  assert.equal(me.callsign, 'Aisyah R.'); assert.deepEqual(open(me), [2, 3], 'registered: next, the start QR at Lean X');
   assert.equal((await call('POST', '/api/passport', passportInput)).json.code, 'dup');
   assert.equal((await call('GET', `/p/${me.passport!.slug}`)).status, 200);
   assert.match((await call('GET', `/p/${me.passport!.slug}/vcard`)).raw, /FN:Aisyah Rahman/);
@@ -89,7 +89,7 @@ test('the points and proofs under the mission: card, stamps, booth QRs, the priz
     assert.equal((await call('POST', '/api/stamp', { stationId: b.id, proof: 'virtual' })).json.events[0].xp, POINTS.stamp);
   }
   me = (await call('GET', '/api/me')).json.me as Me;
-  assert.equal(me.xp, POINTS.card + MISSION_STAMPS * POINTS.stamp); assert.deepEqual(open(me), [2, 3, 4], 'stamps are free play, not checkpoints');
+  assert.equal(me.xp, POINTS.card + MISSION_STAMPS * POINTS.stamp); assert.deepEqual(open(me), [2, 3], 'stamps are free play, not checkpoints');
 
   // a forged booth QR is refused
   clock.advance(60_000);
@@ -131,7 +131,7 @@ test('the points and proofs under the mission: card, stamps, booth QRs, the priz
   // the board: one number, and a sub-line anyone can read
   const board = (await call('GET', '/api/boards?board=xp')).json.data as { title: string; sub: string; value: number; you?: boolean }[];
   assert.deepEqual([board[0]!.title, board[0]!.value, board[0]!.you], ['Aisyah R.', me.xp, true]);
-  assert.equal(board[0]!.sub, '7 booths · mission complete at 8H18B');
+  assert.equal(board[0]!.sub, '7 booths · mission complete at 8H18A');
   assert.match((await call('GET', '/api/crew/leads.csv', undefined, crewJar)).raw, /Aisyah Rahman/);
 
   // the switched-off systems stay off from the outside too

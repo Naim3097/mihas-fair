@@ -74,7 +74,7 @@ export function TicketDemoHint() {
   if (!demo.value) return null;
   return (
     <div class="box demobox left">
-      <strong><DemoTag /> Our crew at 8H18B</strong>
+      <strong><DemoTag /> Our crew at 8H18A</strong>
       <p class="fine">Be the crew yourself: open the <a class="link" href="/crew.html" target="_blank" rel="noopener">crew console</a> in a new tab (PIN <b class="mono">{pin}</b>), type the 6 characters above and confirm. This screen notices within a few seconds.</p>
       <button class="btn" disabled={busy} onClick={async () => { setBusy(true); try { await demoApi.dock(); await api.me(); if (me.value?.docked) modal.value = 'claimed'; } catch (e) { warn(e); } setBusy(false); }}>…or simulate the crew's scan</button>
     </div>
@@ -99,13 +99,11 @@ export function TourSheet() {
     <Sheet k="Demo · no backend connected" title="The whole game, in this browser" wide>
       <p class="lead">The real game server is running inside this browser, on a simulated show floor: {s.bots} exhibitors and visitors who keep walking and stamping. Nothing leaves this device. It survives reloads; reset it below.</p>
 
-      <h3 class="tourh">As a visitor · one mission, five chapters</h3>
+      <h3 class="tourh">As a visitor · one mission, three steps</h3>
       <ol class="tour">
-        <Row done={ch(1)} title="1 · Arrive">Walk with WASD / arrow keys, the joystick, or tap the floor. Drag to look around, scroll or pinch to zoom.</Row>
-        <Row done={ch(2)} title="2 · Find the X">Follow the trail, or tap <b>Take me there</b>. At the X, create your card — this is the lead capture.</Row>
-        <Row done={ch(3)} title="3 · Collect">Walk up to any five booths and stamp them. {near ? <><L to={find(near.id)}>Guide me to {near.name}</L>: its exhibitor is “at the counter”, so you can also try a real-booth scan there (+50){s.drop === near.id ? ' — and it is the booth of the day' : ''}.</> : null}</Row>
-        <Row done={ch(4)} title="4 · Connect"><L to={go('swap')}>Swap cards</L> with a simulated visitor — try both directions — or leave your card at a booth that is online. Then look at <L to={go('contacts')}>My contacts</L>.</Row>
-        <Row done={ch(5)} title="5 · Make it real">{m.passport && !m.docked ? <L to={go('prize')}>Open my prize code</L> : 'Your prize code comes with the card'}: claim it from the crew console, or simulate the scan. When all five are done you get the ending.</Row>
+        <Row done={ch(1)} title="1 · Find Lean X Digital">Walk with WASD / arrow keys, the joystick, or tap the floor. Follow the trail, or tap <b>Take me there</b>, to Booth 8H18A.</Row>
+        <Row done={ch(2)} title="2 · Register and start">At the booth, create your card — this is the lead capture — then scan the Lean X Digital QR (the crew console prints it under Booth QRs · 8H18A).</Row>
+        <Row done={ch(3)} title="3 · Checkpoints">Scan the QR at each exhibitor booth on your list. Every scan lands on that exhibitor's <a class="link" href="/booth.html" target="_blank" rel="noopener">dashboard</a> with your name, phone and email.{near ? <> Try <L to={find(near.id)}>{near.name}</L>: its exhibitor is “at the counter”.</> : null}</Row>
       </ol>
 
       <h3 class="tourh">The world · nothing here scores, all of it is play</h3>

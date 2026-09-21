@@ -61,8 +61,10 @@ test('register at Lean X, scan its QR to start, get checkpoints, scan them — a
   assert.equal((await ex[0]!.u.call('POST', '/api/station/logo', { stationId: '7C17', image: 'data:text/html;base64,PGI+' })).json.code, 'logo');
   assert.equal((await r.user().call('POST', '/api/station/logo', { stationId: '7C17', image: PNG })).status, 403, 'only the owner');
   assert.equal((await ex[0]!.u.call('POST', '/api/station/logo', { stationId: '7C17', image: PNG })).status, 200);
+  assert.equal((await ex[0]!.u.call('POST', '/api/station/photo', { stationId: '7C17', image: PNG })).status, 200, 'and a photo of the booth');
+  assert.equal(((await ex[0]!.u.call('GET', '/api/host/stations')).json.data as StationView[])[0]!.photo !== null, true, 'the owner sees their photo before approval');
   let list = (await r.crew.call('GET', '/api/stations')).json.data as StationView[];
-  assert.equal(list.find((s) => s.id === '7C17')!.logo, null, 'pending: no logo in the world yet');
+  assert.deepEqual([list.find((s) => s.id === '7C17')!.logo, list.find((s) => s.id === '7C17')!.photo], [null, null], 'pending: nothing in the world yet');
   for (const id of ids.slice(0, 5)) assert.equal((await r.crew.call('POST', '/api/crew/stations/status', { stationId: id, status: 'approved' })).status, 200);
   r.tick(10_000); // the station list is cached for a few seconds
   list = (await r.crew.call('GET', '/api/stations')).json.data as StationView[];
@@ -70,6 +72,9 @@ test('register at Lean X, scan its QR to start, get checkpoints, scan them — a
   assert.match(logoUrl, /^\/api\/logo\/7C17\?v=\d+$/);
   const img = await r.crew.call('GET', logoUrl);
   assert.equal(img.res.headers.get('content-type'), 'image/png');
+  const photoUrl = list.find((s) => s.id === '7C17')!.photo!;
+  assert.match(photoUrl, /^\/api\/photo\/7C17\?v=\d+$/);
+  assert.equal((await r.crew.call('GET', photoUrl)).res.headers.get('content-type'), 'image/png');
 
   // a visitor who scans before registering is sent to register; the Lean X QR needs the card too
   const v = r.user(); await v.call('POST', '/api/start', { role: 'visitor' });
@@ -88,7 +93,7 @@ test('register at Lean X, scan its QR to start, get checkpoints, scan them — a
   assert.equal(me.mission.target, CHECKPOINTS);
   assert.deepEqual(me.mission.checkpoints.map((c) => c.stationId).sort(), ids.slice(0, 5).sort(), 'five approved, so all five; the pending booth is not one');
   const facts = (m: Me) => ({ started: m.mission.started, card: !!m.passport, checkpoints: m.mission.checkpoints.filter((c) => c.done).length, target: m.mission.target, claimed: m.docked });
-  assert.deepEqual(chapters(facts(me)).filter((c) => !c.done).map((c) => c.n), [3, 4]);
+  assert.deepEqual(chapters(facts(me)).filter((c) => !c.done).map((c) => c.n), [3]);
 
   // scanning a checkpoint: the exhibitor's live QR, or their printed one
   const live = (await ex[0]!.u.call('GET', '/api/host/code?station=7C17')).json.data as { url: string };
@@ -112,7 +117,7 @@ test('register at Lean X, scan its QR to start, get checkpoints, scan them — a
   // the rest of the checkpoints, then the prize: the crew sees how far the visitor got
   for (const c of me.mission.checkpoints.filter((c) => !['7C17', '7C19'].includes(c.stationId))) { r.tick(); await v.call('POST', '/api/stamp', { stationId: c.stationId, proof: 'beacon', beacon: await r.beacon(c.stationId) }); }
   me = await v.me();
-  assert.deepEqual(chapters(facts(me)).filter((c) => !c.done).map((c) => c.n), [4], 'all checkpoints done: next, the prize');
+  assert.deepEqual(chapters(facts(me)).filter((c) => !c.done).map((c) => c.n), [], 'all checkpoints done: mission complete');
   const ticket = (await r.crew.call('GET', `/api/crew/ticket?t=${me.ticket!.code}`)).json.data;
   assert.deepEqual(ticket.checkpoints, { started: true, done: CHECKPOINTS, target: CHECKPOINTS });
 });
@@ -134,4 +139,14 @@ test('more exhibitors than checkpoints: each visitor gets five at random; fewer 
   assert.equal(m.target, CHECKPOINTS);
   assert.equal(m.checkpoints.length, CHECKPOINTS, 'topped up to five, not seven');
   assert.ok(ids.slice(0, 3).every((id) => m.checkpoints.some((c) => c.stationId === id)), 'the first ones are kept');
+});
+
+test("an exhibitor who plays the mission is never sent to their own booth", async () => {
+  const r = await rig();
+  const ex = await exhibitors(r, ['7C17', '7C19']);
+  for (const id of ['7C17', '7C19']) await r.crew.call('POST', '/api/crew/stations/status', { stationId: id, status: 'approved' });
+  const owner = ex[0]!.u;
+  await owner.call('POST', '/api/start', { role: 'visitor' });
+  await owner.call('POST', '/api/stamp', { stationId: level.hero.id, proof: 'beacon', beacon: await r.beacon(level.hero.id) });
+  assert.deepEqual((await owner.me()).mission.checkpoints.map((c) => c.stationId), ['7C19']);
 });

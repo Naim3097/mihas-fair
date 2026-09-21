@@ -2,7 +2,7 @@
 // partition on every walled side, a fascia board with the exhibitor's name over every open side, the aluminium
 // posts and rails of the shell scheme, spotlights on the fascia, an information counter with two chairs and a bin
 // in every booth; for an island a raised floor and a tower that carries the name on all four sides. Online stands
-// turn MIHAS orange on the fascia and the counter, stamped cells get a gold band. Booth 8H18B, Lean X Digital's
+// turn MIHAS orange on the fascia and the counter, stamped cells get a gold band. Booth 8H18A, Lean X Digital's
 // own, is dressed by hand from the company's booth design: the back-wall graphic, the roll-ups, the screen, the
 // counter with the logo, the A-frame at the aisle.
 import * as THREE from 'three';
@@ -134,64 +134,86 @@ export class BoothSet {
     this.hero();
   }
 
-  /** The exhibitors' names on their fascias: one packed atlas, one draw call, fading with distance. */
-  private names() {
-    const CW = 256, CH = 40, SIZE = 2048, per = Math.floor(SIZE / CW), rows = Math.floor(SIZE / CH);
-    const named = this.stands.filter((s) => s.name && s.kind !== 'island').slice(0, per * rows), islands = this.stands.filter((s) => s.name && s.kind === 'island');
-    const all = [...named, ...islands].slice(0, per * rows);
-    const canvas = document.createElement('canvas'); canvas.width = canvas.height = SIZE;
-    const g = canvas.getContext('2d')!; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = css(FAIR.ink);
-    all.forEach((s, k) => {
-      const x = (k % per) * CW, y = Math.floor(k / per) * CH;
-      let f = 26; g.font = `800 ${f}px Urbanist, Arial`;
-      while (g.measureText(s.name).width > CW - 12 && f > 12) { f -= 1; g.font = `800 ${f}px Urbanist, Arial`; }
-      g.fillText(s.name, x + CW / 2, y + CH / 2 + 1, CW - 10);
-    });
-    const tex = new THREE.CanvasTexture(canvas); tex.flipY = false; tex.anisotropy = 8; tex.generateMipmaps = true; tex.minFilter = THREE.LinearMipmapLinearFilter;
-    const geo = new THREE.PlaneGeometry(1, 1), count = named.length + islands.length * 4;
-    const uv = new Float32Array(Math.max(1, count) * 4), fade = new Float32Array(Math.max(1, count));
-    const mesh = new THREE.InstancedMesh(geo, new THREE.ShaderMaterial({
-      transparent: true, depthWrite: false, uniforms: { map: { value: tex } },
-      vertexShader: 'attribute vec4 aUv; attribute float aFade; varying vec2 vUv; varying float vA; void main(){ vUv = aUv.xy + vec2(uv.x, 1.0 - uv.y) * aUv.zw; vec4 mv = modelViewMatrix * instanceMatrix * vec4(position, 1.0); vA = 1.0 - smoothstep(aFade * 0.7, aFade, -mv.z); gl_Position = projectionMatrix * mv; }',
-      fragmentShader: 'uniform sampler2D map; varying vec2 vUv; varying float vA; void main(){ float a = texture2D(map, vUv).a * vA; if (a < 0.02) discard; gl_FragColor = vec4(0.106, 0.129, 0.188, a); }',
-    }), Math.max(1, count));
-    let n = 0;
-    const place = (k: number, x: number, y: number, h: number, face: Side, len: number) => {
-      const w = Math.min(len - 0.5, 7), hh = Math.min(FASCIA_H - 0.06, w / (CW / CH));
-      const p = toWorld(x, y, h), [dx, dy] = DIR[face];
-      M.compose(P.set(p.x + dx * 0.04, p.y, p.z - dy * 0.04), Q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), FACE_ROT[face]), S.set(hh * (CW / CH), hh, 1));
-      mesh.setMatrixAt(n, M); uv.set([((k % per) * CW) / SIZE, (Math.floor(k / per) * CH) / SIZE, CW / SIZE, CH / SIZE], n * 4); fade[n] = 30 + w * 6; n++;
-    };
-    named.forEach((s, k) => {
-      const [dx, dy] = DIR[s.front], half = s.front === 'N' || s.front === 'S' ? s.d / 2 : s.w / 2;
-      place(k, s.label.x + dx * (half + FASCIA_T / 2), s.label.y + dy * (half + FASCIA_T / 2), WALL_H - FASCIA_H / 2, s.front, s.label.len);
-    });
-    islands.forEach((s, j) => {
-      const k = named.length + j, cx = (s.rect.x0 + s.rect.x1) / 2, cy = (s.rect.y0 + s.rect.y1) / 2;
-      for (const f of ['N', 'E', 'S', 'W'] as Side[]) { const [dx, dy] = DIR[f]; place(k, cx + dx * 0.82, cy + dy * 0.82, 3.2, f, 2.1); }
-    });
-    geo.setAttribute('aUv', new THREE.InstancedBufferAttribute(uv, 4)); geo.setAttribute('aFade', new THREE.InstancedBufferAttribute(fade, 1));
-    mesh.count = n; mesh.frustumCulled = false; mesh.renderOrder = 6; this.group.add(mesh);
+  /** Every booth's name on every open side of its fascia — a stand of eight cells carries it eight times, as the
+   *  real shell scheme does. The name is, in order: the approved exhibitor's company, Lean X's exhibitor list, the
+   *  organiser's plan, or the booth number, so no fascia is blank. Drawn from packed atlases (names, and a smaller one
+   *  for booth numbers), one draw call each, fading with distance; rebuilt only when a name changes. */
+  private labelMeshes: THREE.InstancedMesh[] = [];
+  private listed = new Map<string, string>();
+  private live = new Map<string, string>();
+  private labelKey = '';
+
+  private labelOf(b: Booth): string {
+    return this.live.get(b.id) ?? this.listed.get(b.id) ?? (b.name || `Booth ${b.id}`);
   }
 
-  /** Lean X Digital's own booth, 8H18B: the company's design in its shell-scheme cell, opening to the west aisle. */
+  /** Lean X's exhibitor list: one company per booth number; a booth several companies share is a pavilion. */
+  setDirectory(list: { company: string; onPlan: string[] }[]) {
+    const who = new Map<string, string[]>();
+    for (const e of list) for (const id of e.onPlan) (who.get(id) ?? who.set(id, []).get(id)!).push(e.company);
+    this.listed.clear();
+    for (const [id, cos] of who) {
+      const plan = this.level.booths[this.cellOfId.get(id) ?? -1]?.name;
+      this.listed.set(id, cos.length === 1 ? shortCompany(cos[0]!) : plan || 'Shared pavilion');
+    }
+    this.names();
+  }
+
+  /** Approved exhibitors: the company they registered goes up on every booth they run. */
+  private setLiveNames(list: { id: string; company: string; status: string }[]) {
+    this.live = new Map(list.filter((s) => s.status === 'approved' && s.company && s.id !== this.level.hero.id).map((s) => [s.id, shortCompany(s.company)]));
+    this.names();
+  }
+
+  private names() {
+    type Label = { text: string; x: number; y: number; h: number; face: Side; len: number };
+    const labels: Label[] = [];
+    for (const st of this.stands) {
+      if (st.kind === 'island') { // the tower carries the stand's name on all four faces
+        const text = this.labelOf(st.cells[0]!.b), cx = (st.rect.x0 + st.rect.x1) / 2, cy = (st.rect.y0 + st.rect.y1) / 2;
+        for (const f of ['N', 'E', 'S', 'W'] as Side[]) { const [dx, dy] = DIR[f]; labels.push({ text, x: cx + dx * 0.82, y: cy + dy * 0.82, h: 3.2, face: f, len: 2.1 }); }
+        continue;
+      }
+      for (const c of st.cells) {
+        const text = this.labelOf(c.b);
+        for (const f of c.open) {
+          const [dx, dy] = DIR[f], across = f === 'N' || f === 'S', half = (across ? st.d : st.w) / 2;
+          labels.push({ text, x: c.b.x + dx * (half + FASCIA_T / 2), y: c.b.y + dy * (half + FASCIA_T / 2), h: WALL_H - FASCIA_H / 2, face: f, len: across ? st.w : st.d });
+        }
+      }
+    }
+    const key = labels.map((l) => l.text).join('\n');
+    if (key === this.labelKey) return;
+    this.labelKey = key;
+    for (const m of this.labelMeshes) { m.geometry.dispose(); const mat = m.material as THREE.ShaderMaterial; (mat.uniforms.map!.value as THREE.Texture).dispose(); mat.dispose(); m.removeFromParent(); }
+    this.labelMeshes = [];
+    // names get wide slots; booth numbers ("Booth 7C17") narrow ones, so every booth fits in two textures
+    const isNumber = (t: string) => /^Booth \S+$/.test(t);
+    this.labelMeshes.push(...atlasMeshes(labels.filter((l) => !isNumber(l.text)), 256, 32), ...atlasMeshes(labels.filter((l) => isNumber(l.text)), 128, 32));
+    for (const m of this.labelMeshes) this.group.add(m);
+  }
+
+
+  /** Lean X Digital's own booth, 8H18A: the company's design in its shell-scheme cell, opening to the west aisle. */
   private hero() {
     const i = this.cellOfId.get(this.level.hero.id); if (i == null) return;
     const b = this.level.booths[i]!, st = this.standOfCell.get(i); if (!st) return;
     const c = toWorld(b.x, b.y), h = st.w / 2 - WALL_T, g = new THREE.Group(); g.position.set(c.x, 0, c.z); this.group.add(g);
     const tex = (canvas: HTMLCanvasElement) => { const t = new THREE.CanvasTexture(canvas); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
     const art = (canvas: HTMLCanvasElement, w: number, hgt: number) => new THREE.Mesh(new THREE.PlaneGeometry(w, hgt), new THREE.MeshBasicMaterial({ map: tex(canvas) }));
-    // the back wall (east) carries the brand graphic; the south wall the screen and two roll-ups
+    // the back wall (east) carries the brand graphic; the side wall the screen and two roll-ups — the south wall in a
+    // booth open only to the west, the north wall in a corner booth that also opens south (8H18A). World +z is south.
     const backArt = art(heroBackWall(), 2.72, 2.2); backArt.position.set(h - 0.012, 1.24, 0); backArt.rotation.y = -Math.PI / 2; g.add(backArt);
-    const sideZ = h - 0.012;
-    const r1 = art(heroRollup(), 0.84, 2.0); r1.position.set(-0.85, 1.06, sideZ - 0.06); r1.rotation.y = Math.PI; g.add(r1);
-    const r2 = art(heroRollupDark(), 0.84, 2.0); r2.position.set(1.02, 1.06, sideZ - 0.06); r2.rotation.y = Math.PI; g.add(r2);
-    for (const x of [-0.85, 1.02]) { const base = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.05, 0.16), flat(0x2b2f36)); base.position.set(x, 0.025, sideZ - 0.1); g.add(base); }
-    const tv = new THREE.Mesh(new THREE.BoxGeometry(1.06, 0.64, 0.05), flat(0x111318)); tv.position.set(0.1, 1.5, sideZ - 0.14); g.add(tv);
+    const cell = st.cells[0]!, s = cell.walled.has('S') || !cell.walled.has('N') ? 1 : -1, face = s > 0 ? Math.PI : 0;
+    const z = (inset: number) => s * (h - 0.012 - inset);
+    const r1 = art(heroRollup(), 0.84, 2.0); r1.position.set(-0.85, 1.06, z(0.06)); r1.rotation.y = face; g.add(r1);
+    const r2 = art(heroRollupDark(), 0.84, 2.0); r2.position.set(1.02, 1.06, z(0.06)); r2.rotation.y = face; g.add(r2);
+    for (const x of [-0.85, 1.02]) { const base = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.05, 0.16), flat(0x2b2f36)); base.position.set(x, 0.025, z(0.1)); g.add(base); }
+    const tv = new THREE.Mesh(new THREE.BoxGeometry(1.06, 0.64, 0.05), flat(0x111318)); tv.position.set(0.1, 1.5, z(0.14)); g.add(tv);
     this.screen = new THREE.MeshBasicMaterial({ color: 0x0b1626 });
-    const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.58), this.screen); screen.position.set(0.1, 1.5, sideZ - 0.17); screen.rotation.y = Math.PI; g.add(screen);
-    const pole = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.2, 0.06), flat(0x2b2f36)); pole.position.set(0.1, 0.6, sideZ - 0.14); g.add(pole);
-    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.04, 0.42), flat(0x2b2f36)); foot.position.set(0.1, 0.02, sideZ - 0.3); g.add(foot);
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.58), this.screen); screen.position.set(0.1, 1.5, z(0.17)); screen.rotation.y = face; g.add(screen);
+    const pole = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.2, 0.06), flat(0x2b2f36)); pole.position.set(0.1, 0.6, z(0.14)); g.add(pole);
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.04, 0.42), flat(0x2b2f36)); foot.position.set(0.1, 0.02, z(0.3)); g.add(foot);
     // the counter at the front-left with the logo on its face (the same rectangle the body collides with), two
     // chairs behind it, two laptops on top; the A-frame by the aisle on the right
     const co = counterOf(st);
@@ -214,7 +236,7 @@ export class BoothSet {
       const board = art(heroPoster(), 0.6, 0.92); board.position.set(0, 0.55, 0.03); board.rotation.x = -0.12; frame.add(board);
       const legs = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.98, 0.04), flat(0x1e2126)); legs.position.set(0, 0.5, 0); legs.rotation.x = -0.12; frame.add(legs);
     }
-    const bin = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.13, 0.42, 14), flat(0xffffff)); bin.position.set(h - 0.3, 0.21, -h + 0.35); g.add(bin);
+    const bin = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.13, 0.42, 14), flat(0xffffff)); bin.position.set(h - 0.3, 0.21, -z(0.35)); g.add(bin);
   }
 
   /** The screen in the Lean X booth shows this (the fair's sky video, once it plays). */
@@ -242,20 +264,23 @@ export class BoothSet {
 
   /** Approved exhibitors' logos: on the face of their counter and on a sign hung over the open side of the booth,
    *  the way Lean X Digital's own booth carries its brand (an island: on all four faces of its tower). */
-  setLogos(list: { id: string; logo: string }[]) {
-    const want = new Map(list.filter((s) => s.id !== this.level.hero.id).map((s) => [s.id, s.logo]));
-    for (const [id, l] of this.logos) if (want.get(id) !== l.url) { disposeGroup(l.group); this.logos.delete(id); }
-    for (const [id, url] of want) {
+  setLogos(list: { id: string; company: string; status: string; logo: string | null; photo: string | null }[]) {
+    this.setLiveNames(list);
+    const want = new Map(list.filter((s) => s.id !== this.level.hero.id && (s.logo || s.photo)).map((s) => [s.id, s]));
+    const key = (s: { logo: string | null; photo: string | null }) => `${s.logo ?? ''}|${s.photo ?? ''}`;
+    for (const [id, l] of this.logos) { const w = want.get(id); if (!w || key(w) !== l.url) { disposeGroup(l.group); this.logos.delete(id); } }
+    for (const [id, s] of want) {
       if (this.logos.has(id)) continue;
       const i = this.cellOfId.get(id), st = i != null ? this.standOfCell.get(i) : undefined; if (!st) continue;
-      const group = new THREE.Group(); this.group.add(group); this.logos.set(id, { url, group });
-      new THREE.TextureLoader().load(url, (tex) => {
+      const group = new THREE.Group(); this.group.add(group); this.logos.set(id, { url: key(s), group });
+      const load = (url: string, dress: (art: Art) => void) => new THREE.TextureLoader().load(url, (tex) => {
         if (this.logos.get(id)?.group !== group) { tex.dispose(); return; } // replaced while loading
         tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
         const img = tex.image as { width: number; height: number }, aspect = img.width / Math.max(1, img.height);
-        const art = (maxW: number, maxH: number) => { const w = Math.min(maxW, maxH * aspect), h = w / aspect; return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.02 })); };
-        dressWithLogo(st, group, art);
-      }, undefined, () => { /* a logo that will not load leaves the booth as it was */ });
+        dress((maxW, maxH) => { const w = Math.min(maxW, maxH * aspect), h = w / aspect; return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.02 })); });
+      }, undefined, () => { /* an image that will not load leaves the booth as it was */ });
+      if (s.logo) load(s.logo, (art) => dressWithLogo(st, group, art));
+      if (s.photo) load(s.photo, (art) => dressWithPhoto(st, group, art));
     }
   }
   private logos = new Map<string, { url: string; group: THREE.Group }>();
@@ -282,13 +307,64 @@ export class BoothSet {
   }
 }
 
+/** A company as it fits on a fascia: without the legal suffix. */
+export function shortCompany(name: string): string {
+  return name.replace(/\s+c\/o\s.*$/i, '').replace(/[,.]?\s*\(M\)/gi, '').replace(/[,.]?\s+(Sdn\.?\s*Bhd\.?|Bhd\.?|Berhad|Pte\.?\s*Ltd\.?|Pvt\.?\s*Ltd\.?|Co\.,?\s*Ltd\.?|Ltd\.?|Inc\.?|PLT|LLC)$/i, '').trim() || name;
+}
+
+/** Fascia labels in packed atlases of CW×CH slots: one texture and one instanced draw per 2048² atlas. */
+function atlasMeshes(labels: { text: string; x: number; y: number; h: number; face: Side; len: number }[], CW: number, CH: number): THREE.InstancedMesh[] {
+  const SIZE = 2048, per = Math.floor(SIZE / CW), slots = per * Math.floor(SIZE / CH), texts = [...new Set(labels.map((l) => l.text))], out: THREE.InstancedMesh[] = [];
+  for (let start = 0; start < texts.length; start += slots) {
+    const chunk = texts.slice(start, start + slots), slot = new Map(chunk.map((t, k) => [t, k])), mine = labels.filter((l) => slot.has(l.text));
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = SIZE;
+    const g = canvas.getContext('2d')!; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = css(FAIR.ink);
+    chunk.forEach((t, k) => {
+      const x = (k % per) * CW, y = Math.floor(k / per) * CH;
+      let f = 22; g.font = `800 ${f}px Urbanist, Arial`;
+      while (g.measureText(t).width > CW - 10 && f > 11) { f -= 1; g.font = `800 ${f}px Urbanist, Arial`; }
+      g.fillText(t, x + CW / 2, y + CH / 2 + 1, CW - 8);
+    });
+    const tex = new THREE.CanvasTexture(canvas); tex.flipY = false; tex.anisotropy = 8; tex.generateMipmaps = true; tex.minFilter = THREE.LinearMipmapLinearFilter;
+    const geo = new THREE.PlaneGeometry(1, 1), count = Math.max(1, mine.length), uv = new Float32Array(count * 4), fade = new Float32Array(count);
+    const mesh = new THREE.InstancedMesh(geo, new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, uniforms: { map: { value: tex } },
+      vertexShader: 'attribute vec4 aUv; attribute float aFade; varying vec2 vUv; varying float vA; void main(){ vUv = aUv.xy + vec2(uv.x, 1.0 - uv.y) * aUv.zw; vec4 mv = modelViewMatrix * instanceMatrix * vec4(position, 1.0); vA = 1.0 - smoothstep(aFade * 0.7, aFade, -mv.z); gl_Position = projectionMatrix * mv; }',
+      fragmentShader: 'uniform sampler2D map; varying vec2 vUv; varying float vA; void main(){ float a = texture2D(map, vUv).a * vA; if (a < 0.02) discard; gl_FragColor = vec4(0.106, 0.129, 0.188, a); }',
+    }), count);
+    mine.forEach((l, n) => {
+      const k = slot.get(l.text)!, w = Math.min(l.len - 0.3, 7), hh = Math.min(FASCIA_H - 0.06, w / (CW / CH));
+      const p = toWorld(l.x, l.y, l.h), [dx, dy] = DIR[l.face];
+      M.compose(P.set(p.x + dx * 0.04, p.y, p.z - dy * 0.04), Q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), FACE_ROT[l.face]), S.set(hh * (CW / CH), hh, 1));
+      mesh.setMatrixAt(n, M); uv.set([((k % per) * CW) / SIZE, (Math.floor(k / per) * CH) / SIZE, CW / SIZE, CH / SIZE], n * 4); fade[n] = 24 + w * 5;
+    });
+    geo.setAttribute('aUv', new THREE.InstancedBufferAttribute(uv, 4)); geo.setAttribute('aFade', new THREE.InstancedBufferAttribute(fade, 1));
+    mesh.count = mine.length; mesh.frustumCulled = false; mesh.renderOrder = 6; out.push(mesh);
+  }
+  return out;
+}
+
 function disposeGroup(g: THREE.Group) {
   g.traverse((o) => { const m = o as THREE.Mesh; if (!m.isMesh) return; m.geometry.dispose(); const mat = m.material as THREE.MeshBasicMaterial; mat.map?.dispose(); mat.dispose(); });
   g.removeFromParent();
 }
 
+type Art = (maxW: number, maxH: number) => THREE.Mesh;
+const BACK: Record<Side, Side> = { N: 'S', S: 'N', E: 'W', W: 'E' };
+
+/** A photo of the real booth: on the back wall, facing the aisle, the way Lean X's booth carries its graphic.
+ *  An island has no back wall, so its photo goes nowhere (its logo is on the tower). */
+function dressWithPhoto(st: StandInfo, g: THREE.Group, art: Art) {
+  if (st.kind === 'island') return;
+  const f = st.front, b = BACK[f], along = f === 'N' || f === 'S';
+  const x = b === 'E' ? st.rect.x1 : b === 'W' ? st.rect.x0 : st.label.x, y = b === 'N' ? st.rect.y1 : b === 'S' ? st.rect.y0 : st.label.y;
+  const span = along ? st.rect.x1 - st.rect.x0 : st.rect.y1 - st.rect.y0, [dx, dy] = DIR[f];
+  const m = art(Math.min(span - 0.4, Math.max(1.6, st.label.len - 0.4), 3.2), 1.9), p = toWorld(x + dx * 0.07, y + dy * 0.07, 1.3);
+  m.position.set(p.x, p.y, p.z); m.rotation.y = FACE_ROT[f]; g.add(m);
+}
+
 /** Where an exhibitor's logo goes on their stand: the counter's aisle face, and a sign over the front. */
-function dressWithLogo(st: StandInfo, g: THREE.Group, art: (maxW: number, maxH: number) => THREE.Mesh) {
+function dressWithLogo(st: StandInfo, g: THREE.Group, art: Art) {
   const place = (m: THREE.Mesh, x: number, y: number, h: number, side: Side, out = 0) => {
     const [dx, dy] = DIR[side], p = toWorld(x + dx * out, y + dy * out, h); m.position.set(p.x, p.y, p.z); m.rotation.y = FACE_ROT[side]; g.add(m);
   };

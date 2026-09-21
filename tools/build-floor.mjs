@@ -13,7 +13,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const SRC = resolve(here, 'data/level2-source.json'); // vector extraction of Floor Plan V226 page 2, kept with the tools so the build is reproducible
 const OUT = resolve(here, '../public/data/floor.json');
 
-const HERO_ID = '8H18B';
+const HERO_ID = '8H18A';
 
 // Special areas measured off the cleaned plan (22.2 px/m). kind: pad = walk-around block, zone = open floor you can enter.
 const areas = [
