@@ -35,6 +35,7 @@ export class Venue {
     const usable = acc <= VENUE_MAX_ACCURACY_M, ok = usable && dist <= this.cfg.radiusM + Math.min(acc, 100);
     await this.g.db.run('INSERT INTO venue_checks (player_id, ok, dist_m, acc_m, checked_at) VALUES (?,?,?,?,?) ON CONFLICT(player_id) DO UPDATE SET ok = excluded.ok, dist_m = excluded.dist_m, acc_m = excluded.acc_m, checked_at = excluded.checked_at',
       [id, ok ? 1 : 0, dist, Math.round(acc), this.g.now()]);
+    this.onsite.delete(id);
     return { onsite: ok, distanceM: dist, reason: ok ? undefined : usable ? 'outside' : 'inaccurate' };
   }
 
@@ -48,17 +49,24 @@ export class Venue {
     return a ? { stationId: a.station_id, at: a.anchored_at } : null;
   }
 
-  /** On site = a good venue check, or an on-site scan, within the last half hour. */
+  /** On site = a good venue check, or an on-site scan, within the last half hour. Asked on every on-site ping, so the
+   *  answer is kept 20 s per instance; this instance's own check-ins and anchors refresh it at once. */
+  private onsite = new Map<string, { v: boolean; at: number }>();
   async isOnsite(id: string, t: number): Promise<boolean> {
-    if (await this.venueOk(id, t)) return true;
-    const a = await this.anchorOf(id);
-    return !!a && t - a.at <= ONSITE_TTL_MS;
+    const c = this.onsite.get(id);
+    if (c && t - c.at >= 0 && t - c.at < 20_000) return c.v;
+    let v = await this.venueOk(id, t);
+    if (!v) { const a = await this.anchorOf(id); v = !!a && t - a.at <= ONSITE_TTL_MS; }
+    if (this.onsite.size > 50_000) this.onsite.clear();
+    this.onsite.set(id, { v, at: t });
+    return v;
   }
 
   /** An on-site proof at a station: remember it and place the player there for everyone else. */
   async anchor(id: string, stationId: string, t: number): Promise<void> {
     const s = this.g.stations.get(stationId); if (!s) return;
     await this.g.db.run('INSERT INTO anchors (player_id, station_id, anchored_at) VALUES (?,?,?) ON CONFLICT(player_id) DO UPDATE SET station_id = excluded.station_id, anchored_at = excluded.anchored_at', [id, stationId, t]);
+    this.onsite.set(id, { v: true, at: t });
     await this.g.presence.anchor(await this.g.hologramOf(id, { x: s.x, y: s.y, h: 0, deck: true, sigma: 1 }), t);
   }
 

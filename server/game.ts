@@ -98,8 +98,13 @@ export class Game {
     throw new GameError('callsign', 'Could not start a new player', 500);
   }
 
+  /** Asked on every request (the session cookie's player). Players are never deleted, so a yes is kept per instance. */
+  private known = new Set<string>();
   async exists(id: string): Promise<boolean> {
-    return !!(await this.db.get('SELECT 1 AS x FROM players WHERE id = ?', [id]));
+    if (this.known.has(id)) return true;
+    const yes = !!(await this.db.get('SELECT 1 AS x FROM players WHERE id = ?', [id]));
+    if (yes) { if (this.known.size > 50_000) this.known.clear(); this.known.add(id); }
+    return yes;
   }
 
   async player(id: string): Promise<PlayerRow> {
@@ -181,6 +186,7 @@ export class Game {
 
   /** "I'm visiting" / "I'm exhibiting". Free to change; it decides the colour you wear and which journey you are shown. */
   async start(id: string, role: string): Promise<void> {
+    this.forgetShown(id);
     if (!ROLES.includes(role as Role)) throw new GameError('bad_role', 'Choose visitor or exhibitor');
     const p = await this.player(id);
     await this.db.run('UPDATE players SET cls = ?, last_seen = ? WHERE id = ?', [role, this.now(), id]);
@@ -208,8 +214,12 @@ export class Game {
   private levelAt(y: number): number { return this.level.decks.find((d) => y >= d.y0 - 15 && y <= d.y1 + 15)?.level ?? 0; }
 
   /** What other players are told about this one. */
+  /** Name and class as others see them, cached briefly per instance: every ping needs them, they rarely change. */
+  private shown = new Map<string, { callsign: string; cls: string | null; at: number }>();
+  forgetShown(id: string) { this.shown.delete(id); }
   async hologramOf(id: string, at: { x: number; y: number; h: number; deck: boolean; sigma: number; pose?: Hologram['pose'] }): Promise<Hologram> {
-    const p = await this.player(id);
+    let p = this.shown.get(id);
+    if (!p || this.now() - p.at > 30_000) { const r = await this.player(id); p = { callsign: r.callsign, cls: r.cls, at: this.now() }; if (this.shown.size > 50_000) this.shown.clear(); this.shown.set(id, p); }
     let av = this.avatarCode.get(id);
     if (!av || this.now() - av.at > 30_000) { av = { code: encodeAvatar(await this.avatarOf(id, p.cls)), at: this.now() }; this.avatarCode.set(id, av); }
     return { id, callsign: p.callsign, cls: p.cls as Role | null, av: av.code, ...at };
@@ -225,7 +235,7 @@ export class Game {
     const t = this.now();
     const deck = pos.deck === true && ((await this.hooks.isOnsite?.(id, t)) ?? false);
     // on deck, changing level (stairs, escalator, a lift) moves the player across plan space: that is arriving, not speeding
-    if (deck && !isSpawn) { const prev = await this.presence.position(id, t); if (prev) { const a = this.levelAt(prev.y), b = this.levelAt(pos.y); if (a && b && a !== b) isSpawn = true; } }
+    if (deck && !isSpawn) { const prev = await this.presence.position(id, t); if (prev) { const a = this.levelAt(prev.y), b = this.levelAt(pos.y); if (a && b && a !== b) isSpawn = true; } } // served from presence's per-instance cache
     const sigma = deck && Number.isFinite(pos.sigma) ? Math.min(50, Math.max(1, pos.sigma!)) : 0;
     const pose = (POSES as readonly string[]).includes(pos.pose ?? '') ? pos.pose : '';
     const moved = await this.presence.update(await this.hologramOf(id, { x: pos.x, y: pos.y, h: pos.h, deck, sigma, pose }), t, isSpawn);
@@ -398,6 +408,7 @@ export class Game {
   /* ---------------- passport + golden ticket ---------------- */
 
   async issuePassport(id: string, input: PassportInput): Promise<XpEvent[]> {
+    this.forgetShown(id);
     const name = cleanText(input.name, 80), company = cleanText(input.company, 100), role = cleanText(input.role, 80);
     const email = cleanText(input.email, 120).toLowerCase(), phone = cleanText(input.phone, 24).replace(/[^\d+]/g, '');
     if (name.length < 2) throw new GameError('name', 'Please enter your name');

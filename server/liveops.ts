@@ -21,7 +21,7 @@ export class LiveOps {
 
   async flags(): Promise<Record<FlagKey, boolean>> {
     const t = this.g.now();
-    if (this.flagCache && t - this.flagCache.at < 5000) return this.flagCache.v;
+    if (this.flagCache && t - this.flagCache.at < 30_000 && t >= this.flagCache.at) return this.flagCache.v;
     const rows = await this.g.db.all<{ key: string; value: string }>("SELECT key, value FROM settings WHERE key LIKE 'flag:%'");
     const v = Object.fromEntries(FLAG_KEYS.map((k) => [k, true])) as Record<FlagKey, boolean>;
     for (const r of rows) { const k = r.key.slice(5) as FlagKey; if (k in v) v[k] = r.value !== '0'; }
@@ -48,10 +48,17 @@ export class LiveOps {
     this.lastSpeedFlag.set(id, t);
     await this.g.db.run('INSERT INTO flags (player_id, kind, detail, created_at) VALUES (?,?,?,?)', [id, 'speed', detail, t]);
   }
-  async steps(id: string, steps: number, metres: number): Promise<void> {
-    if (!(steps > 0 || metres > 0)) return;
-    const day = dayStart(this.g.now());
-    await this.g.db.run('INSERT INTO step_stats (player_id, day, steps, metres) VALUES (?,?,?,?) ON CONFLICT(player_id, day) DO UPDATE SET steps = step_stats.steps + excluded.steps, metres = step_stats.metres + excluded.metres', [id, day, Math.min(60, Math.max(0, Math.round(steps))), metres]);
+  /** Walking on deck, per player, not yet written: flushed every 25 m or a minute, not on every ping. */
+  private stepBuf = new Map<string, { steps: number; metres: number; since: number }>();
+  async steps(id: string, stepsIn: number, metresIn: number): Promise<void> {
+    if (!(stepsIn > 0 || metresIn > 0)) return;
+    const t = this.g.now(), b = this.stepBuf.get(id) ?? { steps: 0, metres: 0, since: t };
+    b.steps += Math.max(0, stepsIn || 0); b.metres += Math.max(0, metresIn || 0);
+    if (b.metres < 25 && t - b.since < 60_000) { this.stepBuf.set(id, b); return; }
+    this.stepBuf.delete(id);
+    const steps = b.steps, metres = b.metres;
+    const day = dayStart(t);
+    await this.g.db.run('INSERT INTO step_stats (player_id, day, steps, metres) VALUES (?,?,?,?) ON CONFLICT(player_id, day) DO UPDATE SET steps = step_stats.steps + excluded.steps, metres = step_stats.metres + excluded.metres', [id, day, Math.min(600, Math.max(0, Math.round(steps))), metres]);
   }
 
   /* ---------------- trust (Systems doc §9) ---------------- */

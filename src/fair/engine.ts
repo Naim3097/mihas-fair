@@ -38,7 +38,9 @@ export function pickQuality(): Quality {
   return /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) || mem <= 4 ? 'low' : 'high';
 }
 
-const PING_MS = 2000, TRAIL_STEP = 1.5, TRAIL_MAX = 220, BOOTH_LABELS = 6, BOOTH_LABEL_RANGE = 12, ARRIVAL_FRESH_MS = 10 * 60_000;
+/** Players at MIHAS meet each other, so their position goes out every 2 s. A player from elsewhere is seen by nobody:
+ *  every 12 s keeps them in the "here now" count (15 s window) at a sixth of the load; a stamp still sends its own. */
+const PING_MS = 2000, REMOTE_PING_MS = 12_000, TRAIL_STEP = 1.5, TRAIL_MAX = 220, BOOTH_LABELS = 6, BOOTH_LABEL_RANGE = 12, ARRIVAL_FRESH_MS = 10 * 60_000;
 const CAM = { dist: 4.6, min: 2.4, max: 12, pitch: 0.3 };
 const EMOTE = { wave: { clip: 'wave', ms: 2600 }, cheer: { clip: 'victory', ms: 2600 }, dance: { clip: 'dance', ms: 5200 } } as const;
 
@@ -535,7 +537,7 @@ export class FairEngine implements EngineApi {
   /* ---------------- other people ---------------- */
 
   private sync(now: number) {
-    if (now - this.pingAt < PING_MS || document.hidden) return; this.pingAt = now;
+    if (now - this.pingAt < (following() ? PING_MS : REMOTE_PING_MS) || document.hidden) return; this.pingAt = now;
     const spawn = this.firstPing; this.firstPing = false;
     const pos = this.position, p = this.sim.player;
     const pose = this.pose || (!p.body.grounded && !this.seat ? 'jump' : '');

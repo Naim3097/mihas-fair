@@ -3,6 +3,8 @@ import { DECK_MAX_SPEED_MPS, MAX_SPEED_MPS } from '../shared/rules.js';
 import type { Db } from './db/types.js';
 
 export const FRESH_MS = 15_000;
+/** How long a position this instance saw itself stands in for a database read (a ping every 2 s, or 12 s off site). */
+const LAST_FRESH_MS = 13_000;
 type Dot = { x: number; y: number; cls: Hologram['cls']; deck: boolean };
 
 /** Who is where, right now. Two implementations: memory (one Node process) and database (serverless). */
@@ -79,7 +81,16 @@ const NOT_HIDDEN = 'player_id NOT IN (SELECT player_id FROM player_flags WHERE h
  */
 export class DbPresence implements Presence {
   private count = { at: -1e9, n: 0 };
+  /** The last position this instance accepted per player. A player's pings mostly land on the same warm instance, so the
+   *  speed check needs no read; older than LAST_FRESH_MS (or unknown) and the database is asked. */
+  private last = new Map<string, { x: number; y: number; deck: number; sigma: number; t: number }>();
   constructor(private db: Db) {}
+  private remember(id: string, r: { x: number; y: number; deck: number; sigma: number; t: number }) { if (this.last.size > 50_000) this.last.clear(); this.last.set(id, r); }
+  private async prev(id: string, now: number) {
+    const l = this.last.get(id);
+    if (l && now - l.t <= LAST_FRESH_MS) return l;
+    return this.db.get<Row>('SELECT x, y, deck, sigma, t FROM presence WHERE player_id = ?', [id]);
+  }
 
   private upsert(p: Hologram, now: number) {
     return this.db.run(
@@ -89,17 +100,20 @@ export class DbPresence implements Presence {
       [p.id, p.callsign, p.cls, p.pose ?? '', p.av, p.x, p.y, p.h, p.deck ? 1 : 0, p.sigma, now]);
   }
   async update(p: Hologram, now: number, isSpawn: boolean) {
-    const prev = await this.db.get<Row>('SELECT x, y, deck, sigma, t FROM presence WHERE player_id = ?', [p.id]);
+    const prev = await this.prev(p.id, now);
     let moved = 0;
     if (prev && !isSpawn && now - prev.t < 30_000) {
       const r = tooFast({ x: prev.x, y: prev.y, deck: prev.deck === 1, sigma: prev.sigma, t: prev.t }, p, now); moved = r.moved;
-      if (r.refuse) { await this.db.run('UPDATE presence SET t = ? WHERE player_id = ?', [now, p.id]); return null; }
+      if (r.refuse) { await this.db.run('UPDATE presence SET t = ? WHERE player_id = ?', [now, p.id]); this.remember(p.id, { ...prev, t: now }); return null; }
     }
     await this.upsert(p, now);
+    this.remember(p.id, { x: p.x, y: p.y, deck: p.deck ? 1 : 0, sigma: p.sigma, t: now });
     return moved;
   }
-  async anchor(p: Hologram, now: number) { await this.upsert({ ...p, deck: true, sigma: 1 }, now); }
+  async anchor(p: Hologram, now: number) { await this.upsert({ ...p, deck: true, sigma: 1 }, now); this.remember(p.id, { x: p.x, y: p.y, deck: 1, sigma: 1, t: now }); }
   async position(id: string, now: number) {
+    const l = this.last.get(id);
+    if (l && now - l.t <= LAST_FRESH_MS) return { x: l.x, y: l.y };
     const e = await this.db.get<Row>('SELECT x, y FROM presence WHERE player_id = ? AND t >= ?', [id, now - FRESH_MS]);
     return e ? { x: e.x, y: e.y } : null;
   }
