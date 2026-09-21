@@ -31,7 +31,7 @@ npm run live       # prints http://<your LAN address>:8787/
 ## Deploy
 
 Vercel, as `vercel.json` describes: `api/index.ts` is the API, `public/data/floor.json` ships with it. Set the
-variables in `.env.example` (a Turso database, `MX_SECRET`, `CREW_PIN`); with none of them set the site runs in
+variables in `.env.example` (`DATABASE_URL` for the Supabase Postgres database, `MX_SECRET`, `CREW_PIN`); with none of them set the site runs in
 demo mode, the whole game in the visitor's browser.
 
 ## Where things are

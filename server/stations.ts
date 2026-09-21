@@ -121,7 +121,7 @@ export class Stations {
     await this.owned(id, stationId);
     const rows = await this.g.db.all<{ fields: string; created_at: number; callsign: string; name: string; company: string; role: string; phone: string; email: string; verified: number }>(
       `SELECT cs.fields, cs.created_at, pl.callsign, p.name, p.company, p.role, p.phone, p.email,
-              EXISTS(SELECT 1 FROM verified_contacts v WHERE v.player_id = cs.from_player AND v.station_id = cs.to_station) AS verified
+              CASE WHEN EXISTS(SELECT 1 FROM verified_contacts v WHERE v.player_id = cs.from_player AND v.station_id = cs.to_station) THEN 1 ELSE 0 END AS verified
        FROM card_shares cs JOIN players pl ON pl.id = cs.from_player JOIN passports p ON p.player_id = cs.from_player
        WHERE cs.to_station = ? AND cs.revoked_at IS NULL ORDER BY cs.created_at DESC LIMIT 5000`, [stationId]);
     return rows.map((r) => {

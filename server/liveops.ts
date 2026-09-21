@@ -48,7 +48,7 @@ export class LiveOps {
   async steps(id: string, steps: number, metres: number): Promise<void> {
     if (!(steps > 0 || metres > 0)) return;
     const day = dayStart(this.g.now());
-    await this.g.db.run('INSERT INTO step_stats (player_id, day, steps, metres) VALUES (?,?,?,?) ON CONFLICT(player_id, day) DO UPDATE SET steps = steps + excluded.steps, metres = metres + excluded.metres', [id, day, Math.min(60, Math.max(0, Math.round(steps))), metres]);
+    await this.g.db.run('INSERT INTO step_stats (player_id, day, steps, metres) VALUES (?,?,?,?) ON CONFLICT(player_id, day) DO UPDATE SET steps = step_stats.steps + excluded.steps, metres = step_stats.metres + excluded.metres', [id, day, Math.min(60, Math.max(0, Math.round(steps))), metres]);
   }
 
   /* ---------------- trust (Systems doc §9) ---------------- */
@@ -104,7 +104,7 @@ export class LiveOps {
       xp: 'SELECT id, xp AS v FROM players WHERE xp > 0 AND id NOT IN (SELECT player_id FROM bans) ORDER BY xp DESC, created_at LIMIT 25',
       today: `SELECT player_id AS id, SUM(xp) AS v FROM xp_ledger WHERE voided = 0 AND created_at >= ${d0} AND player_id NOT IN (SELECT player_id FROM bans) GROUP BY player_id ORDER BY v DESC LIMIT 25`,
       explorer: `SELECT player_id AS id, COUNT(*) AS v FROM stamps WHERE created_at >= ${d0} AND player_id NOT IN (SELECT player_id FROM bans) GROUP BY player_id ORDER BY v DESC, MAX(created_at) LIMIT 25`,
-      connector: `SELECT id, COUNT(*) AS v FROM (SELECT a_id AS id, created_at FROM links UNION ALL SELECT b_id, created_at FROM links) WHERE created_at >= ${d0} AND id NOT IN (SELECT player_id FROM bans) GROUP BY id ORDER BY v DESC LIMIT 25`,
+      connector: `SELECT id, COUNT(*) AS v FROM (SELECT a_id AS id, created_at FROM links UNION ALL SELECT b_id, created_at FROM links) AS ends WHERE created_at >= ${d0} AND id NOT IN (SELECT player_id FROM bans) GROUP BY id ORDER BY v DESC LIMIT 25`,
     };
     const unit = { xp: 'points', today: 'points today', explorer: 'stamps today', connector: 'swaps today' }[kind];
     const out: BoardRow[] = [];
@@ -143,7 +143,7 @@ export class LiveOps {
     if ((row.voided === 1) === voided) return;
     await this.g.db.batch([
       ['UPDATE xp_ledger SET voided = ? WHERE id = ?', [voided ? 1 : 0, ledgerId]],
-      ['UPDATE players SET xp = MAX(0, xp + ?) WHERE id = ?', [voided ? -row.xp : row.xp, row.player_id]],
+      ['UPDATE players SET xp = CASE WHEN xp + ? < 0 THEN 0 ELSE xp + ? END WHERE id = ?', [voided ? -row.xp : row.xp, voided ? -row.xp : row.xp, row.player_id]],
     ]);
     this.boardCache.clear();
   }

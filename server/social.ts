@@ -93,7 +93,7 @@ export class Social {
          WHERE l.a_id = ? OR l.b_id = ? ORDER BY l.created_at DESC`, [id, id, id, id]),
       this.g.db.all<{ sid: string; at: number; company: string; offer: string; link: string; status: string; verified: number }>(
         `SELECT cs.to_station AS sid, cs.created_at AS at, s.company, s.offer, s.link, s.status,
-                EXISTS(SELECT 1 FROM verified_contacts v WHERE v.player_id = cs.from_player AND v.station_id = cs.to_station) AS verified
+                CASE WHEN EXISTS(SELECT 1 FROM verified_contacts v WHERE v.player_id = cs.from_player AND v.station_id = cs.to_station) THEN 1 ELSE 0 END AS verified
          FROM card_shares cs JOIN stations s ON s.station_id = cs.to_station
          WHERE cs.from_player = ? AND cs.to_station IS NOT NULL AND cs.revoked_at IS NULL ORDER BY cs.created_at DESC`, [id]),
       this.g.db.all<{ contact_key: string; note: string }>('SELECT contact_key, note FROM contact_notes WHERE owner_id = ?', [id]),

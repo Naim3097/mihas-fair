@@ -1,14 +1,12 @@
-// Serverless entry (Vercel). No disk, no shared memory: the database is Turso/libSQL over HTTP and presence lives in it.
+// Serverless entry (Vercel). No disk, no shared memory: the database is Supabase Postgres and presence lives in it.
 // Built once per warm instance; every misconfiguration turns into a readable JSON error instead of a blank 500.
-import { createClient } from '@libsql/client/web';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Hono } from 'hono';
 import { createApp } from './app.js';
 import { buildServices } from './wire.js';
 import { DbPresence } from './presence.js';
-import { openLibsql, type LibsqlLike } from './db/libsql.js';
-import { SCHEMA } from './db/schema.js';
+import { openPostgres } from './db/postgres.js';
 import { VENUE_DEFAULT } from '../shared/rules.js';
 import type { LevelData } from '../shared/types.js';
 
@@ -24,15 +22,15 @@ function publicOrigin(): string {
   return `https://${host}`;
 }
 
-const REQUIRED = ['TURSO_DATABASE_URL', 'TURSO_AUTH_TOKEN', 'MX_SECRET', 'CREW_PIN'];
+const REQUIRED = ['DATABASE_URL', 'MX_SECRET', 'CREW_PIN'];
 
 async function init(): Promise<Hono<never>> {
   const missing = REQUIRED.filter((k) => !env(k));
   if (missing.length) throw new ConfigError(`Missing environment variable${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}. Add them in Vercel → Project → Settings → Environment Variables, then redeploy.`);
   if (env('MX_SECRET')!.length < 24) throw new ConfigError('MX_SECRET must be at least 24 random characters');
 
-  const db = openLibsql(createClient({ url: env('TURSO_DATABASE_URL')!, authToken: env('TURSO_AUTH_TOKEN')! }) as unknown as LibsqlLike);
-  if (env('MX_SKIP_MIGRATE') !== '1') await db.migrate(SCHEMA); // idempotent; one round trip per cold start
+  const db = openPostgres(env('DATABASE_URL')!);
+  if (env('MX_SKIP_MIGRATE') !== '1') await db.migrate(); // idempotent; one round trip per cold start
   const level = JSON.parse(readFileSync(join(process.cwd(), 'public/data/floor.json'), 'utf8')) as LevelData;
   const origin = publicOrigin();
   const services = buildServices({

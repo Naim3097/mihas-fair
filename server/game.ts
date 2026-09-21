@@ -242,7 +242,7 @@ export class Game {
       halls.add(hall);
       if (await this.db.get('SELECT 1 AS x FROM halls_seen WHERE player_id = ? AND hall = ?', [id, hall])) return this.discoverLandmarks(id, x, y, t, presence, events, stmts);
       const xp = Math.round(EXPLORE_XP.hall_first * mult);
-      stmts.push(['INSERT OR IGNORE INTO halls_seen (player_id, hall, created_at) VALUES (?,?,?)', [id, hall, t]], ...this.award(id, 'hall_first', xp, String(hall), { presence }, t));
+      stmts.push(['INSERT INTO halls_seen (player_id, hall, created_at) VALUES (?,?,?) ON CONFLICT DO NOTHING', [id, hall, t]], ...this.award(id, 'hall_first', xp, String(hall), { presence }, t));
       events.push({ action: 'hall_first', xp, target: `Hall ${hall}` });
     }
 
@@ -263,7 +263,7 @@ export class Game {
       marks.add(`${day}:${a.id}`);
       if (await this.db.get('SELECT 1 AS x FROM landmarks_seen WHERE player_id = ? AND area_id = ? AND day = ?', [id, a.id, day])) continue;
       const xp = Math.max(1, Math.round(EXPLORE_XP.landmark * mult));
-      stmts.push(['INSERT OR IGNORE INTO landmarks_seen (player_id, area_id, day, created_at) VALUES (?,?,?,?)', [id, a.id, day, t]], ...this.award(id, 'landmark', xp, a.id, { presence }, t));
+      stmts.push(['INSERT INTO landmarks_seen (player_id, area_id, day, created_at) VALUES (?,?,?,?) ON CONFLICT DO NOTHING', [id, a.id, day, t]], ...this.award(id, 'landmark', xp, a.id, { presence }, t));
       events.push({ action: 'landmark', xp, target: a.name });
     }
     if (stmts.length) await this.db.batch(stmts);

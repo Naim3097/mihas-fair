@@ -4,7 +4,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "regions": [
-    "sin1"
+    "hnd1"
   ],
   "functions": {
     "api/index.ts": {

@@ -201,7 +201,7 @@ export class Director {
     const hit = this.g.level.booths.find((b) => !live.has(b.id) && !seen.has(b.id) && b.id !== this.g.level.hero.id && Math.hypot(b.x - o.x, b.y - o.y) <= 4);
     if (!hit) return [];
     pr.seen = [...seen, hit.id]; pr.onsite &&= o.deck;
-    await this.g.db.run('INSERT OR IGNORE INTO dark_visits (station_id, player_id, created_at) VALUES (?,?,?)', [hit.id, o.id, o.t]);
+    await this.g.db.run('INSERT INTO dark_visits (station_id, player_id, created_at) VALUES (?,?,?) ON CONFLICT DO NOTHING', [hit.id, o.id, o.t]);
     const ev = await this.advance(r, pr, pr.seen.length >= (pr.need ?? 3), cls, hit.hall, o.t);
     return ev.length ? ev : [{ action: 'mission_step', xp: 0, target: `Dark station ${hit.id} logged · ${pr.seen.length} / ${pr.need}` }];
   }

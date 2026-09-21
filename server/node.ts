@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { createApp } from './app.js';
 import { buildServices } from './wire.js';
 import { openNodeDb } from './db/sqlite-node.js';
+import { openPostgres } from './db/postgres.js';
 import { SCHEMA } from './db/schema.js';
 import { VENUE_DEFAULT } from '../shared/rules.js';
 import type { LevelData } from '../shared/types.js';
@@ -22,7 +23,10 @@ if (prod && (!process.env.MX_SECRET || !process.env.CREW_PIN)) throw new Error('
 if (!prod) console.warn(`[mission-x] dev mode — default secret, crew PIN ${crewPin}`);
 
 const level = JSON.parse(readFileSync(resolve(root, 'public/data/floor.json'), 'utf8')) as LevelData;
-const db = openNodeDb(process.env.DB_FILE ?? resolve(root, 'data/mission-x.db'), SCHEMA);
+// DATABASE_URL → Postgres (e.g. the Supabase project); otherwise a local SQLite file.
+const pg = process.env.DATABASE_URL ? openPostgres(process.env.DATABASE_URL) : null;
+if (pg) await pg.migrate();
+const db = pg ?? openNodeDb(process.env.DB_FILE ?? resolve(root, 'data/mission-x.db'), SCHEMA);
 const env = (k: string, d: number) => (Number.isFinite(Number(process.env[k])) && process.env[k] ? Number(process.env[k]) : d);
 const venue = { lat: env('VENUE_LAT', VENUE_DEFAULT.lat), lon: env('VENUE_LON', VENUE_DEFAULT.lon), radiusM: env('VENUE_RADIUS_M', VENUE_DEFAULT.radiusM) };
 const app = createApp({ ...buildServices({ db, secret, level, publicOrigin: PUBLIC_ORIGIN, venue }), crewPin, publicOrigin: PUBLIC_ORIGIN, secureCookies: prod });
@@ -32,4 +36,4 @@ if (existsSync(resolve(root, 'dist/index.html'))) {
   app.use('/*', serveStatic({ root: './dist' }));
 }
 
-serve({ fetch: app.fetch, port: PORT }, (i) => console.log(`[mission-x] api on http://localhost:${i.port} · ${level.booths.length} stations · origin ${PUBLIC_ORIGIN}`));
+serve({ fetch: app.fetch, port: PORT }, (i) => console.log(`[mission-x] api on http://localhost:${i.port} · ${level.booths.length} stations · ${pg ? 'postgres' : 'sqlite'} · origin ${PUBLIC_ORIGIN}`));
