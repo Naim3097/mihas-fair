@@ -20,8 +20,7 @@ const near = (a: number, b: number, tol: number, what: string) => assert.ok(Math
 
 /** file → [triangles min, max], size x y z (m), the anchor (bottom: origin under it; centre: centred on the origin), KB cap */
 const KITS: Record<string, { tris: [number, number]; size: [number, number, number]; anchor: 'bottom' | 'centre'; kb: number }> = {
-  'skate.glb': { tris: [3000, 8000], size: [0.17, 0.33, 0.32], anchor: 'bottom', kb: 500 }, // the whole skate, for a stand
-  'skate-frame.glb': { tris: [1500, 6000], size: [0.14, 0.16, 0.32], anchor: 'bottom', kb: 500 }, // its frame and wheels, worn
+  'skate.glb': { tris: [3000, 8000], size: [0.17, 0.33, 0.32], anchor: 'bottom', kb: 500 }, // the whole skate; worn as its frame, cut at load (src/fair/clip.ts)
   'jetpack.glb': { tris: [4000, 10000], size: [0.37, 0.42, 0.235], anchor: 'centre', kb: 650 },
 };
 
@@ -47,10 +46,17 @@ test('the kits are matte with their lights kept: one material, the paint at 1024
   }
 });
 
-test('the skate frame is the whole skate with its boot cut away: same footprint, same paint, a fraction of the height', async () => {
-  const whole = await read('skate.glb'), frame = await read('skate-frame.glb');
-  near(frame.size[2]!, whole.size[2]!, 0.005, 'the same length'); near(frame.min[1]!, whole.min[1]!, 0.001, 'the same floor');
-  assert.ok(frame.size[1]! < 0.55 * whole.size[1]!, 'the boot is gone'); assert.ok(frame.tris < whole.tris, 'fewer triangles');
+test('the skate cut at the sole (0.14 m) keeps its frame and wheels: the lowest 14 cm hold the whole footprint and over half the triangles', async () => {
+  const doc = await io.read(resolve(root, 'public/fair/skate.glb')), prim = doc.getRoot().listMeshes()[0]!.listPrimitives()[0]!;
+  const pos = prim.getAttribute('POSITION')!, idx = prim.getIndices()!, v = [0, 0, 0];
+  let kept = 0, total = 0, zMin = Infinity, zMax = -Infinity;
+  for (let t = 0; t < idx.getCount(); t += 3) {
+    total++; let low = Infinity;
+    for (let c = 0; c < 3; c++) { pos.getElement(idx.getScalar(t + c), v); low = Math.min(low, v[1]!); if (v[1]! <= 0.14) { zMin = Math.min(zMin, v[2]!); zMax = Math.max(zMax, v[2]!); } }
+    if (low <= 0.14) kept++;
+  }
+  assert.ok(kept > total / 2 && kept < total, `${kept} of ${total} triangles under the line`);
+  near(zMax - zMin, 0.32, 0.02, 'the frame is as long as the skate');
 });
 
 test('the rig the kits hang on: the feet and the chest joint rest unrotated, unscaled, where the attachment offsets expect them', async () => {

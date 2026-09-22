@@ -6,7 +6,7 @@ import type { BoothTeamPeek, PassportInput } from '../../shared/types';
 import { afterCard, boothAction, referral, teamInvite, atLaunchPad, bootError, bootNote, distToGoal, goalVia, guideOn, guideTarget, herePlace, journey, level, me, modal, moveHint, nearLift, nearStation, offline, online, panelStation, phase, routing, seated, stampedSet, stationMap, toast, toasts, world } from '../state';
 import { BoardsSheet, PlaygroundHud } from './playground';
 import { GEAR } from '../playground/gear';
-import { pgFuel, pgGear, pgUnlocks } from '../playground/state';
+import { pgControls, pgFuel, pgGear, pgUnlocks } from '../playground/state';
 import { facts } from '../game/facts';
 import { MapSheet, PhotoSheet } from './world-sheets';
 import { DemoChip, TourSheet } from '../demo/Tour';
@@ -23,7 +23,7 @@ export function App({ engine }: Eng) {
       {phase.value === 'boot' && <Splash text={bootNote.value} />}
       {phase.value === 'error' && <Splash text={bootError.value} error />}
       {phase.value === 'start' && <Start engine={engine} />}
-      {phase.value === 'play' && (world.value === 'playground' ? <PlaygroundHud /> : <Hud engine={engine} />)}
+      {phase.value === 'play' && (world.value === 'playground' && pgControls.value ? <PlaygroundHud /> : <Hud engine={engine} />)}
       {m === 'card' && <CardForm />}
       {(m === 'claimed' || m === 'complete') && <Finish />}
       {m === 'rules' && <Rules />}

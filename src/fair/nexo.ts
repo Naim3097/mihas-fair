@@ -9,6 +9,7 @@ import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.j
 import type { AnimKey } from '../../content';
 import { AnimSet, loadLibrary, retarget, type Library } from '../ceritera/game/anim';
 import type { AnimState } from '../ceritera/game/entities';
+import { clipAbove } from './clip';
 
 export const NEXO_URL = '/fair/nexo.glb';
 /** The same body at a quarter of the triangles and smaller textures: other people, on the phone tier. */
@@ -25,6 +26,11 @@ const NATURAL: Partial<Record<AnimKey, number>> = { stroll: 1.05, jog: 3.0, walk
 /** The source rig's hip height, m: a body's stride scales with its own. */
 const SOURCE_HIPS = 0.96;
 const X_AXIS = new THREE.Vector3(1, 0, 0), Z_AXIS = new THREE.Vector3(0, 0, 1);
+/** The meshopt decode off the main thread: the body and the clip library both carry it. */
+(MeshoptDecoder as { useWorkers?: (n: number) => void }).useWorkers?.(1);
+/** What every body cut from one file shares: its rest bounds, its skinned meshes' culling spheres and the library
+ *  retargeted onto its skeleton, all measured on the first body so the next ones cost no skinned pass. */
+const SHARED = new Map<GLTF, { box: THREE.Box3; spheres: THREE.Sphere[]; clips: Map<AnimKey, THREE.AnimationClip> | null }>();
 
 const models = new Map<string, Promise<GLTF | null>>();
 function loadModel(url: string): Promise<GLTF | null> {
@@ -35,28 +41,30 @@ function loadModel(url: string): Promise<GLTF | null> {
 export const loadNexo = (): Promise<GLTF | null> => loadModel(NEXO_URL);
 
 /** The kits, built like the body (Tripo H3.1 from the reference sheets, tools/rig/export-item.mjs): a left skate with its
- *  origin under the wheels and its toe along +z, worn as its frame alone (tools/rig/clip-item.mjs: the boot part sits
- *  inside Nexo's own boot and is never seen), and the jetpack centred on its origin, its straps toward +z. */
+ *  origin under the wheels and its toe along +z, and the jetpack centred on its origin, its straps toward +z. */
 export type Kit = 'boots' | 'skates' | 'jetpack';
-const KIT_URL = { skates: '/fair/skate-frame.glb', jetpack: '/fair/jetpack.glb' } as const;
-const KIT_SHOW_URL = { skates: '/fair/skate.glb', jetpack: '/fair/jetpack.glb' } as const;
+const KIT_URL = { skates: '/fair/skate.glb', jetpack: '/fair/jetpack.glb' } as const;
 const kits = new Map<string, Promise<THREE.Object3D | null>>();
 /** A kit's model, loaded once and made matte like the suit with its lights kept; every body that wears it, and every
- *  stand that shows it, gets a clone. show: the whole item, for a stand; otherwise the part that is worn. */
+ *  stand that shows it, gets a clone. show: the whole item, for a stand; otherwise the part that is worn, which for the
+ *  skate is its frame and wheels alone, cut from the same file at the sole (the boot part sits inside Nexo's own boot
+ *  and is never seen; the cut shares the file's vertex buffers and paint). */
 export function loadKit(kit: 'skates' | 'jetpack', show = false): Promise<THREE.Object3D | null> {
-  const url = (show ? KIT_SHOW_URL : KIT_URL)[kit];
-  let p = kits.get(url);
+  const key = kit + (show ? ':show' : ':worn');
+  let p = kits.get(key);
   if (!p) {
-    p = loadModel(url).then((g) => {
+    p = loadModel(KIT_URL[kit]).then((g) => {
       if (!g) return null;
-      g.scene.traverse((o) => {
+      const scene = g.scene.clone(); // a tree of its own over the file's geometry and material
+      scene.traverse((o) => {
         const m = o as THREE.Mesh; if (!m.isMesh) return;
-        m.castShadow = true; m.receiveShadow = false;
+        m.receiveShadow = false;
+        if (kit === 'skates' && !show) m.geometry = clipAbove(m.geometry, SKATE.cut);
         for (const mat of Array.isArray(m.material) ? m.material : [m.material]) { const s = mat as THREE.MeshStandardMaterial; if (s.isMeshStandardMaterial) { s.metalness = 0; s.roughness = Math.max(0.55, s.roughness); s.envMapIntensity = 0; } }
       });
-      return g.scene;
+      return scene;
     });
-    kits.set(url, p);
+    kits.set(key, p);
   }
   return p;
 }
@@ -64,7 +72,7 @@ export function loadKit(kit: 'skates' | 'jetpack', show = false): Promise<THREE.
  *  frame is the body's, moved to the joint). The skate frame: its top under the sole, the body riding up by the frame's
  *  height, centred under the boot, which is longer than the frame. The jetpack: over the suit's own pack (its back at
  *  z −0.38), a hair embedded so no gap opens when the chest breathes; the flames under its two tanks. */
-const SKATE = { scale: 1.3, ankle: 0.17, forward: 0.05, lift: 0.117 }, JET = { scale: 1.35, up: 0.1, back: -0.48, nozzle: 0.13, flameY: -0.2 };
+const SKATE = { scale: 1.3, ankle: 0.17, forward: 0.05, lift: 0.117, cut: 0.14 }, JET = { scale: 1.35, up: 0.1, back: -0.48, nozzle: 0.13, flameY: -0.2 };
 const FLAME_GEO = new THREE.ConeGeometry(0.045, 0.24, 12, 1, true).rotateX(Math.PI).translate(0, -0.12, 0);
 const FLAME_MAT = new THREE.MeshBasicMaterial({ color: 0x9be9ff, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
 export const loadNexoLod = (): Promise<GLTF | null> => loadModel(NEXO_LOD_URL);
@@ -134,7 +142,7 @@ export class NexoActor {
   private glide = 0; private speed = 0; private lean = 0; private leanWant = 0;
   /** The kit worn: skate frames on the feet, or the jetpack on the back with its flames; on skates the body rides up by the frames. */
   private worn: Kit = 'boots'; private attachments: THREE.Object3D[] = []; private jetpack: THREE.Object3D | null = null; private flames: THREE.Mesh[] = [];
-  private wearLift = 0; private thrust = 0; private flameK = 0;
+  private wearLift = 0; private thrust = 0; private flameK = 0; private shadows = true;
   private model: THREE.Object3D | null = null; private modelY = 0;
   /** Airborne on a jetpack: the jump clip's apex held, the body tilted by the engine's lean. */
   private flight = false;
@@ -142,7 +150,9 @@ export class NexoActor {
   private look = { yaw: 0, pitch: 0 };
   private attentionWeight = 1;
   private breath = Math.random() * 6.28;
-  private tmpQ = new THREE.Quaternion(); private tmpV = new THREE.Vector3(); private tmpV2 = new THREE.Vector3(); private tmpE = new THREE.Euler();
+  private tmpQ = new THREE.Quaternion(); private tmpV = new THREE.Vector3(); private tmpV2 = new THREE.Vector3(); private tmpE = new THREE.Euler(); private tmpM = new THREE.Matrix4();
+  /** The sim's state mapped onto the fair's clips, one object rewritten each frame. */
+  private out: AnimState = { key: 'idle', loop: true, fit: 0, from: 0, serial: 0, rate: 1 };
   /** A loop state of our own for bodies the sim does not own (other people). */
   private state: AnimState = { key: 'idle', loop: true, fit: 0, from: 0, serial: 0, rate: 1 };
 
@@ -151,15 +161,16 @@ export class NexoActor {
     this.tint.set(ROLE_TINT[role]);
     if (gltf) {
       const model = cloneSkeleton(gltf.scene);
-      const size = restBox(model).getSize(new THREE.Vector3());
-      model.scale.setScalar(NEXO_HEIGHT / Math.max(size.y, 1e-3));
-      const box = restBox(model), c = box.getCenter(new THREE.Vector3());
-      model.position.set(-c.x, -box.min.y, -c.z);
+      let shared = SHARED.get(gltf); if (!shared) { shared = { box: restBox(model), spheres: [], clips: null }; SHARED.set(gltf, shared); }
+      const S = shared, box = S.box, k = NEXO_HEIGHT / Math.max(box.max.y - box.min.y, 1e-3); // the rest box scales with the body
+      model.scale.setScalar(k);
+      model.position.set(-k * (box.min.x + box.max.x) / 2, -k * box.min.y, -k * (box.min.z + box.max.z) / 2);
+      let skinned = 0;
       model.traverse((o) => {
         const m = o as THREE.Mesh;
         if (!m.isMesh) return;
         // culled by a sphere with room for the arms and a dance: a body behind the camera costs nothing
-        const sk = m as THREE.SkinnedMesh; if (sk.isSkinnedMesh) { sk.computeBoundingSphere(); if (sk.boundingSphere) sk.boundingSphere.radius *= 1.7; }
+        const sk = m as THREE.SkinnedMesh; if (sk.isSkinnedMesh) { let sp = S.spheres[skinned]; if (!sp) { sk.computeBoundingSphere(); sp = (sk.boundingSphere ?? new THREE.Sphere()).clone(); sp.radius *= 1.7; S.spheres[skinned] = sp; } sk.boundingSphere = sp.clone(); skinned++; }
         m.frustumCulled = true; m.castShadow = true; m.receiveShadow = receive; this.meshes.push(m);
         const src = Array.isArray(m.material) ? m.material : [m.material];
         const cloned = src.map((mat) => {
@@ -174,8 +185,8 @@ export class NexoActor {
         });
         m.material = Array.isArray(m.material) ? cloned : cloned[0]!;
       });
-      const clips = lib ? retarget(lib, model) : new Map<AnimKey, THREE.AnimationClip>();
-      if (gltf.animations[0]) clips.set('idle', gltf.animations[0]);
+      let clips = S.clips; // clips name their bones, so one retargeting serves every body cut from the file
+      if (!clips) { clips = lib ? retarget(lib, model) : new Map<AnimKey, THREE.AnimationClip>(); if (gltf.animations[0]) clips.set('idle', gltf.animations[0]); if (lib) S.clips = clips; }
       let hips: THREE.Object3D | null = null;
       const B = this.bones, want: Record<string, keyof typeof B> = { Head: 'head', Spine01: 'spine', LeftUpLeg: 'lUp', LeftLeg: 'lLow', LeftFoot: 'lFoot', RightUpLeg: 'rUp', RightLeg: 'rLow', RightFoot: 'rFoot' };
       model.traverse((o) => { if (o.name === 'Hips') hips = o; const k = want[o.name]; if (k) B[k] = o; });
@@ -206,6 +217,7 @@ export class NexoActor {
     void loadKit(kit).then((g) => { if (!g || this.worn !== kit || !this.model) return; this.dress(kit, g); });
   }
   private dress(kit: Kit, g: THREE.Object3D): void {
+    this.undress(); // two loads racing (a kit taken off and put back before it arrived) never stack
     const { lFoot, rFoot, spine } = this.bones;
     if (kit === 'skates' && lFoot && rFoot) {
       for (const [bone, right] of [[lFoot, false], [rFoot, true]] as const) {
@@ -218,6 +230,7 @@ export class NexoActor {
       j.position.set(0, JET.up / ws, JET.back / ws); j.scale.setScalar(k); spine.add(j); this.attachments.push(j); this.jetpack = j;
       for (const x of [-JET.nozzle, JET.nozzle]) { const f = new THREE.Mesh(FLAME_GEO, FLAME_MAT); f.position.set(x, JET.flameY, 0); f.scale.set(1, 0.001, 1); f.visible = false; j.add(f); this.flames.push(f); }
     }
+    for (const a of this.attachments) a.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && m.material !== FLAME_MAT) m.castShadow = this.shadows; }); // the kit throws a shadow on the tiers the body does
   }
   private undress(): void { for (const a of this.attachments) a.removeFromParent(); this.attachments = []; this.flames = []; this.jetpack = null; this.wearLift = 0; this.flameK = 0; }
   /** How hard the jetpack fires, 0..1: the flames under its tanks follow, eased and flickering. */
@@ -230,21 +243,20 @@ export class NexoActor {
   back(out: THREE.Vector3): boolean {
     if (this.jetpack) { this.jetpack.updateWorldMatrix(true, false); out.set(0, JET.flameY - 0.03, 0).applyMatrix4(this.jetpack.matrixWorld); return true; }
     const { spine } = this.bones; if (!spine) return false;
-    spine.updateWorldMatrix(true, false); spine.getWorldPosition(out);
+    spine.getWorldPosition(out); // brings the chain up to date itself
     const yaw = this.root.rotation.y; out.x -= Math.sin(yaw) * 0.28; out.z -= Math.cos(yaw) * 0.28; return true;
   }
   /** Where the ankles are in the world, for a trail. False without a rigged body. */
   feet(out: [THREE.Vector3, THREE.Vector3]): boolean {
-    if (this.worn === 'skates' && this.attachments.length === 2) { for (let k = 0; k < 2; k++) { const a = this.attachments[k]!; a.updateWorldMatrix(true, false); a.getWorldPosition(out[k]!); } return true; } // the wheels
+    if (this.worn === 'skates' && this.attachments.length === 2) { for (let k = 0; k < 2; k++) this.attachments[k]!.getWorldPosition(out[k]!); return true; } // the wheels
     const { lFoot, rFoot } = this.bones; if (!lFoot || !rFoot) return false;
-    lFoot.updateWorldMatrix(true, false); rFoot.updateWorldMatrix(true, false);
     lFoot.getWorldPosition(out[0]); rFoot.getWorldPosition(out[1]); return true;
   }
 
   /** The soft blob under the feet stands in for a shadow when the sun throws none. */
   setBlob(on: boolean): void { this.blob.visible = on; }
   /** Far bodies do not throw shadows: the map's texels are better spent on what is near. */
-  setCastShadow(on: boolean): void { for (const m of this.meshes) m.castShadow = on; }
+  setCastShadow(on: boolean): void { this.shadows = on; for (const m of this.meshes) m.castShadow = on; for (const a of this.attachments) a.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && m.material !== FLAME_MAT) m.castShadow = on; }); }
 
   setRole(role: NexoRole): void {
     this.tint.set(ROLE_TINT[role]);
@@ -254,14 +266,15 @@ export class NexoActor {
   /** The sim's state in the fair's clips: a stroll for walking, a jog for running and sprinting, a calm idle; loops
    * play at the rate that carries this body's feet at the given speed. Crossing from run to sprint keeps the jog going. */
   private mapped(anim: AnimState, speed: number): AnimState {
-    if (this.flight) { this.lastKey = null; return { key: 'jump', loop: true, fit: 0, from: FLIGHT_FROM, serial: FLIGHT_SERIAL, rate: 0 }; }
+    const o = this.out;
+    if (this.flight) { this.lastKey = null; o.key = 'jump'; o.loop = true; o.fit = 0; o.from = FLIGHT_FROM; o.serial = FLIGHT_SERIAL; o.rate = 0; return o; }
     let key = FAIR_KEYS[anim.key] ?? anim.key;
     if (this.loco === 'skate' && (key === 'stroll' || key === 'jog')) key = 'idle-calm'; // the glide is a pose, not a clip
     let serial = anim.serial;
     if (anim.loop && key === this.lastKey) serial = this.lastSerial; else { this.lastKey = anim.loop ? key : null; this.lastSerial = anim.serial; }
     const natural = NATURAL[key];
-    const rate = anim.loop && natural ? Math.max(0.5, speed / (natural * this.stride)) : anim.rate;
-    return { ...anim, key, serial, rate };
+    o.key = key; o.loop = anim.loop; o.fit = anim.fit; o.from = anim.from; o.serial = serial; o.rate = anim.loop && natural ? Math.max(0.5, speed / (natural * this.stride)) : anim.rate;
+    return o;
   }
 
   /** Drive the body from the sim's own animation state (the player); speed is the body's ground speed in m/s. */
@@ -281,7 +294,7 @@ export class NexoActor {
     if (hips) hips.quaternion.multiply(this.tmpQ.setFromAxisAngle(Z_AXIS, Math.sin(this.breath * 0.47) * 0.018 * w));
     let wantYaw = 0, wantPitch = 0;
     if (this.lookTarget && head) {
-      const t = this.root.worldToLocal(this.tmpV.copy(this.lookTarget)), h = this.root.worldToLocal(head.getWorldPosition(this.tmpV2));
+      const inv = this.tmpM.copy(this.root.matrixWorld).invert(), t = this.tmpV.copy(this.lookTarget).applyMatrix4(inv), h = head.getWorldPosition(this.tmpV2).applyMatrix4(inv); // one inversion for both
       const dx = t.x - h.x, dy = t.y - h.y, dz = t.z - h.z, yaw = Math.atan2(dx, dz);
       if (Math.abs(yaw) < 1.05) { wantYaw = yaw; wantPitch = THREE.MathUtils.clamp(Math.atan2(dy, Math.hypot(dx, dz)), -0.4, 0.4); }
     }
@@ -326,7 +339,8 @@ export class NexoActor {
   dispose(): void {
     this.undress(); this.worn = 'boots'; // the kits' meshes are shared: they leave before the body's own are thrown away
     this.anims?.dispose();
-    this.root.traverse((o) => { const m = o as THREE.Mesh; if (!m.isMesh) return; m.geometry?.dispose(); for (const mat of Array.isArray(m.material) ? m.material : [m.material]) mat.dispose(); });
+    // the model's geometry belongs to the file and every other body cut from it; the materials are this body's own
+    this.root.traverse((o) => { const m = o as THREE.Mesh; if (!m.isMesh) return; if (!this.model || !this.meshes.includes(m)) m.geometry?.dispose(); for (const mat of Array.isArray(m.material) ? m.material : [m.material]) mat.dispose(); });
     this.root.removeFromParent();
   }
 }

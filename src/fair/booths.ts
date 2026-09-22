@@ -151,8 +151,12 @@ export class BoothSet {
   }
 
   /** Registered booths (the list leaves out revoked ones): the company goes up the moment the exhibitor registers. */
+  private liveKey = '';
   private setLiveNames(list: { id: string; company: string }[]) {
-    this.live = new Map(list.filter((s) => s.company && s.id !== this.level.hero.id).map((s) => [s.id, shortCompany(s.company)]));
+    const live = new Map(list.filter((s) => s.company && s.id !== this.level.hero.id).map((s) => [s.id, shortCompany(s.company)]));
+    const key = [...live].map(([id, n]) => id + '=' + n).sort().join('|');
+    if (key === this.liveKey) return; // the same names as the last poll: the atlases stand
+    this.liveKey = key; this.live = live;
     this.names();
   }
 

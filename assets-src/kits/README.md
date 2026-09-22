@@ -9,11 +9,10 @@ fair's own light, then a web export in the fair's matte look with the cyan light
 
 | file | what | triangles | size (m, x·y·z) | anchor | KB |
 |---|---|---|---|---|---|
-| `skate.glb` | the whole left skate, shown over its Playground stand | 7,000 | 0.17 · 0.33 · 0.32 | bottom (under the wheels), toe +z | 383 |
-| `skate-frame.glb` | its frame and wheels, worn: the boot part sits inside Nexo's own boot and is never seen | 4,100 | 0.14 · 0.16 · 0.32 | bottom | 366 |
+| `skate.glb` | the whole left skate, shown over its Playground stand; worn as its frame and wheels alone, cut at the sole (y 0.14) when it loads (`src/fair/clip.ts`: a new index over the same vertex buffers and paint), because the boot part sits inside Nexo's own boot and is never seen | 7,000 (4,100 worn) | 0.17 · 0.33 · 0.32 | bottom (under the wheels), toe +z | 383 |
 | `jetpack.glb` | the jetpack, worn and shown | 8,996 | 0.37 · 0.42 · 0.24 | centre, straps toward +z (the MIHAS face away from the wearer) | 525 |
 
-All three: one material, 1024² WebP colour, an emissive map of the cyan texels (wheel rings, strips, thrusters),
+Both: one material, 1024² WebP colour, an emissive map of the cyan texels (wheel rings, strips, thrusters),
 metalness 0, roughness 0.6, no normal or metal-rough maps, meshopt. `src/fair/kit-models.test.ts` holds these
 numbers, and checks the rig they hang on (the foot and chest joints resting unrotated, the ankle 17 cm up).
 
@@ -51,7 +50,6 @@ numbers, and checks the rig they hang on (the foot and chest joints resting unro
    ```
    node tools/rig/export-item.mjs skate-tripo.glb public/fair/skate.glb --yaw -90 --fit 0.33 --fit-axis y --anchor bottom --tris 7000 --tex 1024 --glow
    node tools/rig/export-item.mjs jetpack-tripo.glb public/fair/jetpack.glb --yaw 90 --fit 0.42 --fit-axis y --anchor center --tris 9000 --tex 1024 --glow
-   node tools/rig/clip-item.mjs public/fair/skate.glb public/fair/skate-frame.glb --above 0.14
    ```
 
    Tripo's meshes face +x, so the yaw turns them to +z (the skate's toe, the jetpack's straps). Check in the viewer
@@ -64,7 +62,7 @@ numbers, and checks the rig they hang on (the foot and chest joints resting unro
 Measured off the rig, not by eye (`node tools/rig/inspect-rig.mjs public/fair/nexo.glb` prints the joints and the
 silhouette in 5 cm bands). The rig's joints rest unrotated, so a joint's frame is the body's own, moved to the joint.
 
-- **Skates**: a frame clone under each foot joint (the right one the left mirrored), scale 1.3, its top under the sole,
+- **Skates**: the frame (the skate cut at the sole as it loads) under each foot joint (the right one the left mirrored), scale 1.3, its top under the sole,
   centred 5 cm forward under a boot that is 50 cm long and 34 cm wide; the body rides up by the frame's 11.7 cm.
   The trail ribbons start at the wheels (`feet()`).
 - **Jetpack**: a clone on the chest joint (Spine01, 68 cm up), scale 1.35, 48 cm behind and 10 cm above it: over the

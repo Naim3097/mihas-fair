@@ -295,7 +295,7 @@ export function MenuSheet() {
         <button onClick={go('contacts')}><strong>My contacts</strong><small>{m.links} people · {m.shared.length} booths</small></button>
         {world.value === 'playground'
           ? <button class="wide" onClick={() => { pgControls.value?.leave(); world.value = 'fair'; modal.value = null; }}><strong>Back to the fair</strong><small>A run under way ends here</small></button>
-          : <button onClick={() => { world.value = 'playground'; modal.value = null; }}><strong>Playground</strong><small>Jump for stars, earn the gear · beside the X</small></button>}
+          : <button onClick={() => { world.value = 'playground'; modal.value = null; }}><strong>Playground</strong><small>Jump for stars, earn the kits · beside the X</small></button>}
         {world.value === 'playground' && <button onClick={go('pgboards')}><strong>Boards</strong><small>Today's best runs, and all-time</small></button>}
         {world.value !== 'playground' && <button onClick={go('map')}><strong>Map</strong><small>Halls 6–8 · search · places to go</small></button>}
         <button onClick={go('rules')}><strong>How to play</strong><small>The mission and the points, on one page</small></button>

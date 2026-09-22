@@ -100,6 +100,8 @@ export class FairEngine implements EngineApi, Scene {
   private kit: Gear = 'boots'; private kits: PlaygroundStore | null = null;
   private ribbons: [Ribbon, Ribbon]; private exhaust: Ribbon; private feet: [THREE.Vector3, THREE.Vector3] = [new THREE.Vector3(), new THREE.Vector3()];
   private lastYaw = 0; private thrustOn = false; private fuelAt = 0; private tmpV = new THREE.Vector3();
+  /** The booths' state changed while another world had the stage: taken on resume, not rebuilt behind a run. */
+  private behind = false;
   private stops: (() => void)[] = [];
 
   constructor(private stage: Stage, private level: LevelData, private quality: Quality) {
@@ -146,8 +148,8 @@ export class FairEngine implements EngineApi, Scene {
     this.myLabel = Object.assign(document.createElement('div'), { className: 'lbl holo me' }); host.appendChild(this.myLabel);
     this.tip = Object.assign(document.createElement('div'), { className: 'lbl booth tip' }); host.appendChild(this.tip);
 
-    this.stops.push(effect(() => this.world.setStamped(stampedSet.value)));
-    this.stops.push(effect(() => this.world.setStations(stations.value)));
+    this.stops.push(effect(() => { const v = stampedSet.value; if (this.stage.scene && this.stage.scene !== this) this.behind = true; else this.world.setStamped(v); }));
+    this.stops.push(effect(() => { const v = stations.value; if (this.stage.scene && this.stage.scene !== this) this.behind = true; else this.world.setStations(v); }));
     this.stops.push(effect(() => { void guideTarget.value; this.trailAt = 0; }));
     this.stops.push(effect(() => { const a = me.value?.anchor; if (a && this.started && a.at > this.arrivalSeen) this.arriveAt(a.stationId, a.at); }));
     this.stops.push(effect(() => { const role = this.role(); void me.value; this.player?.setRole(role); }));
@@ -164,7 +166,7 @@ export class FairEngine implements EngineApi, Scene {
   }
 
   /** The stage is back with the fair: say where we are at once, look around afresh. */
-  resume() { this.pingAt = 0; this.proxAt = 0; this.hover(null); this.orbitAt = 0; }
+  resume() { this.pingAt = 0; this.proxAt = 0; this.hover(null); this.orbitAt = 0; if (this.behind) { this.behind = false; this.world.setStamped(stampedSet.value); this.world.setStations(stations.value); } }
 
   /* ---------------- the kits: the Playground's gear, worn here ---------------- */
 
@@ -173,7 +175,7 @@ export class FairEngine implements EngineApi, Scene {
   useKits(store: PlaygroundStore) {
     this.kits = store; this.setKit(store.get().gear);
     for (const g of store.get().unlocks) if (g !== 'boots') void loadKit(g); // a kit owned is a kit ready to wear
-    this.stops.push(store.onChange(() => { const s = store.get(); if (!s.unlocks.includes(this.kit)) this.setKit('boots'); else if (s.gear !== this.kit) this.setKit(s.gear); }));
+    this.stops.push(store.onChange(() => { const s = store.get(); if (!s.unlocks.includes(this.kit)) { this.setKit('boots'); store.choose('boots'); if (this.stage.scene === this) toast('Back on Boots', 'That kit is not yours yet', 'info'); } else if (s.gear !== this.kit) this.setKit(s.gear); }));
   }
   /** The next kit owned, from the chip in the dock. */
   nextKit() { const s = this.kits?.get(); if (!s || s.unlocks.length < 2) return; const g = nextKit(s.unlocks, this.kit); this.kits!.choose(g); this.setKit(g); api.track('kit', { gear: g }); }

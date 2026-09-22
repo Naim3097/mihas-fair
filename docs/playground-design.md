@@ -484,7 +484,7 @@ kept on the server (`POST /api/playground/gear`, only what is owned). `docs/phon
 the body was (Tripo H3.1 multiview from the reference sheets, the pick judged in the turnaround viewer, a matte web
 export with the cyan lights on an emissive map; `assets-src/kits/README.md` has the jobs, the commands and the
 numbers). `NexoActor.wear(kit)` in `src/fair/nexo.ts` hangs them on the rig by measurement: a skate *frame* (the
-whole skate cut at the sole with `tools/rig/clip-item.mjs`, because a mascot boot 50 cm long cannot fit inside a
+whole skate cut at the sole as it loads, `src/fair/clip.ts`, because a mascot boot 50 cm long cannot fit inside a
 skate boot) under each foot joint, scale 1.3, the body lifted by the frame's height, the trail ribbons now starting
 at the wheels; the jetpack on the chest joint over the suit's own pack, scale 1.35, with two additive cone flames
 under its tanks that follow the thrust (eased, flickering) and the exhaust trail starting at its bottom. Both
@@ -494,6 +494,15 @@ of one loaded scene and leave the body before `dispose()`. `src/fair/kit-models.
 sizes, anchors, materials and the rig's rest pose; `tools/rig/inspect-rig.mjs` prints what the offsets were
 measured from. The turnaround viewer moved into the repo (`tools/rig/viewer/`, launch config "viewer").
 `docs/phone-test.md` gains row 24.
+
+**The sweep (23 Sep).** `docs/audit-2026-09-23.md`: two code reads (the journey across both worlds; frame time on
+a phone) and the build played at phone size. Fixed in the same pass: the Playground's card arriving over the fair
+before its engine, Back throwing a run away, a summary nobody saw on leaving, two kits stacking on the body, a
+button held through a run's end keeping the thrust on, the world resetting behind the summary sheet, the Jump
+label and hint on the Jetpack, the silent step back to Boots, the boards' error copy, every body retargeting the
+whole clip library and disposing the file's shared geometry, meshopt on the main thread, the stand models fetched
+on entry, the second skate file, kits in the shadow map on every tier, the label atlases rebuilt on every station
+poll. What waits for a decision or a later pass is listed at the end of the audit.
 
 **Fix, 23 Sep, after Phase 5.** The keyboard did nothing in either world since Phase 0: the shared input's key
 handler asked the sink it was built with (the stage's idle one) whether keys were allowed, while the pointer handlers

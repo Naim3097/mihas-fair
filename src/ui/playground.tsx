@@ -43,13 +43,13 @@ export function PlaygroundHud() {
         )}
       </div>
 
-      {pgHint.value && mode !== 'summary' && <p class="hint pghint" role="status">{FINE_POINTER ? <>Walk with <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>, jump with <kbd>Space</kbd>: once more in the air for the long gaps.</> : 'Drag the lower left to walk. Tap anywhere, or the button, to jump: once more in the air for the long gaps.'}</p>}
+      {pgHint.value && mode !== 'summary' && <p class="hint pghint" role="status">{pgGear.value === 'jetpack' ? (FINE_POINTER ? <>Walk with <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>, hold <kbd>Space</kbd> to climb and let go to drop.</> : 'Drag the lower left to walk. Hold the button to climb, let go to drop.') : FINE_POINTER ? <>Walk with <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>, jump with <kbd>Space</kbd>: once more in the air for the long gaps.</> : 'Drag the lower left to walk. Tap anywhere, or the button, to jump: once more in the air for the long gaps.'}</p>}
 
       <div class="dock pgdock">
         {pgNearPortal.value && mode !== 'run' && <button class="chip act" onClick={() => { c?.leave(); world.value = 'fair'; }}>Back to the fair ›</button>}
         <button aria-label="Menu" data-tip="Menu" onClick={() => (modal.value = 'menu')}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg></button>
       </div>
-      {mode !== 'summary' && <button class="jumpbtn" aria-label="Jump" onPointerDown={(e) => { e.preventDefault(); c?.jump(); c?.hold(true); }} onPointerUp={() => c?.hold(false)} onPointerCancel={() => c?.hold(false)} onPointerLeave={() => c?.hold(false)}>Jump{FINE_POINTER && <kbd>Space</kbd>}</button>}
+      {mode !== 'summary' && <button class="jumpbtn" aria-label={pgGear.value === 'jetpack' ? 'Fly (hold)' : 'Jump'} onPointerDown={(e) => { e.preventDefault(); c?.jump(); c?.hold(true); }} onPointerUp={() => c?.hold(false)} onPointerCancel={() => c?.hold(false)} onPointerLeave={() => c?.hold(false)}>{pgGear.value === 'jetpack' ? 'Fly' : 'Jump'}{FINE_POINTER && <kbd>Space</kbd>}</button>}
 
       {pgFade.value && <div class="pgfade" aria-hidden="true" />}
       {mode === 'summary' && pgSummary.value && <Summary />}
@@ -72,7 +72,7 @@ function Summary() {
       {pgStore.value?.local && <p class="fine">Saved on this phone.</p>}
       {next ? (
         <div class="box"><strong>{GEAR[next].name} at {GEAR[next].price} stars</strong><p class="fine">{toNext === 0 ? 'Yours to take: step on the stand.' : `${toNext} more. You have ${s.balance}.`}</p><div class="dots"><i class="on" style={{ flex: `${Math.min(s.balance, GEAR[next].price)} 0 0` }} /><i style={{ flex: `${toNext} 0 0` }} /></div></div>
-      ) : <p class="fine">Every gear is yours. Chase the best run.</p>}
+      ) : <p class="fine">Every kit is yours. Chase the best run.</p>}
       <div class="stack">
         <button class="btn primary big" onClick={() => c?.again()}>Again</button>
         <div class="row2"><button class="btn big" onClick={() => (modal.value = 'pgboards')}>Boards</button><button class="btn big" onClick={() => { c?.leave(); world.value = 'fair'; }}>Back to the fair</button></div>
@@ -84,13 +84,13 @@ function Summary() {
 /** Today's best runs and all-time: ten lines, best first, the viewer's own marked. On this device until the backend
  *  keeps them, and the sheet says so. */
 export function BoardsSheet() {
-  const [range, setRange] = useState<BoardRange>('today'), [rows, setRows] = useState<BoardRow[] | null>(null);
+  const [range, setRange] = useState<BoardRange>('today'), [rows, setRows] = useState<BoardRow[] | 'error' | null>(null);
   const store = pgStore.value, name = me.value?.callsign ?? 'You';
-  useEffect(() => { let on = true; setRows(null); void store?.boards(range, name).then((r) => { if (on) setRows(r); }).catch(() => { if (on) setRows([]); }); return () => { on = false; }; }, [range, store, name]);
+  useEffect(() => { let on = true; setRows(null); void store?.boards(range, name).then((r) => { if (on) setRows(r); }).catch(() => { if (on) setRows('error'); }); return () => { on = false; }; }, [range, store, name]);
   return (
     <Sheet k="Playground" title="Boards">
       <div class="pgtabs" role="tablist"><button role="tab" aria-selected={range === 'today'} class={range === 'today' ? 'on' : ''} onClick={() => setRange('today')}>Today</button><button role="tab" aria-selected={range === 'all'} class={range === 'all' ? 'on' : ''} onClick={() => setRange('all')}>All-time</button></div>
-      {rows === null ? <p class="fine">Loading…</p> : rows.length === 0 ? <p class="fine">No finished run {range === 'today' ? 'today' : 'yet'}. Through the gate, and you are on the board.</p> : (
+      {rows === null ? <p class="fine">Loading…</p> : rows === 'error' ? <p class="fine">The boards did not answer. Try again in a moment.</p> : rows.length === 0 ? <p class="fine">No finished run {range === 'today' ? 'today' : 'yet'}. Through the gate, and you are on the board.</p> : (
         <ol class="board">{rows.map((r) => <li key={r.rank} class={r.you && !store?.local ? 'you' : ''}><span class="rank">{r.rank}</span><span class="who">{r.name}<small>{GEAR[r.gear].name}{r.best ? ' · your best' : ''}</small></span><strong>{r.score.toLocaleString()}</strong></li>)}</ol>
       )}
       {store?.local && <p class="fine">Saved on this phone for now: the fair's board takes these once the backend is connected.</p>}

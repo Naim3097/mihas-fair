@@ -53,7 +53,7 @@ export class PlaygroundEngine implements Scene {
   private gear: Gear = 'boots';
   private acc = 0; private near: number[] = new Array(64).fill(0);
   private prev = v3(); private section: Section | null = null;
-  private orbitAt = 0; private returnAt = 0; private padOn: string | null = null; private standOn: string | null = null;
+  private orbitAt = 0; private padOn: string | null = null; private standOn: string | null = null;
   private labelEls: { el: HTMLDivElement; pos: THREE.Vector3; gear?: Gear }[] = [];
   private floats: Float[] = [];
   private lv = new THREE.Vector3();
@@ -87,8 +87,8 @@ export class PlaygroundEngine implements Scene {
     window.addEventListener('pointerdown', wake, { capture: true }); window.addEventListener('keydown', wake, { capture: true });
     this.stops.push(() => { window.removeEventListener('pointerdown', wake, { capture: true }); window.removeEventListener('keydown', wake, { capture: true }); });
     void Promise.all([loadNexo(), loadNexoLibrary()]).then(([g, lib]) => { if (this.disposed) return; this.gltf = g; this.lib = lib; this.actor?.dispose(); this.actor = this.makeActor(); });
-    this.actor = this.makeActor();
-    const s = this.store.get(); this.gear = s.gear; this.publishStore(); pgStore.value = this.store; this.markOwned();
+    const s = this.store.get(); this.gear = s.gear; // the gear before the body, so the first body wears it
+    this.actor = this.makeActor(); this.publishStore(); pgStore.value = this.store; this.markOwned();
     pgControls.value = { jump: () => this.jump(), hold: (on) => this.stage.input.hold(on), again: () => this.again(), leave: () => this.leaveRequested() };
     // the server's word on the balance and the gear, whenever it comes: republish, and step off a gear no longer owned
     this.stops.push(this.store.onChange(() => { this.publishStore(); this.markOwned(); if (!this.store.get().unlocks.includes(this.gear)) this.setGear('boots'); }));
@@ -115,14 +115,14 @@ export class PlaygroundEngine implements Scene {
     this.toPad(); pgMode.value = 'pad'; pgSummary.value = null;
     if (this.store.get().runs === 0) pgHint.value = true;
   }
-  /** Leaving from the menu or Back: a run under way ends as if the air had run out. */
-  leaveRequested() { if (this.run && !this.run.ended) { this.run.leave(); this.finish(); } }
+  /** Leaving from the menu or Back: a run under way ends as if the air had run out, recorded, and said in a word since the summary is not seen. */
+  leaveRequested() { if (this.run && !this.run.ended) { this.run.leave(); this.finish(); const s = pgSummary.value; if (s) toast(`Run over: ${s.score.toLocaleString()} points`, `${s.stars} ★ banked`, 'xp'); } }
   /** The fair takes the stage back; nothing here is thrown away. */
   onLeft() { pgNearPortal.value = false; pgFade.value = false; }
 
   private toPad() {
     const s = this.course.spawn; this.teleport(s.x, s.y, s.z, s.yaw); this.rig.snapBehind(s.yaw); this.section = null;
-    this.setGear(this.gear); this.world.reset(); this.run = null; this.returnAt = 0;
+    this.setGear(this.gear); this.world.reset(); this.run = null; this.stage.input.release(); // a button held through a run's end lets go here
   }
   private teleport(x: number, y: number, z: number, yaw: number) {
     const p = this.sim.player; p.body.pos.x = x; p.body.pos.y = y; p.body.pos.z = z; p.body.vel = v3(); p.body.grounded = false; p.yaw = yaw; p.peak = y;
@@ -176,7 +176,6 @@ export class PlaygroundEngine implements Scene {
     this.updateCamera(dt);
     this.world.light.follow(b.pos.x, b.pos.z);
     if (!b.grounded) { const hit = raycast(this.sim.world, v3(b.pos.x, b.pos.y + 0.1, b.pos.z), v3(0, -1, 0), 40); if (hit) this.world.placeMarker(b.pos.x, b.pos.y + 0.1 - hit.t, b.pos.z); else this.world.hideMarker(); } else this.world.hideMarker();
-    if (this.returnAt && now >= this.returnAt) { this.returnAt = 0; this.toPad(); }
     this.updateLabels(dt);
     if (now - this.hudAt > 100) { this.hudAt = now; this.publishRun(); }
     this.stage.renderer.render(this.world.scene, this.camera);
@@ -230,13 +229,13 @@ export class PlaygroundEngine implements Scene {
     this.teleport(r.x, r.y, r.z, r.yaw); this.rig.snapBehind(r.yaw);
     pgFade.value = true; setTimeout(() => { pgFade.value = false; }, 500);
   }
-  /** The run is over: stars were banked as they came; the score and the best are recorded; the summary is up. */
+  /** The run is over: stars were banked as they came; the score and the best are recorded; the summary is up over
+   *  the body where it stopped (Again puts it back on the pad; nothing moves behind the sheet). */
   private finish() {
     const run = this.run; if (!run?.ended) return;
     const s = run.ended, newBest = this.store.record(s, this.gear); this.publishStore();
     pgSummary.value = { ...s, gear: this.gear, newBest, balance: this.store.get().stars };
     pgMode.value = 'summary'; this.publishRun();
-    this.returnAt = performance.now() + 900;
     api.track('playground_run', { gear: this.gear, score: s.score, stars: s.stars, comboMax: s.comboMax, seconds: s.seconds, finished: s.reason === 'gate' });
     if (s.reason === 'gate') { sfx('big'); buzz([18, 40, 18]); } else if (s.reason === 'o2') sfx('warn');
   }

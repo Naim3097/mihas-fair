@@ -8,6 +8,7 @@
 // stack reads play, world, sheet, and a sheet that closes while a world is on becomes the world's entry in place.
 import { effect } from '@preact/signals';
 import { modal, phase, toast, world } from '../state';
+import { pgControls } from '../playground/state';
 
 export interface HistoryLike { readonly state: unknown; pushState(state: unknown, title: string): void; replaceState(state: unknown, title: string): void; back(): void }
 export interface BackHooks { isOpen(): boolean; close(): void; playing(): boolean; say(text: string): void; now?(): number; inWorld?(): boolean; leaveWorld?(): void }
@@ -43,7 +44,7 @@ export function backRules(h: HistoryLike, hooks: BackHooks) {
 }
 
 export function installBack() {
-  const r = backRules(history, { isOpen: () => modal.value != null, close: () => { modal.value = null; }, playing: () => phase.value === 'play', say: (t) => toast(t, undefined, 'info', 2400), inWorld: () => world.value === 'playground', leaveWorld: () => { world.value = 'fair'; } });
+  const r = backRules(history, { isOpen: () => modal.value != null, close: () => { modal.value = null; }, playing: () => phase.value === 'play', say: (t) => toast(t, undefined, 'info', 2400), inWorld: () => world.value === 'playground', leaveWorld: () => { pgControls.value?.leave(); world.value = 'fair'; } });
   effect(() => { void modal.value; void phase.value; void world.value; r.sync(); });
   window.addEventListener('popstate', r.pop);
   window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && r.escape()) e.preventDefault(); });

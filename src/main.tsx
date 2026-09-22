@@ -12,10 +12,11 @@ import { handleScan } from './scan';
 import { ensureBackend } from './demo/client';
 import { installBack } from './ui/back';
 import { installSfx } from './sfx';
-import { bootError, bootNote, drop, level, me, modal, myBooths, online, phase, setReferral, stations, teamInvite, world } from './state';
+import { atLaunchPad, bootError, bootNote, drop, level, me, modal, myBooths, online, phase, setReferral, stations, teamInvite, world } from './state';
 import type { PlaygroundEngine } from './playground/engine';
 import { ApiStore, LocalStore, type PlaygroundStore } from './playground/store';
 import { pgStore } from './playground/state';
+import { loadKit } from './fair/nexo';
 import { effect } from '@preact/signals';
 import type { LevelData } from '../shared/types';
 
@@ -28,6 +29,8 @@ effect(() => {
     void (playground ? Promise.resolve(playground) : import('./playground/engine').then((m) => (playground = new m.PlaygroundEngine(stage!, stage!.quality, kits!)))).then((pg) => { if (world.value === 'playground') { pg.enter(); api.track('playground_enter'); } });
   } else if (playground && stage.scene === playground) { playground.onLeft(); stage.use(engine); engine.resume(); }
 });
+/** At the launch pad the Playground's code and the kits its stands show are fetched, so the door opens on a built world. */
+effect(() => { if (atLaunchPad.value && !playground) { void import('./playground/engine'); void loadKit('skates', true); void loadKit('jetpack', true); } });
 render(<App engine={() => engine} />, document.getElementById('ui')!);
 installBack();
 installSfx();
