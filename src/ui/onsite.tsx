@@ -1,6 +1,5 @@
 // Where the player is playing from, and everything on screen about it: the choice on the first screen, the gate that
-// holds an on-site player until GPS has found them, the level picker, and the small status chip while they play.
-import { useState } from 'preact/hooks';
+// holds an on-site player until GPS has found them, and the level picker.
 import { level } from '../state';
 import { gpsAcc, onsiteAvailable, setSiteDeck, setSiteMode, siteDeck, siteMode, siteState, startTracking } from '../onsite';
 import { Sheet } from './common';
@@ -61,21 +60,5 @@ function LevelPicker({ title, note, onClose }: { title: string; note: string; on
         ))}
       </div>
     </Sheet>
-  );
-}
-
-/** While playing on site: which level, how sure GPS is, and a way to correct the level. */
-export function SiteChip() {
-  const [pick, setPick] = useState(false), st = siteState.value;
-  if (siteMode.value !== 'onsite' || (st !== 'tracking' && st !== 'uncalibrated')) return null;
-  const acc = gpsAcc.value;
-  return (
-    <>
-      <button class={'sitechip' + (st === 'uncalibrated' ? ' warn' : '')} onClick={() => setPick(true)} aria-label="Change level">
-        <i aria-hidden="true" />{siteDeck.value ? `Level ${siteDeck.value}` : 'At MIHAS'}
-        <small>{st === 'uncalibrated' ? 'GPS map not set up here · use the stick' : acc != null ? `±${acc} m` : 'GPS'}</small>
-      </button>
-      {pick && <LevelPicker title="Change level" note="Took the stairs or an escalator? Pick the level you are on now." onClose={() => setPick(false)} />}
-    </>
   );
 }

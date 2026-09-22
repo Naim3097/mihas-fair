@@ -10,7 +10,7 @@ import { DemoChip, TourSheet } from '../demo/Tour';
 import { Camera, Sheet, hex } from './common';
 import { handleScan } from '../scan';
 import { BoothSheet, ClaimSheet, ContactsSheet, MenuSheet, MyBoothSheet, SwapSheet } from './sheets';
-import { OnsiteGate, SiteChip, SiteChoice } from './onsite';
+import { OnsiteGate, SiteChoice } from './onsite';
 import { onsiteAvailable, setSiteMode, siteMode } from '../onsite';
 
 type Eng = { engine: () => Engine | null };
@@ -184,9 +184,8 @@ function Hud({ engine }: Eng) {
       </div>
       )}
 
-      {/* bottom-right, under the thumb: the three things you can always do (and, at MIHAS, which level GPS has you on) */}
+      {/* bottom-right, under the thumb: the three things you can always do */}
       <div class="dock">
-        <SiteChip />
         <DemoChip />
         <button aria-label="Map and search" data-tip="Map and search · M" onClick={() => (modal.value = 'map')}><Icon d={ICONS.map} /></button>
         <div class="express">

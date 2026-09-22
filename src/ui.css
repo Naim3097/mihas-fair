@@ -205,12 +205,7 @@ input::placeholder,textarea::placeholder{color:var(--ink-3)}textarea{font-size:1
 .gps-wait{display:grid;place-items:center;height:56px}
 .gps-wait i{width:14px;height:14px;border-radius:50%;background:var(--blue);box-shadow:0 0 0 0 color-mix(in srgb,var(--blue) 50%,transparent);animation:gps-pulse 1.6s ease-out infinite}
 @keyframes gps-pulse{to{box-shadow:0 0 0 22px transparent}}
-.dock .sitechip{position:absolute;right:0;bottom:calc(100% + 10px);width:auto;height:auto;border-radius:999px;display:flex;place-items:unset}
-.sitechip{font:inherit;font-weight:800;font-size:13px;color:var(--ink);background:var(--surface);border:0;border-radius:999px;padding:7px 12px 7px 10px;box-shadow:var(--shadow);display:flex;align-items:center;gap:7px;cursor:pointer;max-width:min(260px,calc(var(--vw) - 24px));white-space:nowrap}
-.sitechip i{width:9px;height:9px;border-radius:50%;background:var(--blue);flex:none;animation:gps-pulse 2.4s ease-out infinite}
-.sitechip small{font-weight:600;font-size:12px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis}
-.sitechip.warn i{background:var(--gold);animation:none}
-@media (prefers-reduced-motion:reduce){.gps-wait i,.sitechip i{animation:none}}
+@media (prefers-reduced-motion:reduce){.gps-wait i{animation:none}}
 /* the checkpoint list in the mission card */
 .cps{list-style:none;margin:8px 0 4px;padding:0;display:grid;gap:4px}
 .cps li{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700}.cps li small{margin-left:auto;font-weight:600;color:var(--ink-3);font-size:12px}
