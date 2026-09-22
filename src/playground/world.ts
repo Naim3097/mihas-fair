@@ -26,6 +26,8 @@ export class PlaygroundWorld {
   readonly marker: THREE.Mesh;
   /** the two ribbons the skates leave */
   readonly ribbons: [Ribbon, Ribbon];
+  /** the jetpack's exhaust while the thrust is on */
+  readonly exhaust: Ribbon;
   private meshes: Record<PickupKind, THREE.InstancedMesh>;
   /** the tinted ring round each star on a gear's line: pickup index → instance */
   private tintRings: THREE.InstancedMesh; private tintSlot: number[] = [];
@@ -47,6 +49,7 @@ export class PlaygroundWorld {
     this.marker = new THREE.Mesh(new THREE.RingGeometry(0.32, 0.5, 32).rotateX(-Math.PI / 2), decal({ color: FAIR.blue, transparent: true, opacity: 0.85 }));
     this.marker.visible = false; this.marker.renderOrder = 3; this.scene.add(this.marker);
     this.ribbons = [new Ribbon(48, 0.06, 1.2, FAIR.accent), new Ribbon(48, 0.06, 1.2, FAIR.accent)]; for (const r of this.ribbons) this.scene.add(r.mesh);
+    this.exhaust = new Ribbon(24, 0.12, 0.45, FAIR.accent); this.scene.add(this.exhaust.mesh);
     this.tintRings = this.tinted();
   }
 
@@ -147,7 +150,7 @@ export class PlaygroundWorld {
   isCollected(i: number): boolean { return this.collected[i] === 1; }
   /** A new run: everything back. */
   reset() {
-    this.collected.fill(0); this.pops.length = 0; for (const r of this.ribbons) r.clear();
+    this.collected.fill(0); this.pops.length = 0; for (const r of this.ribbons) r.clear(); this.exhaust.clear();
     const K = this.course.pickups, M = this.tmpM;
     for (let i = 0; i < K.length; i++) { const n = this.tintSlot[i]; if (n != null) { const p = K[i]!; M.makeRotationY(Math.PI / 2).setPosition(p.x, p.y, p.z); this.tintRings.setMatrixAt(n, M); } }
     this.tintRings.instanceMatrix.needsUpdate = true;
@@ -158,7 +161,7 @@ export class PlaygroundWorld {
   hideMarker() { this.marker.visible = false; }
 
   dispose() {
-    this.sky.dispose(); for (const r of this.ribbons) r.dispose();
+    this.sky.dispose(); for (const r of this.ribbons) r.dispose(); this.exhaust.dispose();
     this.scene.traverse((o) => { const m = o as THREE.Mesh; if (!m.isMesh) return; m.geometry?.dispose(); for (const mat of Array.isArray(m.material) ? m.material : [m.material]) { (mat as THREE.MeshBasicMaterial).map?.dispose(); mat.dispose(); } });
   }
 }

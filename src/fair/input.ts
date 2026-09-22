@@ -27,6 +27,7 @@ export class FairInput {
   readonly move = { x: 0, y: 0 };
   private keys = new Set<string>();
   private edges = { jump: false, dodge: false };
+  private holding = false;
   private stick: { id: number; x: number; y: number; t: number; live: boolean } | null = null;
   private drags = new Map<number, { x: number; y: number; sx: number; sy: number; t: number; moved: boolean }>();
   private pinch = 0;
@@ -75,11 +76,13 @@ export class FairInput {
   release() {
     this.keys.clear(); this.drags.clear(); this.pinch = 0; this.rimAt = null; this.grabbing = false; this.paintCursor();
     if (this.stick) { this.stick = null; this.base.style.display = 'none'; }
-    this.move.x = this.move.y = 0; this.edges.jump = this.edges.dodge = false;
+    this.move.x = this.move.y = 0; this.edges.jump = this.edges.dodge = false; this.holding = false;
   }
 
   /** A press from a button on the interface. */
   press(edge: 'jump' | 'dodge') { this.edges[edge] = true; }
+  /** The interface's Jump button held down, or let go: thrust for a body that can fly. */
+  hold(on: boolean) { this.holding = on; }
 
   /** Is a thumb on the stick right now? */
   get stickHeld(): boolean { return !!this.stick?.live; }
@@ -89,7 +92,7 @@ export class FairInput {
     const k = this.keys, mag = Math.hypot(this.move.x, this.move.y), now = performance.now();
     if (this.stick?.live && mag >= RIM_MAG) this.rimAt ??= now; else this.rimAt = null;
     const sprint = this.stick?.live ? now - (this.rimAt ?? now) >= RIM_MS : k.has('ShiftLeft') || k.has('ShiftRight');
-    const it: Intent = { ...emptyIntent(), move: { x: this.move.x, y: this.move.y }, walk: false, sprint, jump: this.edges.jump, dodge: this.edges.dodge };
+    const it: Intent = { ...emptyIntent(), move: { x: this.move.x, y: this.move.y }, walk: false, sprint, jump: this.edges.jump, dodge: this.edges.dodge, thrust: this.holding || k.has('Space') };
     this.edges.jump = this.edges.dodge = false;
     return it;
   }

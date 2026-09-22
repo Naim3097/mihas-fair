@@ -21,8 +21,10 @@ export interface Intent {
   slam: boolean;
   lock: boolean;
   skills: Record<SkillSlot, boolean>;
+  /** The jump button held: thrust for a tuning that carries a thrust block, nothing for the others. */
+  thrust?: boolean;
 }
-export const emptyIntent = (): Intent => ({ move: { x: 0, y: 0 }, walk: false, sprint: false, jump: false, dodge: false, attack: false, slam: false, lock: false, skills: { q: false, w: false, e: false, r: false } });
+export const emptyIntent = (): Intent => ({ move: { x: 0, y: 0 }, walk: false, sprint: false, jump: false, dodge: false, attack: false, slam: false, lock: false, skills: { q: false, w: false, e: false, r: false }, thrust: false });
 /** The same intent with its edges cleared, for the second and later sub-steps of one frame. */
 export const heldOnly = (it: Intent): Intent => ({ ...it, jump: false, dodge: false, attack: false, slam: false, lock: false, skills: { q: false, w: false, e: false, r: false } });
 
@@ -48,6 +50,8 @@ export interface Player extends Fighter {
   cooldowns: Record<SkillSlot, number>;
   lock: number | null;
   kills: number;
+  /** A jetpack's tank, and whether it fired this step: 0 and false for a body without one. */
+  fuel: number; thrusting: boolean;
 }
 
 export function newPlayer(cls: ClassKey, stats: Stats, pos: V3, yaw: number, M: MovementDef = MOVEMENT): Player {
@@ -58,7 +62,7 @@ export function newPlayer(cls: ClassKey, stats: Stats, pos: V3, yaw: number, M: 
     stamina: vit.stamina, staminaDelay: 0, spirit: vit.spirit, ilham: 0,
     gait: 'idle', sprintFor: 0, airJumps: M.airJumps, coyote: 0, jumpBuffer: 0, dodgeCd: 0, slamming: false, peak: pos.y,
     dodge: null, airDash: null, leap: null, action: null, chain: 0, chainAt: -9, queued: false,
-    cooldowns: { q: 0, w: 0, e: 0, r: 0 }, lock: null, kills: 0,
+    cooldowns: { q: 0, w: 0, e: 0, r: 0 }, lock: null, kills: 0, fuel: M.thrust?.fuel ?? 0, thrusting: false,
   };
 }
 
@@ -154,7 +158,7 @@ export function stepPlayer(sim: Sim, p: Player, it: Intent, dt: number): void {
       // in the air the stick steers but never brakes: the momentum of a run, a leap or a wall kick is kept
       const before = lenXZ(b.vel);
       b.vel.x += mdir.x * M.airControl * dt; b.vel.z += mdir.z * M.airControl * dt;
-      const after = lenXZ(b.vel), cap = Math.max(before, M.run * speedMult(p));
+      const after = lenXZ(b.vel), cap = Math.max(before, (M.thrust ? M.thrust.airSpeed : M.run) * speedMult(p)); // a jetpack flies at its own air speed
       if (after > cap) { b.vel.x *= cap / after; b.vel.z *= cap / after; }
     }
     if (mdir || (target && mag < 0.02)) p.yaw = turnToward(p.yaw, faceYaw(), M.turn * DEG * dt);
@@ -202,15 +206,22 @@ export function stepPlayer(sim: Sim, p: Player, it: Intent, dt: number): void {
   }
 
   // ----- gravity and the world -----
+  const T = M.thrust; p.thrusting = false;
   if (!b.grounded) {
     if (p.slamming) b.vel.y = -M.slam.speed;
+    else if (T && it.thrust && p.fuel > 0 && !dash) {
+      // a jetpack: thrust against gravity while the button is held and the tank is not dry; the climb is capped, a
+      // body above the cap (fresh off a jump) comes down to it under gravity alone, and the fall multiplier is off
+      p.thrusting = true; p.fuel = Math.max(0, p.fuel - T.drain * dt);
+      b.vel.y = b.vel.y < T.climb ? Math.min(T.climb, b.vel.y + (T.accel - M.gravity) * dt) : b.vel.y - M.gravity * dt;
+    }
     else if (!dash?.flat) { b.vel.y -= M.gravity * (b.vel.y < 0 ? M.fallMult : 1) * dt; if (b.vel.y < -M.terminal) b.vel.y = -M.terminal; }
     p.peak = Math.max(p.peak, b.pos.y);
-  } else p.peak = b.pos.y;
-  const wasGrounded = b.grounded;
+  } else { p.peak = b.pos.y; if (T) p.fuel = Math.min(T.fuel, p.fuel + T.refill * dt); }
+  const wasGrounded = b.grounded, fallSpeed = -b.vel.y;
   moveBody(sim.world, b, dt, { step: M.stepHeight, snap: b.vel.y <= 0 && !dash?.flat });
   separate(sim, p);
-  if (!wasGrounded && b.grounded) landed(sim, p);
+  if (!wasGrounded && b.grounded) landed(sim, p, fallSpeed);
   else if (wasGrounded && !b.grounded && !jumped && !dash) oneShot(p, 'jump', 0.7, 0.4);
 
   // ----- what the body shows -----
@@ -222,8 +233,9 @@ export function stepPlayer(sim: Sim, p: Player, it: Intent, dt: number): void {
   else loop(p, 'run', sp / M.run);
 }
 
-function landed(sim: Sim, p: Player): void {
-  const M = sim.movement, b = p.body, drop = p.peak - b.pos.y;
+function landed(sim: Sim, p: Player, fallSpeed = 0): void {
+  // a body that can thrust is judged by how hard it hit, not how high it was: a hover down is no fall
+  const M = sim.movement, b = p.body, drop = M.thrust ? Math.min(p.peak - b.pos.y, (fallSpeed * fallSpeed) / (2 * M.gravity * M.fallMult)) : p.peak - b.pos.y;
   p.airJumps = M.airJumps;
   if (p.slamming) {
     p.slamming = false;

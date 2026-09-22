@@ -217,7 +217,13 @@ export interface MovementDef {
   slam: { speed: number; radius: number; amount: number; knockback: number; up: number };
   stepHeight: number; radius: number; height: number;
   stamina: { max: number; regen: number; regenDelay: number; sprintDrain: number; jump: number };
+  /** A jetpack: thrust while the button is held and there is fuel. Absent for bodies that cannot fly. */
+  thrust?: ThrustDef;
 }
+
+/** Thrust: an upward acceleration against gravity, the climb it is capped at, the horizontal speed the air control
+ *  reaches, the tank's size, its drain per second of thrust and its refill per second on the ground. */
+export interface ThrustDef { accel: number; climb: number; airSpeed: number; fuel: number; drain: number; refill: number }
 
 export interface EnemyDef {
   key: string;

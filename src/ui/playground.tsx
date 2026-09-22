@@ -2,7 +2,7 @@
 // first-run hint, the portal chip, the fade of a fall. Everything reads the engine's signals; nothing is per frame.
 import { useEffect, useState } from 'preact/hooks';
 import { GEAR } from '../playground/gear';
-import { pgBalance, pgBest, pgCombo, pgControls, pgFade, pgGear, pgHint, pgMode, pgNearPortal, pgO2, pgRunStars, pgScore, pgStandNote, pgSummary, pgUnlocks } from '../playground/state';
+import { pgBalance, pgBest, pgCombo, pgControls, pgFade, pgFuel, pgGear, pgHint, pgMode, pgNearPortal, pgO2, pgRunStars, pgScore, pgStandNote, pgSummary, pgUnlocks } from '../playground/state';
 import { O2_CAP } from '../playground/run';
 import { modal, world } from '../state';
 import { Sheet } from './common';
@@ -30,6 +30,7 @@ export function PlaygroundHud() {
           <>
             <div class="top"><span class="k">Playground · {gear.name}</span><span class="right"><span class="score" title="Score">{score.toLocaleString()}</span></span></div>
             <div class="o2"><i style={{ width: `${Math.min(100, (pgO2.value / O2_CAP) * 100)}%` }} class={pgO2.value <= 8 ? 'low' : ''} /></div>
+            {gear.movement.thrust && <div class="fuel" title="Fuel"><i style={{ width: `${Math.min(100, pgFuel.value)}%` }} class={pgFuel.value <= 20 ? 'low' : ''} /></div>}
             <div class="runrow"><span class="air">{pgO2.value} s of air</span><span class="stars">★ {pgRunStars.value}</span>{pgCombo.value > 1 && <span class="combo">×{pgCombo.value}</span>}</div>
           </>
         ) : (
@@ -47,7 +48,7 @@ export function PlaygroundHud() {
         {pgNearPortal.value && mode !== 'run' && <button class="chip act" onClick={() => { c?.leave(); world.value = 'fair'; }}>Back to the fair ›</button>}
         <button aria-label="Menu" data-tip="Menu" onClick={() => (modal.value = 'menu')}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg></button>
       </div>
-      {mode !== 'summary' && <button class="jumpbtn" aria-label="Jump" onPointerDown={(e) => { e.preventDefault(); c?.jump(); }}>Jump{FINE_POINTER && <kbd>Space</kbd>}</button>}
+      {mode !== 'summary' && <button class="jumpbtn" aria-label="Jump" onPointerDown={(e) => { e.preventDefault(); c?.jump(); c?.hold(true); }} onPointerUp={() => c?.hold(false)} onPointerCancel={() => c?.hold(false)} onPointerLeave={() => c?.hold(false)}>Jump{FINE_POINTER && <kbd>Space</kbd>}</button>}
 
       {pgFade.value && <div class="pgfade" aria-hidden="true" />}
       {mode === 'summary' && pgSummary.value && <Summary />}

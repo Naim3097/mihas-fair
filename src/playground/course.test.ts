@@ -7,9 +7,9 @@ import { classByKey } from '../../content';
 import { emptyIntent, type Intent } from '../ceritera/game/controller';
 import { Sim, STEP } from '../ceritera/game/sim';
 import { v3 } from '../ceritera/game/v3';
-import { JUMP_PAD, PICKUP_R, PickupIndex, SLAB, buildCourse, courseBoxes, crossed, platformUnder, sectionAt, type Platform } from './course';
+import { JUMP_PAD, PICKUP_R, PickupIndex, SLAB, buildCourse, courseBoxes, crossed, laneTopAt, platformUnder, sectionAt, type Platform } from './course';
 import type { MovementDef } from '../../content';
-import { BOOTS, SKATES, boostBody, jumpReach } from './gear';
+import { BOOTS, JETPACK, SKATES, boostBody, jumpReach } from './gear';
 
 const course = buildCourse(), boxes = courseBoxes(course);
 const newSim = (M: MovementDef = BOOTS) => new Sim('pengembara', classByKey('pengembara')!.base, { size: 200, boxes, props: [], spawn: { pos: v3(course.spawn.x, course.spawn.y, course.spawn.z), yaw: course.spawn.yaw }, enemies: [], lanterns: [] }, 1, M);
@@ -157,4 +157,47 @@ test('the Skates line\'s stars and diamond sit within a glide of a lane platform
   for (const p of course.pads.filter((p) => p.z === 30)) assert.ok(lane.find((q) => p.x - p.w / 2 >= q.x0 && p.x + p.w / 2 <= q.x1 && p.y === q.y), `pad at ${p.x} is not on a lane platform`);
   for (const r of course.rings.filter((r) => r.at.z === 30)) assert.ok(lane.find((q) => r.x >= q.x0 && r.x <= q.x1 && r.y === q.y), `ring at ${r.x} is not on a lane platform`);
   assert.ok(sectionAt(course, 146, 20, 'skates')!.yaw === 0 && sectionAt(course, 146, 20, 'boots')!.yaw < 0, 'on skates the turn faces north for longer');
+});
+
+test('the sky line: five hills over the Boots lane, each landing well inside a platform two on, its pickups between a step and twelve metres over the lane and under the ceiling', () => {
+  const H = course.hills; assert.equal(H.length, 5);
+  for (const h of H) {
+    const on = course.platforms.find((p) => p.z0 === 17 && h.land >= p.x0 && h.land <= p.x1);
+    assert.ok(on && h.land - on.x0 >= 1.5 && on.x1 - h.land >= 1.5, `hill from ${h.x0} lands at ${h.land.toFixed(1)}, not inside a platform`);
+    assert.ok(h.x0 - h.xc > 5 && h.xc - h.land > 5, 'a climb and a fall of some length');
+    assert.ok(h.climb >= 0.9 && h.climb <= 1.4, `a climb of ${h.climb.toFixed(2)} s`);
+  }
+  const sky = course.pickups.filter((k) => k.line === 'jetpack' && k.z === 20);
+  assert.ok(sky.filter((k) => k.kind === 'star').length >= 25, 'a sky of stars');
+  assert.equal(sky.filter((k) => k.kind === 'diamond').length, 1); assert.equal(sky.filter((k) => k.kind === 'cell').length, 2); assert.equal(course.pickups.filter((k) => k.kind === 'cell').length, 3);
+  for (const k of sky) { const h = k.y - laneTopAt(course.platforms, k.x, 20); assert.ok(h >= 1.0 && h <= 12, `${k.kind} at ${k.x} is ${h.toFixed(2)} m over the lane`); assert.ok(k.y + 1.0 < course.ceiling, 'under the ceiling'); }
+  const hoops = course.rings.filter((r) => r.at.z === 20 && r.y > laneTopAt(course.platforms, r.x, 20) + 0.5);
+  assert.equal(hoops.length, 2); for (const r of hoops) assert.ok(r.y + 2 - 1.7 >= laneTopAt(course.platforms, r.x, 20) + 1.5, `the sky hoop at ${r.x} sits in the floor`);
+  assert.equal(laneTopAt(course.platforms, 135, 20), 8.5); assert.equal(laneTopAt(course.platforms, 18, 20), 0);
+  assert.ok(Math.abs(laneTopAt(course.platforms, 129.4, 20) - 7.75) < 1e-9, 'over a gap, the line between the platforms');
+});
+
+test('the sky line is flown as meant: hold from the edge to the crest, let go, land, run to the next edge; every star, the diamond and both cells are taken and the tank never runs dry', () => {
+  const sim = newSim(JETPACK), p = sim.player, b = p.body, H = course.hills;
+  b.pos.x = 148; b.pos.y = 8.55; b.pos.z = 20; p.yaw = -Math.PI / 2; p.peak = b.pos.y; sim.camYaw = p.yaw;
+  const got = new Set<number>(), out: number[] = new Array(64).fill(0), ix = new PickupIndex(course.pickups);
+  let hi = 0, phase: 'ground' | 'climb' | 'fall' = 'ground', lowest = 99, fuelMin = 100, thrustFor = 0;
+  for (let t = 0; t < 45 && b.pos.x > 16; t += STEP) {
+    const h = H[hi];
+    if (phase === 'ground' && h && b.pos.x <= h.x0 + 0.05) phase = 'climb';
+    else if (phase === 'climb' && h && b.pos.x <= h.xc) phase = 'fall';
+    else if (phase === 'fall' && b.grounded && h && b.pos.x < h.xc - 1) { phase = 'ground'; hi++; }
+    const thrust = phase === 'climb';
+    // on the floor, the running jump over a lane gap, as any body makes it
+    const under = platformUnder(course, b.pos.x, b.pos.y, b.pos.z), hop = phase === 'ground' && b.grounded && !!under && b.pos.x - under.x0 < 0.45 && !(h && Math.abs(under.x0 - h.x0) < 0.1);
+    sim.step({ ...emptyIntent(), move: { x: 0, y: 1 }, sprint: true, jump: (thrust && b.grounded) || hop, thrust }, STEP);
+    if (p.thrusting) thrustFor += STEP;
+    const n = ix.near(b.pos.x, b.pos.y + 0.9, b.pos.z, 0.3 + 0.36, out); for (let k = 0; k < n; k++) got.add(out[k]!);
+    lowest = Math.min(lowest, b.pos.y - laneTopAt(course.platforms, b.pos.x, 20)); fuelMin = Math.min(fuelMin, p.fuel);
+  }
+  assert.ok(lowest > -1, `never fell off the lane (lowest ${lowest.toFixed(2)} at hill ${hi})`);
+  assert.ok(b.pos.x <= 16 && hi === H.length, `flew the whole line: at ${b.pos.x.toFixed(1)}, hill ${hi}`);
+  assert.ok(thrustFor > 4 && fuelMin > 0, `the tank held: ${thrustFor.toFixed(1)} s of thrust, never below ${fuelMin.toFixed(0)}`);
+  const sky = course.pickups.map((k, i) => ({ k, i })).filter(({ k }) => k.line === 'jetpack' && k.z === 20);
+  assert.deepEqual(sky.filter(({ i }) => !got.has(i)).map(({ k }) => `${k.kind}@${k.x.toFixed(1)}`), [], 'missed on the sky line');
 });

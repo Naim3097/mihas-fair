@@ -122,7 +122,7 @@ optional part of the movement tuning that the RPG does not set.
 |---|---|---|---|
 | walk / run / top | 1.6 / 4.4 / 6.0 m/s (top: the stick past the rim, Shift) | — / 7.5 / 9.5 m/s (top: the same rim hold, the tuck) | 1.6 / 4.4 / 6.0 |
 | acceleration / braking | 22 / 24 m/s² | 7 / 5 m/s² (momentum: builds slowly, glides long, arcs when turned at speed) | 22 / 24 |
-| turn rate | 720°/s | 260°/s | 720°/s; 300°/s in the air |
+| turn rate | 720°/s | 260°/s | 720°/s |
 | jump / air jump | 7.4 → 1.24 m · 6.4 → 0.93 m | 6.8 → 1.05 m · 6.4 | 7.4 · none (thrust instead) |
 | air control | 9 | 6 | 14 |
 | coyote / buffer | 0.14 s / 0.18 s | same | same |
@@ -142,10 +142,19 @@ rate is a glide.
 - Thrust while the button is held and fuel is above zero: 34 m/s² upward, so the net climb is 12 m/s², capped at
   6.5 m/s. Tapping hovers; holding climbs. Horizontal speed in the air is capped at 7 m/s. A glass ceiling at 18 m.
 - Fuel 100, drains 24 per second of thrust (about 4 s of climb), refills at 30 per second on the ground and by half
-  from a fuel cell. Landing from thrust is a landing: the small shake, the sound, and from over 3.5 m the shared
-  controller's brief heavy-landing stagger.
-- In the controller: `thrust` on the intent, `fuel` on the player, and one branch in the gravity block, all inert
-  unless the tuning carries a `thrust` block.
+  from a fuel cell. Landing from thrust is a landing: the small shake, the sound, and the shared controller's brief
+  heavy-landing stagger, judged for a body that can thrust by how hard it hit (the drop its impact speed amounts
+  to), not how high it was: a hover down is no fall, a free fall from a crest is.
+- In the controller: `thrust` on the intent, `fuel` and `thrusting` on the player, one branch in the gravity block
+  and the air speed it flies at, all inert unless the tuning carries a `thrust` block (tested against the RPG's).
+- **The line is hills, shaped by the physics.** From a platform's west edge, a climb at the full thrust (6.5 m/s up,
+  7 m/s along) to a crest, then the fall a body makes once the button is let go (up a little more, then down at the
+  fall's gravity), landing two platforms on, a couple of metres inside its edge; then the floor to the next edge,
+  which refills the tank (a climb costs about 30, the floor gives about 38). Stars sit on the climb and the fall a
+  third of a second apart, so holding to the crest and letting go carries the chest through every one; the crest
+  holds the diamond, a cell or a hoop, and marks the moment to let go. Letting go early lands short, in the gap.
+  A cosine wave was tried first: hovering down its slopes cost more fuel than the climbs, and no tracker flew it
+  cleanly. The hills are what a held button and a released one actually draw.
 
 ### Skates
 
@@ -180,8 +189,10 @@ you can use, gold for what you earn, cyan for air and fuel, orange only on the J
    stars on the rises, rings at 78, 105 and 137, the Boots diamond on a ledge 4 m past the top (a top-speed jump or
    the air jump). Teaches the air jump.
 4. **Sky Line** (140–210 m): a long glide with a 5 m gap then 5.5 m gaps between 10 m platforms, a boost pad on every
-   other one (the Skates line at z 30: cyan-ringed stars, four rings, its diamond before the gate), a lower safe path with 2.5 m gaps for Boots, and above both the Jetpack's line (orange-ringed
-   stars at 4–8 m up, its diamond at the top), rings at 140 and 175, then the gate back at the pad.
+   other one (the Skates line at z 30: cyan-ringed stars, four rings, its diamond before the gate), a lower safe path
+   with 2.4 m gaps for Boots, and over that path the Jetpack's five hills (orange-ringed stars up to 8.7 m over the
+   floor they lift from, the diamond on the first crest, a cell on the second and fourth, a hoop on the third and
+   fifth, a third cell on the stairs' top before the turn), then the gate back at the pad.
 
 The course is data (`src/playground/course.ts`): platforms as boxes, pickups as points with a line and a gear,
 rings, pads, the gate, per section the camera's direction. The world draws what the data says; the tests walk it.
@@ -386,5 +397,29 @@ pads carry a cruising single and do not overshoot with a tuck double; ring order
   and from the side; the tinted rings; the summary with "New best".
 - Harness note: with the pane visible the stage loop runs, so the driver wraps `__stage.frame` with the autopilot
   (jump 0.45 m before a platform's west edge) and holds keys on `__stage.input.keys` (`fromKeys()` after a change).
-- Not yet: the Jetpack (Phase 3), the boards, the chimes per combo level and the phone pass (Phase 4), the server
-  (Phase 5). The Jetpack stand says "coming soon" until then.
+**Phase 3 — done (23 Sep): the Jetpack.** Thrust in the shared controller behind an optional `thrust` block on the
+movement tuning (`content/types.ts`): the button held is `thrust` on the intent (the Jump button's pointer held, or
+Space), `fuel` and `thrusting` on the player, one branch in the gravity block (34 m/s² against 22, the climb capped
+at 6.5, a body above the cap comes down to it under gravity alone, no fall multiplier while firing), the air speed
+7 m/s the stick reaches, the tank draining at 24 a second in the air and filling at 30 on the floor, a landing
+judged by its impact for a body that can thrust. Inert for the RPG and the fair, and tested so (`thrust.test.ts`:
+the same arc with the button held, no fuel, never firing; and with the block, the cap, the tank's life, the ceiling,
+the refill, the air speed, the soft and the hard landing). The tuning `JETPACK` in `src/playground/gear.ts` is
+Boots with no second jump, air control 14 and the thrust block; the stand sells it for 250 and says "hold Jump to
+fly". The flight pose in `src/fair/nexo.ts`: the jump clip held at 42 % under a serial of its own while airborne,
+the body tilted into its travel by the run lean; an exhaust ribbon from the backpack (behind the chest bone) while
+firing; the camera at 6.2 m tipping up while climbing and down while falling, four degrees wider while firing. A
+cell fills half the tank and is the Jetpack's alone (other gears leave it). The fuel bar sits under the air bar on
+the run card. The line: five hills over the Boots lane (`course.hills`, the take-off edge, the crest, the landing;
+the climb solved per hill so the fall lands about 17 m out and the first stays under the ceiling), 37 stars, the
+diamond, two air cells, two sky hoops, a third cell on the stairs' top. Tests: the hills land 1.5 m or more inside a
+platform two on, the pickups hang between a step and twelve metres over the lane and under the ceiling, the hoops
+clear the floor; and the line flown as meant on the physics (hold from the edge to the crest, let go, land, run to
+the next edge) takes every star, the diamond and both cells with the tank never dry.
+- Verified in the browser: the Jetpack bought on the stand; the same flight scripted on the live loop, five hills
+  in order (release at the crests around y 15, 12 and 9; the tank 100 → 76 on a hill, back to 100 on the floor, 97
+  after a cell), 2,440 points and 80 stars by the fifth hill at ×4, the sky hoop counted as a ring, no console
+  errors; the flight pose, the tilt and the exhaust from behind and from the side; the fuel bar; the camera's tip.
+- Not yet: the boards, the chimes per combo level, the unlock ceremony and the phone pass (Phase 4), the server
+  (Phase 5). The three cells and the sky line's stars raise the course's star count past the 145 the server contract
+  names; Phase 5 takes the number from the course data.

@@ -18,6 +18,8 @@ export const NEXO_HEIGHT = 1.6;
 export const ROLE_TINT = { visitor: 0xffffff, exhibitor: 0xf07a1d, crew: 0x2a2f3a } as const;
 export type NexoRole = keyof typeof ROLE_TINT;
 /** The fair's clips for the sim's locomotion keys, and each clip's natural speed on the source rig, m/s. */
+/** The flight pose: the jump clip held this far in (its apex), under a serial of its own. */
+const FLIGHT_FROM = 0.42, FLIGHT_SERIAL = -7;
 const FAIR_KEYS: Partial<Record<AnimKey, AnimKey>> = { idle: 'idle-calm', 'combat-idle': 'idle-calm', walk: 'stroll', run: 'jog', sprint: 'jog' };
 const NATURAL: Partial<Record<AnimKey, number>> = { stroll: 1.05, jog: 3.0, walk: 1.7, run: 4.4, sprint: 7 };
 /** The source rig's hip height, m: a body's stride scales with its own. */
@@ -97,6 +99,8 @@ export class NexoActor {
   private loco: 'walk' | 'skate' = 'walk';
   private glide = 0; private speed = 0; private lean = 0; private leanWant = 0;
   private model: THREE.Object3D | null = null; private modelY = 0;
+  /** Airborne on a jetpack: the jump clip's apex held, the body tilted by the engine's lean. */
+  private flight = false;
   private lookTarget: THREE.Vector3 | null = null;
   private look = { yaw: 0, pitch: 0 };
   private attentionWeight = 1;
@@ -158,6 +162,14 @@ export class NexoActor {
   setLocomotion(m: 'walk' | 'skate'): void { this.loco = m; }
   /** How far the torso leans into a turn (radians, signed, left positive); the engine sets it from the yaw rate. */
   setLean(z: number): void { this.leanWant = z; }
+  /** In the air on a jetpack, or not: on, the jump clip's apex is held until the feet touch. */
+  setFlight(on: boolean): void { this.flight = on; }
+  /** Where a backpack sits: behind the chest, in the world. False without a rigged body. */
+  back(out: THREE.Vector3): boolean {
+    const { spine } = this.bones; if (!spine) return false;
+    spine.updateWorldMatrix(true, false); spine.getWorldPosition(out);
+    const yaw = this.root.rotation.y; out.x -= Math.sin(yaw) * 0.28; out.z -= Math.cos(yaw) * 0.28; return true;
+  }
   /** Where the ankles are in the world, for a trail. False without a rigged body. */
   feet(out: [THREE.Vector3, THREE.Vector3]): boolean {
     const { lFoot, rFoot } = this.bones; if (!lFoot || !rFoot) return false;
@@ -178,6 +190,7 @@ export class NexoActor {
   /** The sim's state in the fair's clips: a stroll for walking, a jog for running and sprinting, a calm idle; loops
    * play at the rate that carries this body's feet at the given speed. Crossing from run to sprint keeps the jog going. */
   private mapped(anim: AnimState, speed: number): AnimState {
+    if (this.flight) { this.lastKey = null; return { key: 'jump', loop: true, fit: 0, from: FLIGHT_FROM, serial: FLIGHT_SERIAL, rate: 0 }; }
     let key = FAIR_KEYS[anim.key] ?? anim.key;
     if (this.loco === 'skate' && (key === 'stroll' || key === 'jog')) key = 'idle-calm'; // the glide is a pose, not a clip
     let serial = anim.serial;

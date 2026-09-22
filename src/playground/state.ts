@@ -25,5 +25,5 @@ export const pgStandNote = signal<string | null>(null);
 /** Standing on the portal: the chip that leaves for the fair. */
 export const pgNearPortal = signal(false);
 /** What the interface can ask the engine for. */
-export interface PgControls { jump(): void; again(): void; leave(): void }
+export interface PgControls { jump(): void; hold(on: boolean): void; again(): void; leave(): void }
 export const pgControls = signal<PgControls | null>(null);

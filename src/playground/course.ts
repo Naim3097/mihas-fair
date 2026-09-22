@@ -21,8 +21,12 @@ export interface Pad { kind: 'boost' | 'jump'; x: number; z: number; y: number; 
 export interface Stand { gear: Gear; x: number; z: number }
 /** Where the camera settles while the body is in this rectangle; `gear` limits it to one gear's line. */
 export interface Section { name: string; x0: number; x1: number; z0: number; z1: number; yaw: number; gear?: Gear }
+/** One hill of the Jetpack line: the edge it lifts from, the crest to let go at, where the fall lands. */
+export interface Hill { x0: number; xc: number; land: number; climb: number }
 export interface Course {
   platforms: Platform[]; pickups: Pickup[]; rings: Ring[]; pads: Pad[]; stands: Stand[];
+  /** the Jetpack line's hills, for the tests and the flight's own hints */
+  hills: Hill[];
   portal: { x: number; z: number; r: number }; start: Crossing; gate: Crossing; sections: Section[];
   spawn: { x: number; y: number; z: number; yaw: number };
   /** the ceiling every world has, so a body never leaves the shadow map's reach */
@@ -37,6 +41,9 @@ export const SLAB = 0.6, FALL_Y = -3;
 export const BOOST = 6, JUMP_PAD = 11.5;
 /** Facing along +x, +z, −x as the body's yaw (rotation.y: yaw = atan2(dir.x, dir.z)). */
 export const YAW_EAST = Math.PI / 2, YAW_NORTH = 0, YAW_WEST = -Math.PI / 2;
+
+/** The glass ceiling every world has, so a body never leaves the shadow map's reach. */
+const CEILING = 18;
 
 /** The one course. Built by rule from a handful of numbers, so a tweak to a gap is one number. */
 export function buildCourse(): Course {
@@ -108,6 +115,34 @@ export function buildCourse(): Course {
   for (const [x, y] of [[116.5, 6.3], [85.5, 4.2], [54.5, 2.1]] as const) pads.push({ kind: 'boost', x, z: 30, y, w: 3, d: 2.4, dir: [-1, 0] });
   bubble(135, 8.2, 28.8); bubble(104, 6.1, 31.2); bubble(73, 4.0, 28.8); bubble(42, 1.9, 31.2);
   ring(132, 7.4, 30, -1, YAW_WEST, west(132)); ring(101, 5.3, 30, -1, YAW_WEST, west(101)); ring(70, 3.2, 30, -1, YAW_WEST, west(70)); ring(39, 1.1, 30, -1, YAW_WEST, west(39));
+
+  // The Jetpack line, in hills over the Boots lane: from a platform's west edge, a climb at the full thrust (6.5 m/s
+  // up, 7 along) to a crest, then the fall a body makes once the button is let go (up a little more, then down at
+  // the fall's gravity), landing two platforms on, a couple of metres inside its edge; then the floor to the next
+  // edge, which refills the tank. Stars sit on the climb and on the fall a third of a second apart, so holding to the
+  // crest and letting go carries the chest through every one; the crest holds the diamond, a cell, or a hoop. The
+  // first hill lifts from the middle of the first platform, under the ceiling, and lands on the next
+  const UP = 6.5, ALONG = 7, G = 22, GF = G * 1.3, COAST = UP / G, LIFT = (UP * UP) / (2 * G);
+  const chestAfter = (crest: number, t: number) => (t <= COAST ? crest + UP * t - 0.5 * G * t * t : crest + LIFT - 0.5 * GF * (t - COAST) ** 2);
+  const hills: Hill[] = [];
+  const hill = (x0: number, landFloor: number, crest: PickupKind | 'hoop', flight: number) => {
+    const chest0 = laneTopAt(P, x0, 20) + 0.9;
+    let climb = 0.8, best = 99; // the climb whose fall lands `flight` metres out, with a head's room under the ceiling
+    for (let c = 0.8; c <= 1.5; c += 0.01) {
+      if (chest0 + UP * c + LIFT > CEILING - 1.1) break;
+      const drop = chest0 + UP * c + LIFT - (landFloor + 0.9), len = ALONG * c + ALONG * (COAST + Math.sqrt(Math.max(0, drop) / (0.5 * GF)));
+      if (Math.abs(len - flight) < best) { best = Math.abs(len - flight); climb = c; }
+    }
+    const xc = x0 - ALONG * climb, yc = chest0 + UP * climb;
+    for (let t = 0.3; t < climb - 0.12; t += 0.3) star(x0 - ALONG * t, chest0 + UP * t, 20, 'jetpack');
+    if (crest === 'hoop') { star(xc, yc, 20, 'jetpack'); R.push({ x: xc, z0: 16.8, z1: 23.2, y: yc - 2, h: 4, dir: -1, at: { x: xc, y: laneTopAt(P, xc, 20) + 0.05, z: 20, yaw: YAW_WEST }, order: west(xc) }); }
+    else K.push({ kind: crest, x: xc, y: yc, z: 20, line: 'jetpack' });
+    let land = xc;
+    for (let t = 0.28; t < 3; t += 0.22) { const x = xc - ALONG * t, y = chestAfter(yc, t); land = x; if (y < landFloor + 0.9 + 1.4) break; star(x, y, 20, 'jetpack'); }
+    hills.push({ x0, xc, land, climb });
+  };
+  hill(137.8, 7, 'diamond', 14.6); hill(118.2, 4, 'cell', 17.2); hill(93.4, 1, 'hoop', 17.2); hill(68.6, 0, 'cell', 17.2); hill(43.8, 0, 'hoop', 17.2);
+  K.push({ kind: 'cell', x: 135, y: 9.1, z: 0, line: 'jetpack' }); // on the stairs' top: a full tank before the sky
   const gate: Crossing = { x: 12, z0: 14, z1: 33, y: 0, h: 6, dir: -1 };
   // the bridge from home back to the pad, for walking around after the gate
   P.push({ x0: 6, x1: 14, z0: 8, z1: 14, y: 0 });
@@ -120,7 +155,7 @@ export function buildCourse(): Course {
     { name: 'turn-skates', x0: 141, x1: 151, z0: 16, z1: 26, yaw: YAW_NORTH, gear: 'skates' }, // on skates the turn faces north until the z 30 lane is near
     { name: 'skyline', x0: 0, x1: 151, z0: 12, z1: 38, yaw: YAW_WEST },
   ];
-  return { platforms: P, pickups: K, rings: R, pads, stands, portal: { x: -5, z: -5, r: 1.4 }, start, gate, sections, spawn: { x: 0, y: 0.05, z: 0, yaw: YAW_EAST }, ceiling: 18 };
+  return { platforms: P, pickups: K, rings: R, pads, stands, hills, portal: { x: -5, z: -5, r: 1.4 }, start, gate, sections, spawn: { x: 0, y: 0.05, z: 0, yaw: YAW_EAST }, ceiling: CEILING };
 }
 
 /** The boxes the body collides with: every platform's slab, each pad as a hair-thin box on top carrying its kind as
@@ -131,6 +166,20 @@ export function courseBoxes(c: Course): Box[] {
   for (const s of c.stands) out.push(box(s.x - 1.4, 0, s.z - 1.4, s.x + 1.4, 0.02, s.z + 1.4, `stand:${s.gear}`));
   out.push(box(-40, c.ceiling, -40, 200, c.ceiling + 1, 60, 'ceiling'));
   return out;
+}
+
+/** The floor's height along a lane at `x`: the top of the lane's platform there (the lane: platforms within four
+ *  metres of `z` either side), or, over a gap, the line from the platform before to the one after; beyond the lane's
+ *  ends, the end platform's top. */
+export function laneTopAt(platforms: Platform[], x: number, z: number): number {
+  const lane = platforms.filter((p) => p.z0 >= z - 4 && p.z1 <= z + 4 && p.z0 <= z && z <= p.z1).sort((a, b) => a.x0 - b.x0);
+  if (!lane.length) return 0;
+  for (let i = 0; i < lane.length; i++) {
+    const p = lane[i]!, n = lane[i + 1];
+    if (x >= p.x0 && x <= p.x1) return p.y;
+    if (n && x > p.x1 && x < n.x0) return p.y + ((n.y - p.y) * (x - p.x1)) / (n.x0 - p.x1);
+  }
+  return x < lane[0]!.x0 ? lane[0]!.y : lane[lane.length - 1]!.y;
 }
 
 /** Which section the body is in, if any: the first whose rectangle holds it, skipping those for another gear. */

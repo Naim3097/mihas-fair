@@ -21,7 +21,7 @@ import { buzz, sfx } from '../sfx';
 import { FALL_Y, JUMP_PAD, PickupIndex, buildCourse, courseBoxes, crossed, platformUnder, sectionAt, type Course, type Gear, type Section } from './course';
 import { GEAR, GEAR_READY, boostBody } from './gear';
 import { Run, type RunEvent } from './run';
-import { pgBalance, pgBest, pgCombo, pgControls, pgFade, pgGear, pgHint, pgMode, pgNearPortal, pgO2, pgRunStars, pgScore, pgStandNote, pgSummary, pgUnlocks } from './state';
+import { pgBalance, pgBest, pgCombo, pgControls, pgFade, pgFuel, pgGear, pgHint, pgMode, pgNearPortal, pgO2, pgRunStars, pgScore, pgStandNote, pgSummary, pgUnlocks } from './state';
 import { LocalStore } from './store';
 import { PlaygroundWorld } from './world';
 
@@ -55,6 +55,7 @@ export class PlaygroundEngine implements Scene {
   private feet: [THREE.Vector3, THREE.Vector3] = [new THREE.Vector3(), new THREE.Vector3()]; private lastYaw = 0;
   /** the pinch's scale on the gear's camera distance */
   private zoom = 1;
+  private tmpV = new THREE.Vector3(); private thrustOn = false;
   private stops: (() => void)[] = [];
 
   constructor(private stage: Stage, private quality: Quality) {
@@ -81,7 +82,7 @@ export class PlaygroundEngine implements Scene {
     void Promise.all([loadNexo(), loadNexoLibrary()]).then(([g, lib]) => { if (this.disposed) return; this.gltf = g; this.lib = lib; this.actor?.dispose(); this.actor = this.makeActor(); });
     this.actor = this.makeActor();
     const s = this.store.get(); this.gear = s.gear; this.publishStore();
-    pgControls.value = { jump: () => this.jump(), again: () => this.again(), leave: () => this.leaveRequested() };
+    pgControls.value = { jump: () => this.jump(), hold: (on) => this.stage.input.hold(on), again: () => this.again(), leave: () => this.leaveRequested() };
     if (import.meta.env.DEV) (window as unknown as { __pg?: unknown }).__pg = this;
   }
 
@@ -109,11 +110,13 @@ export class PlaygroundEngine implements Scene {
     const p = this.sim.player; p.body.pos.x = x; p.body.pos.y = y; p.body.pos.z = z; p.body.vel = v3(); p.body.grounded = false; p.yaw = yaw; p.peak = y;
     p.action = null; p.dodge = null; p.airDash = null; p.slamming = false; p.jumpBuffer = 0; loop(p, 'idle');
     this.prev.x = x; this.prev.y = y; this.prev.z = z; this.acc = 0; this.lastYaw = yaw;
-    for (const r of this.world.ribbons) r.clear();
+    p.fuel = this.sim.movement.thrust?.fuel ?? 0; p.thrusting = false; // a full tank wherever the body is put down
+    for (const r of this.world.ribbons) r.clear(); this.world.exhaust.clear();
   }
   private setGear(g: Gear) {
     this.gear = g; this.store.choose(g); pgGear.value = g;
     this.sim.movement = GEAR[g].movement; // the controller reads the tuning every step
+    this.sim.player.fuel = GEAR[g].movement.thrust?.fuel ?? 0;
     this.actor?.setLocomotion(g === 'skates' ? 'skate' : 'walk');
     for (const r of this.world.ribbons) r.clear();
   }
@@ -127,7 +130,7 @@ export class PlaygroundEngine implements Scene {
     const t = now / 1000, p = this.sim.player;
     this.world.update(t, dt);
     const it = this.stage.input.poll();
-    if (pgMode.value === 'summary') { it.move.x = it.move.y = 0; it.jump = false; }
+    if (pgMode.value === 'summary') { it.move.x = it.move.y = 0; it.jump = false; it.thrust = false; }
     this.acc += dt; let n = 0;
     while (this.acc >= STEP - 1e-9 && n < 6) {
       const step = n === 0 ? it : heldOnly(it);
@@ -137,15 +140,20 @@ export class PlaygroundEngine implements Scene {
       this.afterStep();
       this.acc -= STEP; n++;
     }
-    const b = p.body, sp = lenXZ(b.vel), skating = this.gear === 'skates';
+    const b = p.body, sp = lenXZ(b.vel), skating = this.gear === 'skates', flying = this.gear === 'jetpack' && !b.grounded;
     if (this.actor) {
       const yawRate = angleDiff(this.lastYaw, p.yaw) / Math.max(dt, 1e-3); this.lastYaw = p.yaw;
       this.actor.setLean(skating ? THREE.MathUtils.clamp(yawRate * 0.08 * Math.min(1, sp / 6), -0.35, 0.35) : 0);
-      this.actor.place(b.pos.x, b.pos.y, b.pos.z, p.yaw, b.grounded ? Math.min(0.8, sp / 11) * (skating ? 0.22 : 0.16) : 0); this.actor.attend(null); this.actor.applySim(p.anim, dt, sp);
+      this.actor.setFlight(flying);
+      // the run's forward lean on the floor; in flight the body tilts into its travel
+      const lean = flying ? Math.min(1, sp / 7) * 0.35 : b.grounded ? Math.min(0.8, sp / 11) * (skating ? 0.22 : 0.16) : 0;
+      this.actor.place(b.pos.x, b.pos.y, b.pos.z, p.yaw, lean); this.actor.attend(null); this.actor.applySim(p.anim, dt, sp);
       // the skates' ribbons: from the ankles, on the floor, while the body is on the ground and moving
       if (skating && b.grounded && sp > 4 && this.actor.feet(this.feet)) for (let k = 0; k < 2; k++) { const f = this.feet[k]!; this.world.ribbons[k]!.push(f.x, b.pos.y + 0.03, f.z, b.vel.x, b.vel.z); }
+      // the jetpack's exhaust: from the backpack while the thrust is on
+      if (p.thrusting && this.actor.back(this.tmpV)) this.world.exhaust.push(this.tmpV.x, this.tmpV.y, this.tmpV.z, b.vel.x || 0.01, b.vel.z);
     }
-    for (const r of this.world.ribbons) r.update(dt);
+    for (const r of this.world.ribbons) r.update(dt); this.world.exhaust.update(dt);
     this.sounds(sp, b.grounded, dt);
     this.updateCamera(dt);
     this.world.light.follow(b.pos.x, b.pos.z);
@@ -180,7 +188,8 @@ export class PlaygroundEngine implements Scene {
     const g = GEAR[this.gear], n = this.index.near(pos.x, pos.y + 0.9, pos.z, g.magnet + 0.36, this.near);
     for (let k = 0; k < n; k++) {
       const i = this.near[k]!; if (this.world.isCollected(i)) continue;
-      const kind = this.course.pickups[i]!.kind; this.world.collect(i);
+      const kind = this.course.pickups[i]!.kind; if (kind === 'cell' && !this.sim.movement.thrust) continue; // fuel is the Jetpack's
+      this.world.collect(i);
       if (kind === 'star') run.star(); else if (kind === 'bubble') run.bubble(); else if (kind === 'cell') run.cell(); else run.diamond();
     }
     for (const r of this.course.rings) if (crossed(r, this.prev, pos)) run.ringAt(r.order);
@@ -212,7 +221,7 @@ export class PlaygroundEngine implements Scene {
     if (s.reason === 'gate') { sfx('big'); buzz([18, 40, 18]); } else if (s.reason === 'o2') sfx('warn');
   }
   private onStand(gear: Gear) {
-    const g = GEAR[gear], s = this.store.get(), tip = gear === 'skates' ? ' · hold the rim to tuck' : '';
+    const g = GEAR[gear], s = this.store.get(), tip = gear === 'skates' ? ' · hold the rim to tuck' : gear === 'jetpack' ? ' · hold Jump to fly' : '';
     if (s.unlocks.includes(gear)) { this.setGear(gear); pgStandNote.value = `${g.name} on${tip}`; sfx('tap'); return; }
     if (!GEAR_READY[gear]) { pgStandNote.value = `${g.name}: coming soon`; return; }
     if (this.store.spend(gear, g.price)) { this.publishStore(); this.setGear(gear); pgStandNote.value = `${g.name} unlocked${tip}`; sfx('big'); buzz([18, 40, 18]); toast(`${g.name} are yours`, `${g.price} stars well spent`, 'xp'); }
@@ -227,13 +236,15 @@ export class PlaygroundEngine implements Scene {
       case 'diamond': this.store.addStars(25); pgBalance.value = this.store.get().stars; pgRunStars.value = this.run!.stars; this.float('+300 ◆', pos); sfx('big'); buzz([18, 40, 18]); break;
       case 'ring': sfx('tap'); break;
       case 'fall': sfx('warn'); buzz(30); break;
-      case 'cell': case 'end': break;
+      case 'cell': { const p = this.sim.player, T = this.sim.movement.thrust; if (T) p.fuel = Math.min(T.fuel, p.fuel + T.fuel / 2); this.float('+fuel', pos); sfx('go'); break; }
+      case 'end': break;
     }
   }
   private publishRun() {
     const r = this.run; if (!r) return;
     const o2 = Math.ceil(r.o2); if (pgO2.value !== o2) pgO2.value = o2;
     if (pgScore.value !== r.score) pgScore.value = r.score;
+    const fuel = Math.round(this.sim.player.fuel); if (pgFuel.value !== fuel) pgFuel.value = fuel;
   }
 
   /* ---------------- camera, sounds, labels ---------------- */
@@ -246,8 +257,11 @@ export class PlaygroundEngine implements Scene {
     if (performance.now() - this.orbitAt > ORBIT_HOLD_MS) {
       const base = this.section?.yaw ?? p.yaw, want = base + angleDiff(base, p.yaw) * 0.25;
       this.rig.yaw += angleDiff(this.rig.yaw, want) * (1 - Math.exp(-2.5 * dt));
-      this.rig.pitch = damp(this.rig.pitch, g.pitch, 3, dt);
+      // the jetpack's camera tips up a little while climbing and down while falling
+      const pitch = this.sim.movement.thrust ? THREE.MathUtils.clamp(g.pitch - (p.body.vel.y / 6.5) * 0.15, 0.15, 0.5) : g.pitch;
+      this.rig.pitch = damp(this.rig.pitch, pitch, 3, dt);
     }
+    if (p.thrusting) this.rig.kick(g.kick);
     this.rig.dist = damp(this.rig.dist, THREE.MathUtils.clamp(g.dist * this.zoom, CAM.min, CAM.max), 3, dt);
     this.rig.update(dt, pos, p.body.vel, null, p.gait === 'sprint');
     const under = platformUnder(this.course, this.camera.position.x, this.camera.position.y, this.camera.position.z);
@@ -257,6 +271,7 @@ export class PlaygroundEngine implements Scene {
   private sounds(speed: number, grounded: boolean, dt: number) {
     for (const ev of this.sim.events) { if (ev.kind === 'jump' || ev.kind === 'airjump') this.steps.play('jump'); else if (ev.kind === 'land') this.steps.play('land', 0.4 + (ev.power ?? 0)); }
     this.sim.events.length = 0;
+    if (this.sim.player.thrusting !== this.thrustOn) { this.thrustOn = this.sim.player.thrusting; if (this.thrustOn) this.steps.play('dodge', 0.5); } // the thrust catching
     if (!grounded || speed < 0.8 || this.gear === 'skates') { this.stepAcc = 0; return; } // skates glide: no footsteps
     this.stepAcc += speed * dt; const stride = this.sim.player.gait === 'sprint' ? 2.1 : 1.45;
     if (this.stepAcc >= stride) { this.stepAcc -= stride; this.steps.play('step', 0.4 + speed / 12); }

@@ -32,14 +32,22 @@ export const SKATES: MovementDef = {
   jump: 6.8, airJump: 6.4,
 };
 
+/** The Jetpack: Boots on the ground, and in the air a thrust that cancels gravity and climbs at 6.5 m/s while the
+ *  button is held and the tank lasts (about four seconds of climb), no second jump, a stronger hand in the air. */
+export const JETPACK: MovementDef = {
+  ...BOOTS,
+  airJumps: 0, airControl: 14,
+  thrust: { accel: 34, climb: 6.5, airSpeed: 7, fuel: 100, drain: 24, refill: 30 },
+};
+
 export const GEAR: Record<Gear, GearDef> = {
   boots: { name: 'Boots', movement: BOOTS, camera: { dist: 4.8, pitch: 0.32, kick: 0 }, magnet: 0, price: 0 },
   skates: { name: 'Skates', movement: SKATES, camera: { dist: 5.6, pitch: 0.24, kick: 6 }, magnet: 0.3, price: 100 },
-  jetpack: { name: 'Jetpack', movement: BOOTS, camera: { dist: 6.2, pitch: 0.3, kick: 4 }, magnet: 0.3, price: 250 },
+  jetpack: { name: 'Jetpack', movement: JETPACK, camera: { dist: 6.2, pitch: 0.3, kick: 4 }, magnet: 0.3, price: 250 },
 };
 
 /** The gears that can be stood on today; the others say when they come. */
-export const GEAR_READY: Record<Gear, boolean> = { boots: true, skates: true, jetpack: false };
+export const GEAR_READY: Record<Gear, boolean> = { boots: true, skates: true, jetpack: true };
 
 /** A boost pad's push: a kick along the pad, which the controller then eases back to the gait's speed (in a quarter
  *  of a second on Boots, most of a second on Skates). The same on every gear; the course's tests use it too. */
