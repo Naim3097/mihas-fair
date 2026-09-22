@@ -44,6 +44,8 @@ const RECHECK_MS = 5 * 60_000;
 const CORR_HOLD_MS = 90_000, CORR_FADE_MS = 5 * 60_000, CORR_MAX_M = 60;
 /** Standing still (no step for this long): GPS wobble does not move the avatar. */
 const STILL_MS = 3000;
+/** Standing still yet GPS says this far away: they walked and the steps were missed (phone in a bag). Believe GPS. */
+const STILL_IGNORE_M = 40;
 /** Steps alone, with no GPS map to pull them back, are trusted until they have drifted about this far. */
 const STEPS_ONLY_MAX_SIGMA = 12;
 
@@ -126,8 +128,9 @@ function onFix(pos: GeolocationPosition) {
   const tr = track();
   if (tr && p) {
     if (!motionOn.value) tr.idle(dt);
-    const still = motionOn.value && performance.now() - lastStepAt() > STILL_MS && tr.anchoredWithin(30 * 60_000, t);
-    if (!still || !tr.ready) { const k = corrWeight(deck); tr.gps(p.x + (corr?.dx ?? 0) * k, p.y + (corr?.dy ?? 0) * k, Math.max(1.5, p.sigma * (1 - 0.7 * k))); }
+    const k = corrWeight(deck), gx = p.x + (corr?.dx ?? 0) * k, gy = p.y + (corr?.dy ?? 0) * k;
+    const still = tr.ready && motionOn.value && performance.now() - lastStepAt() > STILL_MS && Math.hypot(gx - tr.x, gy - tr.y) < STILL_IGNORE_M;
+    if (!still) tr.gps(gx, gy, Math.max(1.5, p.sigma * (1 - 0.7 * k)));
   }
   publish();
 }
@@ -193,12 +196,16 @@ function anchorAt(x: number, y: number, deck: number) {
 }
 
 /** A booth QR scanned on site. */
-export function pinToBooth(stationId: string) {
-  if (siteMode.value !== 'onsite') return;
-  const b = level.value?.booths.find((x) => x.id === stationId); if (!b) return;
+export function pinToBooth(stationId: string): boolean {
+  if (siteMode.value !== 'onsite') return false;
+  const b = level.value?.booths.find((x) => x.id === stationId); if (!b) return false;
   const p = grid()?.nearestWalkable(b.x, b.y, 6) ?? b;
   anchorAt(p.x, p.y, b.deck);
+  return true;
 }
+
+/** How far off the on-site position may be (metres): null when it is not trying. */
+export const siteError = () => siteMode.value !== 'onsite' ? null : siteState.value === 'uncalibrated' ? Infinity : siteState.value === 'tracking' && gpsTarget.value ? gpsTarget.value.sigma : null;
 
 let spotCache: { at: number; list: Spot[] } | null = null;
 /** The 24-odd posters, where the crew actually hung them. */

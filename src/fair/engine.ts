@@ -407,7 +407,7 @@ export class FairEngine implements EngineApi {
     if (!this.started) return;
     if (following()) {
       const booth = this.boothAt(cx, cy);
-      if (booth && nearStation.value?.id === booth.id) { panelStation.value = booth; modal.value = 'booth'; }
+      if (booth) { panelStation.value = booth; modal.value = 'booth'; } // near it, or "I'm standing here" to fix the position
       else toast('You move by walking', 'At MIHAS your avatar follows your phone — walk to where you want to go', 'info', 3600);
       return;
     }

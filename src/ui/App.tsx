@@ -10,7 +10,7 @@ import { DemoChip, TourSheet } from '../demo/Tour';
 import { Camera, Sheet, hex } from './common';
 import { handleScan } from '../scan';
 import { BoothSheet, ClaimSheet, ContactsSheet, MenuSheet, MyBoothSheet, SwapSheet } from './sheets';
-import { OnsiteGate, SiteChoice } from './onsite';
+import { OnsiteGate, SiteChoice, WeakGps } from './onsite';
 import { onsiteAvailable, setSiteMode, siteMode } from '../onsite';
 
 type Eng = { engine: () => Engine | null };
@@ -38,6 +38,7 @@ export function App({ engine }: Eng) {
       {m === 'scan' && <ScanSheet />}
       {m === 'jointeam' && <JoinTeamSheet engine={engine} />}
       {phase.value === 'play' && <OnsiteGate />}
+      {phase.value === 'play' && !m && <WeakGps />}
       <Toasts />
     </>
   );

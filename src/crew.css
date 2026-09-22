@@ -57,16 +57,3 @@ tr.dim{opacity:.45}b.good{color:var(--green)}b.bad{color:var(--red)}
 .teamlink{display:grid;grid-template-columns:auto 1fr;gap:12px 16px;align-items:center;margin:8px 0}.teamlink .qr{width:132px;margin:0}
 @media (max-width:560px){.teamlink{grid-template-columns:1fr}.teamlink .qr{margin:0 auto}}
 .joined li .chip{margin-left:auto}
-/* you-are-here posters: small cards on screen, one A4 page each on paper, after the map */
-.spotmap{margin:12px 0;background:#fff;border:1px solid var(--line-2);border-radius:var(--r-m);padding:10px}.spotmap svg{width:100%;max-height:70vh;display:block}
-.spotmap .hall{fill:#f4f5f8;stroke:#c9cdd6;stroke-width:.4}.spotmap .bo{fill:#d6d9e0}.spotmap .sp{fill:var(--blue)}.spotmap .sl{font:800 4.2px Urbanist,sans-serif;fill:var(--ink)}.spotmap .hn{font:800 5px Urbanist,sans-serif;fill:var(--ink-3);text-anchor:end}
-.spotmap figcaption{font-size:12px;color:var(--ink-3);margin-top:6px}
-.spotin{width:130px;display:inline-block;margin:0 6px 0 0;padding:6px 8px;font-size:14px}
-.posters{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-top:12px}
-.poster{background:#fff;color:var(--ink);border:1px solid var(--line-2);border-radius:var(--r-m);padding:16px;text-align:center;break-inside:avoid}
-.poster h3{margin:4px 0 0;font-size:26px;font-weight:900}.poster .sub{margin:2px 0 6px;font-weight:700;font-size:13px;color:var(--ink-2)}.poster .qr{width:170px;margin:0 auto;border:0;padding:0}.poster .tag{margin:6px 0 0;font-size:11px;color:var(--ink-3)}
-@media print{
-  .spotmap{border:0;break-after:page}.spotmap svg{max-height:none}
-  .posters{display:block}.poster{border:0;break-after:page;min-height:95vh;display:flex;flex-direction:column;justify-content:center;align-items:center}
-  .poster .k{font-size:18px}.poster h3{font-size:72px}.poster .sub{font-size:26px;margin:8px 0 18px}.poster .qr{width:13cm}.poster .tag{font-size:14px;margin-top:18px}
-}
