@@ -74,6 +74,11 @@ test('gear is bought with stars on the server: refused when short, kept once bou
   r = await me('POST', '/api/playground/run', run(t2, { gear: 'skates', stars: 10, score: 100 }));
   assert.equal(r.json.data.gear, 'skates'); assert.equal(r.json.data.stars, 30);
   assert.deepEqual((await me('GET', '/api/playground/me')).json.data.unlocks, ['boots', 'skates']);
+  // the kit chosen is kept, and only what is owned can be chosen
+  assert.equal((await me('POST', '/api/playground/gear', { gear: 'boots' })).json.data.gear, 'boots');
+  assert.equal((await me('POST', '/api/playground/gear', { gear: 'jetpack' })).json.code, 'gear');
+  assert.equal((await me('POST', '/api/playground/gear', { gear: 'skates' })).json.data.gear, 'skates');
+  assert.equal((await me('GET', '/api/playground/me')).json.data.gear, 'skates');
 });
 
 test('the boards: each player\'s best finished run, today and all-time, the viewer marked, cached for fifteen seconds', async () => {

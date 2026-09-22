@@ -5,6 +5,7 @@ import type { PlaygroundMe, PlaygroundRunInput } from '../../shared/types';
 import { ApiError, api } from '../net/api';
 import type { Gear } from './course';
 import type { RunSummary } from './run';
+import { pgBalance, pgBest, pgGear, pgUnlocks } from './state';
 
 export interface BestRun extends RunSummary { gear: Gear; at: number }
 /** A finished run, as the boards list it. */
@@ -31,8 +32,9 @@ export interface PlaygroundStore {
   beginRun(): void;
   /** The tab is going away mid-run: the server's store sends what there is so far. */
   flush(s: RunSummary, gear: Gear): void;
-  /** The server corrected what the store holds: the engine republishes. */
-  onChange: (() => void) | null;
+  /** Whenever the store changes (a pickup, a purchase, a choice, the server's word): both worlds listen. Returns the
+   *  way to stop listening. The store also keeps the interface's signals current itself. */
+  onChange(fn: () => void): () => void;
 }
 
 const KEY = 'mx_playground', HISTORY = 50, TOP = 10;
@@ -50,9 +52,19 @@ export function rankRuns(runs: BoardRun[], name: string, since = 0): BoardRow[] 
 
 export class LocalStore implements PlaygroundStore {
   readonly local = true;
-  onChange: (() => void) | null = null;
+  private subs = new Set<() => void>();
   private state: PlaygroundState;
-  constructor() { this.state = this.load(); }
+  constructor() { this.state = this.load(); this.publish(); }
+  onChange(fn: () => void): () => void { this.subs.add(fn); return () => { this.subs.delete(fn); }; }
+  /** The interface's signals follow the store; then whoever listens. */
+  private publish() {
+    const s = this.state;
+    if (pgBalance.value !== s.stars) pgBalance.value = s.stars;
+    if (pgUnlocks.value.join() !== s.unlocks.join()) pgUnlocks.value = [...s.unlocks];
+    if (pgGear.value !== s.gear) pgGear.value = s.gear;
+    const best = s.best?.score ?? null; if (pgBest.value !== best) pgBest.value = best;
+  }
+  private changed() { this.publish(); for (const f of [...this.subs]) f(); }
   private load(): PlaygroundState {
     try {
       const raw = localStorage.getItem(KEY);
@@ -63,26 +75,26 @@ export class LocalStore implements PlaygroundStore {
   private save() { try { localStorage.setItem(KEY, JSON.stringify(this.state)); } catch { /* private mode: this visit only */ } }
 
   get(): PlaygroundState { return { ...this.state, unlocks: [...this.state.unlocks], history: [...this.state.history] }; }
-  addStars(n: number) { this.state.stars += n; this.save(); }
+  addStars(n: number) { this.state.stars += n; this.save(); this.changed(); }
   spend(gear: Gear, price: number): boolean {
     if (this.state.unlocks.includes(gear)) return true;
     if (this.state.stars < price) return false;
-    this.state.stars -= price; this.state.unlocks.push(gear); this.save(); return true;
+    this.state.stars -= price; this.state.unlocks.push(gear); this.save(); this.changed(); return true;
   }
-  choose(gear: Gear) { if (this.state.unlocks.includes(gear)) { this.state.gear = gear; this.save(); } }
+  choose(gear: Gear) { if (this.state.unlocks.includes(gear) && this.state.gear !== gear) { this.state.gear = gear; this.save(); this.changed(); } }
   record(s: RunSummary, gear: Gear): boolean {
     this.state.runs++;
     const finished = s.reason === 'gate', at = Date.now();
     if (finished) { this.state.history.push({ score: s.score, gear, stars: s.stars, comboMax: s.comboMax, seconds: s.seconds, at }); if (this.state.history.length > HISTORY) this.state.history.splice(0, this.state.history.length - HISTORY); }
     const best = finished && (!this.state.best || s.score > this.state.best.score);
     if (best) this.state.best = { ...s, gear, at };
-    this.save(); return best;
+    this.save(); this.changed(); return best;
   }
   boards(range: BoardRange, name: string): Promise<BoardRow[]> { return Promise.resolve(rankRuns(this.state.history, name, range === 'today' ? dayStart(Date.now()) : 0)); }
   beginRun() { /* nothing to ask for */ }
   flush() { /* the stars are banked already */ }
   /** What the server says, taken over what this device had. */
-  adopt(p: Partial<PlaygroundState>) { this.state = { ...this.state, ...p, unlocks: p.unlocks ? [...p.unlocks] : this.state.unlocks }; this.save(); }
+  adopt(p: Partial<PlaygroundState>) { this.state = { ...this.state, ...p, unlocks: p.unlocks ? [...p.unlocks] : this.state.unlocks }; this.save(); this.changed(); }
 }
 
 /** The store on the server, with the local one as its cache: reads are instant from the cache, writes go out and the
@@ -90,7 +102,6 @@ export class LocalStore implements PlaygroundStore {
  *  what could not be posted waits for the next chance. The balance the server holds is the one that counts. */
 export class ApiStore implements PlaygroundStore {
   readonly local = false;
-  onChange: (() => void) | null = null;
   private cache = new LocalStore();
   private current: { token: string | null; asking: boolean } | null = null;
   private waiting: { run: { token: string | null; asking: boolean }; input: Omit<PlaygroundRunInput, 'token'> }[] = [];
@@ -100,8 +111,8 @@ export class ApiStore implements PlaygroundStore {
   async sync(): Promise<void> { try { this.adopt(await api.pgMe()); } catch { /* offline, or no backend yet: the cache stands until it answers */ } }
   private adopt(m: PlaygroundMe) {
     this.cache.adopt({ stars: m.stars, unlocks: m.unlocks, gear: m.gear, best: m.best ? { score: m.best.score, gear: m.best.gear, at: m.best.at, stars: 0, comboMax: 1, seconds: 0, reason: 'gate', bonus: 0 } : null });
-    this.onChange?.();
   }
+  onChange(fn: () => void): () => void { return this.cache.onChange(fn); }
   get(): PlaygroundState { return this.cache.get(); }
   addStars(n: number) { this.cache.addStars(n); }
   spend(gear: Gear, price: number): boolean {
@@ -109,7 +120,8 @@ export class ApiStore implements PlaygroundStore {
     void api.pgUnlock(gear).then((m) => this.adopt(m)).catch(() => this.sync()); // refused (short, by the server's count): the cache takes the server's word
     return true;
   }
-  choose(gear: Gear) { this.cache.choose(gear); }
+  /** The kit chosen, here and on the server, so the next visit wears it too. */
+  choose(gear: Gear) { if (this.cache.get().gear === gear) return; this.cache.choose(gear); void api.pgGear(gear).catch(() => {}); }
   beginRun() {
     const run = { token: null as string | null, asking: false }; this.current = run; this.ask(run);
   }

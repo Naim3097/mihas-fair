@@ -98,6 +98,14 @@ export class Playground {
     return this.me(id);
   }
 
+  /** The kit chosen, worn in both worlds: kept so the next visit wears it too; only what is owned. */
+  async choose(id: string, gear: string): Promise<PlaygroundMe> {
+    const s = await this.state(id), g = gear as PlaygroundGear;
+    if (!GEARS.includes(g) || !s.unlocks.includes(g)) throw new GameError('gear', 'That gear is not yours');
+    if (s.gear !== g) await this.g.db.run('INSERT INTO playground_state (player_id, stars, unlocks, gear, updated_at) VALUES (?,?,?,?,?) ON CONFLICT(player_id) DO UPDATE SET gear = excluded.gear, updated_at = excluded.updated_at', [id, s.stars, s.unlocks.join(','), g, this.g.now()]);
+    return this.me(id);
+  }
+
   /** The ten best finished runs, one per player, today (from midnight, Malaysian time) or ever; the viewer marked. */
   async board(range: 'today' | 'all', viewer: string | null): Promise<PlaygroundBoardRow[]> {
     const t = this.g.now(), hit = this.boardCache.get(range);

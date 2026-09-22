@@ -5,6 +5,8 @@ import { POINTS, ROLE_INFO, chapters, type Role } from '../../shared/rules';
 import type { BoothTeamPeek, PassportInput } from '../../shared/types';
 import { afterCard, boothAction, referral, teamInvite, atLaunchPad, bootError, bootNote, distToGoal, goalVia, guideOn, guideTarget, herePlace, journey, level, me, modal, moveHint, nearLift, nearStation, offline, online, panelStation, phase, routing, seated, stampedSet, stationMap, toast, toasts, world } from '../state';
 import { BoardsSheet, PlaygroundHud } from './playground';
+import { GEAR } from '../playground/gear';
+import { pgFuel, pgGear, pgUnlocks } from '../playground/state';
 import { facts } from '../game/facts';
 import { MapSheet, PhotoSheet } from './world-sheets';
 import { DemoChip, TourSheet } from '../demo/Tour';
@@ -118,6 +120,19 @@ function SeatNote() {
   return <div class="note"><span class="k">While you sit</span><p>{list[i]}</p></div>;
 }
 
+/** The kit the Playground paid for, on the fair's floor: tap the chip to switch among what is owned; the Jetpack adds
+ *  a Fly button (hold) with its fuel. Nothing to switch until a second kit is bought, so nothing is shown. */
+function KitChip({ engine }: Eng) {
+  const owned = pgUnlocks.value, kit = pgGear.value, eng = engine();
+  if (owned.length < 2) return null;
+  return (
+    <>
+      {kit === 'jetpack' && <button class="flybtn" aria-label="Fly (hold)" onPointerDown={(e) => { e.preventDefault(); eng?.jump(); eng?.hold(true); }} onPointerUp={() => eng?.hold(false)} onPointerCancel={() => eng?.hold(false)} onPointerLeave={() => eng?.hold(false)}>Fly<span class="fuelmini" aria-hidden="true"><i style={{ width: `${Math.min(100, pgFuel.value)}%` }} /></span></button>}
+      <button class="chip kit" data-tip="Switch kit" onClick={() => eng?.nextKit()}>{GEAR[kit].name} ›</button>
+    </>
+  );
+}
+
 function Hud({ engine }: Eng) {
   const m = me.value!, j = journey.value!, st = nearStation.value, has = st && stampedSet.value.has(st.id), view = st ? stationMap.value.get(st.id) : undefined;
   const [stamping, setStamping] = useState(false), [open, setOpen] = useState(false), [tray, setTray] = useState(false);
@@ -206,6 +221,7 @@ function Hud({ engine }: Eng) {
 
       {/* bottom-right, under the thumb: the three things you can always do */}
       <div class="dock">
+        <KitChip engine={engine} />
         <DemoChip />
         <button aria-label="Map and search" data-tip="Map and search · M" onClick={() => (modal.value = 'map')}><Icon d={ICONS.map} /></button>
         <div class="express">

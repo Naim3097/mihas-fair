@@ -27,6 +27,11 @@ import { Sim } from '../ceritera/game/sim';
 import { angleDiff, lenXZ, v3 } from '../ceritera/game/v3';
 import type { FairInput, FairSink } from './input';
 import type { Quality, Scene, Stage } from './stage';
+import { FAIR_KITS, FLY_CEILING, nextKit } from './kits';
+import type { Gear } from '../playground/course';
+import { pgFuel } from '../playground/state';
+import type { PlaygroundStore } from '../playground/store';
+import { Ribbon } from '../playground/ribbon';
 export { pickQuality, type Quality } from './stage';
 import { CX, CY, buildFairLevel, fixY, toPlan, toWorld, type FairLevel } from './level';
 import { NexoActor, loadNexo, loadNexoLibrary, loadNexoLod, type NexoRole } from './nexo';
@@ -91,6 +96,10 @@ export class FairEngine implements EngineApi, Scene {
   private seat: Seat | null = null; private seatGoal: Seat | null = null; private wantBeforeSit = CAM.dist;
   private liftT = 1; private hallNow: number | null = null; private walked = 0; private picked: Booth | null = null;
   private stepAcc = 0; private introT = -1; private orbit = 0.6; private orbitAt = 0;
+  /** the kit worn: the Playground's gear on the fair's floor, from the store both worlds share */
+  private kit: Gear = 'boots'; private kits: PlaygroundStore | null = null;
+  private ribbons: [Ribbon, Ribbon]; private exhaust: Ribbon; private feet: [THREE.Vector3, THREE.Vector3] = [new THREE.Vector3(), new THREE.Vector3()];
+  private lastYaw = 0; private thrustOn = false; private fuelAt = 0; private tmpV = new THREE.Vector3();
   private stops: (() => void)[] = [];
 
   constructor(private stage: Stage, private level: LevelData, private quality: Quality) {
@@ -115,6 +124,8 @@ export class FairEngine implements EngineApi, Scene {
     this.trail.count = 0; this.trail.frustumCulled = false; this.trail.renderOrder = 3; this.world.scene.add(this.trail);
     this.ping = { mesh: new THREE.Mesh(new THREE.RingGeometry(0.8, 1, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: FAIR.blue, transparent: true, ...onFloor })), t: 1 };
     this.ping.mesh.visible = false; this.ping.mesh.renderOrder = 3; this.world.scene.add(this.ping.mesh);
+    this.ribbons = [new Ribbon(48, 0.06, 1.2, FAIR.accent), new Ribbon(48, 0.06, 1.2, FAIR.accent)]; this.exhaust = new Ribbon(24, 0.12, 0.45, FAIR.accent);
+    for (const r of [...this.ribbons, this.exhaust]) this.world.scene.add(r.mesh);
 
     this.input = stage.input;
     this.sink = {
@@ -155,6 +166,27 @@ export class FairEngine implements EngineApi, Scene {
   /** The stage is back with the fair: say where we are at once, look around afresh. */
   resume() { this.pingAt = 0; this.proxAt = 0; this.hover(null); this.orbitAt = 0; }
 
+  /* ---------------- the kits: the Playground's gear, worn here ---------------- */
+
+  /** The store both worlds share: wear the kit it holds, and follow it (a purchase or a choice in the Playground,
+   *  the server's word on what is owned). */
+  useKits(store: PlaygroundStore) {
+    this.kits = store; this.setKit(store.get().gear);
+    this.stops.push(store.onChange(() => { const s = store.get(); if (!s.unlocks.includes(this.kit)) this.setKit('boots'); else if (s.gear !== this.kit) this.setKit(s.gear); }));
+  }
+  /** The next kit owned, from the chip in the dock. */
+  nextKit() { const s = this.kits?.get(); if (!s || s.unlocks.length < 2) return; const g = nextKit(s.unlocks, this.kit); this.kits!.choose(g); this.setKit(g); api.track('kit', { gear: g }); }
+  /** The Fly button held, or let go. */
+  hold(on: boolean) { this.input.hold(on); }
+  private setKit(g: Gear) {
+    if (this.kit === g && this.sim.movement === FAIR_KITS[g]) return;
+    this.kit = g; this.sim.movement = FAIR_KITS[g];
+    const p = this.sim.player; p.fuel = FAIR_KITS[g].thrust?.fuel ?? 0; p.airJumps = FAIR_KITS[g].airJumps; p.thrusting = false;
+    this.player?.setLocomotion(g === 'skates' ? 'skate' : 'walk'); this.player?.setFlight(false);
+    for (const r of [...this.ribbons, this.exhaust]) r.clear();
+    pgFuel.value = Math.round(p.fuel);
+  }
+
   private role(): NexoRole { return me.value?.cls === 'exhibitor' ? 'exhibitor' : 'visitor'; }
   private face = new THREE.Vector3();
   /** The face of the nearest other Nexo within reach, for the player's head to turn to. */
@@ -163,7 +195,7 @@ export class FairEngine implements EngineApi, Scene {
     for (const o of this.holos.values()) { if (!o.actor.root.visible) continue; const p = o.actor.root.position, d = Math.hypot(p.x - x, p.z - z); if (d < bd) { bd = d; best = o; } }
     return best ? this.face.set(best.actor.root.position.x, best.actor.root.position.y + 1.3, best.actor.root.position.z) : null;
   }
-  private makeActor(role: NexoRole, mine = false): NexoActor { const a = new NexoActor(mine ? this.gltf : this.gltfOthers ?? this.gltf, this.lib, role, this.quality === 'high'); a.setBlob(!this.world.shadows); this.world.scene.add(a.root); return a; }
+  private makeActor(role: NexoRole, mine = false): NexoActor { const a = new NexoActor(mine ? this.gltf : this.gltfOthers ?? this.gltf, this.lib, role, this.quality === 'high'); a.setBlob(!this.world.shadows); if (mine) a.setLocomotion(this.kit === 'skates' ? 'skate' : 'walk'); this.world.scene.add(a.root); return a; }
   /** The model file arrived: every body gets it, in place. */
   private rebuildBodies() {
     if (this.player) { this.player.dispose(); this.player = this.makeActor(this.role(), true); }
@@ -180,7 +212,8 @@ export class FairEngine implements EngineApi, Scene {
   private teleport(x: number, y: number, yaw: number) {
     const p = this.sim.player, w = toWorld(x, y, 0);
     p.body.pos.x = w.x; p.body.pos.y = 0.05; p.body.pos.z = w.z; p.body.vel = v3(); p.body.grounded = false; p.yaw = yaw; p.peak = 0;
-    p.action = null; p.dodge = null; p.airDash = null; p.slamming = false;
+    p.action = null; p.dodge = null; p.airDash = null; p.slamming = false; p.fuel = this.sim.movement.thrust?.fuel ?? 0;
+    for (const r of [...this.ribbons, this.exhaust]) r.clear();
     this.stopRoute(); loop(p, 'idle');
   }
 
@@ -219,17 +252,29 @@ export class FairEngine implements EngineApi, Scene {
       }
       const p = this.sim.player, it = this.intent(dt);
       if (this.seat) {
-        if (it.move.x || it.move.y || it.jump || this.follower.active) this.stand();
+        if (it.move.x || it.move.y || it.jump || it.thrust || this.follower.active) this.stand();
         else { const w = toWorld(this.seat.x, this.seat.y, this.seat.z); p.body.pos.x = w.x; p.body.pos.y = w.y; p.body.pos.z = w.z; p.yaw = this.seat.h; }
       }
       if (!this.seat) {
         this.sim.camYaw = this.rig.yaw; this.sim.step(it, dt);
         p.stamina = p.vit.stamina; p.spirit = p.vit.spirit; // no stamina at a fair: sprint as long as you like
+        if (this.kit === 'jetpack' && p.body.pos.y > FLY_CEILING) { p.body.pos.y = FLY_CEILING; if (p.body.vel.y > 0) p.body.vel.y = 0; } // over the partitions, under the glass
       }
       this.afterMove(now, dt);
       this.proximity(now); this.updateTrail(now, t); this.sync(now); this.updateHolos(now, dt);
-      const b = p.body, sp = lenXZ(b.vel);
-      if (this.player) { this.player.place(b.pos.x, b.pos.y, b.pos.z, p.yaw, b.grounded ? Math.min(0.8, sp / 11) * 0.16 : 0); this.player.attend(this.nearestFace(b.pos.x, b.pos.z, 6)); this.player.applySim(p.anim, dt, sp); }
+      const b = p.body, sp = lenXZ(b.vel), skating = this.kit === 'skates', flying = this.kit === 'jetpack' && !b.grounded && !this.seat;
+      if (this.player) {
+        const yawRate = angleDiff(this.lastYaw, p.yaw) / Math.max(dt, 1e-3); this.lastYaw = p.yaw;
+        this.player.setLean(skating ? THREE.MathUtils.clamp(yawRate * 0.08 * Math.min(1, sp / 6), -0.35, 0.35) : 0);
+        this.player.setFlight(flying);
+        const lean = flying ? Math.min(1, sp / 7) * 0.35 : b.grounded ? Math.min(0.8, sp / 11) * (skating ? 0.22 : 0.16) : 0;
+        this.player.place(b.pos.x, b.pos.y, b.pos.z, p.yaw, lean); this.player.attend(this.nearestFace(b.pos.x, b.pos.z, 6)); this.player.applySim(p.anim, dt, sp);
+        // the kit's trails: two ribbons from the skates' ankles, the exhaust from the jetpack while it fires
+        if (skating && b.grounded && sp > 4 && this.player.feet(this.feet)) for (let k = 0; k < 2; k++) { const f = this.feet[k]!; this.ribbons[k]!.push(f.x, b.pos.y + 0.03, f.z, b.vel.x, b.vel.z); }
+        if (p.thrusting && this.player.back(this.tmpV)) this.exhaust.push(this.tmpV.x, this.tmpV.y, this.tmpV.z, b.vel.x || 0.01, b.vel.z);
+      }
+      for (const r of this.ribbons) r.update(dt); this.exhaust.update(dt);
+      if (this.kit === 'jetpack' && now - this.fuelAt > 100) { this.fuelAt = now; const f = Math.round(p.fuel); if (pgFuel.value !== f) pgFuel.value = f; }
       this.sounds(sp, b.grounded, dt);
       this.updateCamera(dt, it);
       this.world.followSun(b.pos.x, b.pos.z);
@@ -272,7 +317,8 @@ export class FairEngine implements EngineApi, Scene {
       else if (ev.kind === 'dodge' || ev.kind === 'dash') this.steps.play('dodge');
     }
     this.sim.events.length = 0;
-    if (!grounded || speed < 0.8) { this.stepAcc = 0; return; }
+    if (this.sim.player.thrusting !== this.thrustOn) { this.thrustOn = this.sim.player.thrusting; if (this.thrustOn) this.steps.play('dodge', 0.5); } // the thrust catching
+    if (!grounded || speed < 0.8 || this.kit === 'skates') { this.stepAcc = 0; return; } // skates glide: no footsteps
     this.stepAcc += speed * dt;
     const stride = this.sim.player.gait === 'walk' ? 0.75 : this.sim.player.gait === 'sprint' ? 2.1 : 1.45;
     if (this.stepAcc >= stride) { this.stepAcc -= stride; this.steps.play('step', 0.4 + speed / 12); }
@@ -639,7 +685,7 @@ export class FairEngine implements EngineApi, Scene {
   dispose() {
     this.disposed = true; this.stops.forEach((s) => s());
     for (const o of this.holos.values()) { o.actor.dispose(); o.label.remove(); }
-    this.player?.dispose(); this.steps.dispose(); this.world.dispose(); this.overlay.remove();
+    this.player?.dispose(); this.steps.dispose(); for (const r of [...this.ribbons, this.exhaust]) r.dispose(); this.world.dispose(); this.overlay.remove();
   }
 }
 

@@ -14,16 +14,18 @@ import { installBack } from './ui/back';
 import { installSfx } from './sfx';
 import { bootError, bootNote, drop, level, me, modal, myBooths, online, phase, setReferral, stations, teamInvite, world } from './state';
 import type { PlaygroundEngine } from './playground/engine';
+import { ApiStore, LocalStore, type PlaygroundStore } from './playground/store';
+import { pgStore } from './playground/state';
 import { effect } from '@preact/signals';
 import type { LevelData } from '../shared/types';
 
-let stage: Stage | null = null, engine: FairEngine | null = null, playground: PlaygroundEngine | null = null;
+let stage: Stage | null = null, engine: FairEngine | null = null, playground: PlaygroundEngine | null = null, kits: PlaygroundStore | null = null;
 
 /** The Playground is built on first entry and kept; the fair pauses while it has the stage and resumes when it is back. */
 effect(() => {
   const w = world.value; if (!stage || !engine) return;
   if (w === 'playground') {
-    void (playground ? Promise.resolve(playground) : import('./playground/engine').then((m) => (playground = new m.PlaygroundEngine(stage!, stage!.quality)))).then((pg) => { if (world.value === 'playground') { pg.enter(); api.track('playground_enter'); } });
+    void (playground ? Promise.resolve(playground) : import('./playground/engine').then((m) => (playground = new m.PlaygroundEngine(stage!, stage!.quality, kits!)))).then((pg) => { if (world.value === 'playground') { pg.enter(); api.track('playground_enter'); } });
   } else if (playground && stage.scene === playground) { playground.onLeft(); stage.use(engine); engine.resume(); }
 });
 render(<App engine={() => engine} />, document.getElementById('ui')!);
@@ -61,7 +63,11 @@ async function boot() {
       import('./fair/stage'),
     ]);
     level.value = lv;
-    try { stage = new Stage(document.getElementById('stage')!, pickQuality()); engine = new FairEngine(stage, fairLevelData(lv), stage.quality); }
+    try {
+      stage = new Stage(document.getElementById('stage')!, pickQuality()); engine = new FairEngine(stage, fairLevelData(lv), stage.quality);
+      // the Playground's store, shared with the fair: the kits a run paid for are worn in the halls too
+      kits = me.value ? new ApiStore() : new LocalStore(); pgStore.value = kits; engine.useKits(kits);
+    }
     catch { bootError.value = 'This browser cannot open the 3D fair. Try opening the link in Chrome or Safari.'; phase.value = 'error'; return; }
     poll();
     // an exhibitor's invitation link: remember whose it was for when this person registers a booth

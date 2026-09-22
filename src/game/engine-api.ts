@@ -17,6 +17,10 @@ export interface EngineApi {
   levelOf(p: P2): number;
   emote(pose: 'wave' | 'cheer' | 'dance', ms?: number): void;
   jump(): void;
+  /** The next kit owned (Boots, Skates, Jetpack), from the chip in the dock; nothing without a second kit. */
+  nextKit(): void;
+  /** The Fly button held, or let go: thrust for the Jetpack. */
+  hold(on: boolean): void;
   photo(): Promise<void>;
   sit(): void;
   stand(): void;

@@ -35,6 +35,7 @@ and the link opened from inside WhatsApp or Instagram (their built-in browsers b
 | 20 | Through the gate (or let the air run out) | The summary drops in: score, stars, best combo, time, "New best!" the first time; Again, Boards, Back to the fair; Boards lists the run | — |
 | 21 | Step on the Skates stand with 100 stars; later the Jetpack stand with 250 | The stand lights and swells, the chime, the buzz, "Skates unlocked · hold the rim to tuck"; on skates the body glides with two cyan ribbons; the Jetpack: hold Jump to climb, the blue fuel bar under the air bar, the exhaust | — |
 | 22 | Press Back in the Playground with nothing open; lock the phone mid-run for a minute | Back leaves for the fair (a run under way ends there); unlocked, the air is where it was: the clock stops with the game | it left the site, or the air kept draining |
+| 23 | Back in the fair with Skates bought: tap the kit chip above the dock; walk a hall; with the Jetpack, hold Fly | The chip reads "Skates ›", the hall goes by twice as fast with two cyan ribbons, "Take me there" still steers round corners; on the Jetpack, Fly lifts the body over the partitions and no higher than the glass, the fuel bar drains and fills back on the floor; a booth's chip still comes up where it did on foot | the chip missing, a wall walked through, a "slow down" or review notice |
 
 ## Numbers that would worry me
 

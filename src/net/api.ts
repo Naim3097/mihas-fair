@@ -51,6 +51,7 @@ export const api = {
   /** not quiet: with the daily bridge on, the fair's points come back as an event */
   pgRun: (r: PlaygroundRunInput) => call<PlaygroundRunResult>('POST', '/api/playground/run', r),
   pgUnlock: (gear: string) => call<PlaygroundMe>('POST', '/api/playground/unlock', { gear }, true),
+  pgGear: (gear: string) => call<PlaygroundMe>('POST', '/api/playground/gear', { gear }, true),
   pgBoard: (range: 'today' | 'all') => call<PlaygroundBoardRow[]>('GET', `/api/playground/board?range=${range}`, undefined, true),
 
   /* booths that are online, and the exhibitor's side of them */

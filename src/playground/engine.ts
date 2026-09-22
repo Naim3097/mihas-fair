@@ -16,14 +16,14 @@ import type { Library } from '../ceritera/game/anim';
 import type { FairSink } from '../fair/input';
 import { NexoActor, loadNexo, loadNexoLibrary } from '../fair/nexo';
 import type { Quality, Scene, Stage } from '../fair/stage';
-import { me, modal, toast } from '../state';
+import { modal, toast } from '../state';
 import { api } from '../net/api';
 import { buzz, sfx, type Sfx as SfxName } from '../sfx';
 import { FALL_Y, JUMP_PAD, PickupIndex, buildCourse, courseBoxes, crossed, platformUnder, sectionAt, type Course, type Gear, type Section } from './course';
 import { GEAR, GEAR_READY, boostBody } from './gear';
 import { Run, type RunEvent } from './run';
 import { pgBalance, pgBest, pgCombo, pgControls, pgFade, pgFuel, pgGear, pgHint, pgMode, pgNearPortal, pgO2, pgRunStars, pgScore, pgStandNote, pgStore, pgSummary, pgUnlocks } from './state';
-import { ApiStore, LocalStore, type PlaygroundStore } from './store';
+import type { PlaygroundStore } from './store';
 import { PlaygroundWorld } from './world';
 
 const ORBIT_HOLD_MS = 1500, CAM = { min: 2.6, max: 9 };
@@ -44,7 +44,7 @@ export class PlaygroundEngine implements Scene {
   private sim: Sim;
   private world: PlaygroundWorld;
   private index: PickupIndex;
-  /** the server's store once the backend has answered who this is; this device's until then */
+  /** the one store both worlds share: the server's once the backend has answered who this is, this device's until then */
   private store: PlaygroundStore;
   private actor: NexoActor | null = null;
   private gltf: GLTF | null = null; private lib: Library | null = null;
@@ -64,8 +64,8 @@ export class PlaygroundEngine implements Scene {
   private tmpV = new THREE.Vector3(); private thrustOn = false;
   private stops: (() => void)[] = [];
 
-  constructor(private stage: Stage, private quality: Quality) {
-    this.store = me.value ? new ApiStore() : new LocalStore();
+  constructor(private stage: Stage, private quality: Quality, store: PlaygroundStore) {
+    this.store = store;
     this.course = buildCourse();
     const boxes = courseBoxes(this.course);
     this.sim = new Sim('pengembara', classByKey('pengembara')!.base, { size: 200, boxes, props: [], spawn: { pos: v3(this.course.spawn.x, this.course.spawn.y, this.course.spawn.z), yaw: this.course.spawn.yaw }, enemies: [], lanterns: [] }, 1, GEAR.boots.movement);
@@ -91,7 +91,7 @@ export class PlaygroundEngine implements Scene {
     const s = this.store.get(); this.gear = s.gear; this.publishStore(); pgStore.value = this.store; this.markOwned();
     pgControls.value = { jump: () => this.jump(), hold: (on) => this.stage.input.hold(on), again: () => this.again(), leave: () => this.leaveRequested() };
     // the server's word on the balance and the gear, whenever it comes: republish, and step off a gear no longer owned
-    this.store.onChange = () => { this.publishStore(); this.markOwned(); if (!this.store.get().unlocks.includes(this.gear)) this.setGear('boots'); };
+    this.stops.push(this.store.onChange(() => { this.publishStore(); this.markOwned(); if (!this.store.get().unlocks.includes(this.gear)) this.setGear('boots'); }));
     // a tab going away mid-run sends the run so far
     const hide = () => { if (document.hidden && this.run && !this.run.ended) this.store.flush(this.run.snapshot(), this.gear); };
     document.addEventListener('visibilitychange', hide); this.stops.push(() => document.removeEventListener('visibilitychange', hide));
@@ -111,6 +111,7 @@ export class PlaygroundEngine implements Scene {
   /** On the pad, facing the course, with the gear last chosen. */
   enter() {
     this.stage.use(this);
+    this.gear = this.store.get().gear; // the kit worn in the fair is the gear here
     this.toPad(); pgMode.value = 'pad'; pgSummary.value = null;
     if (this.store.get().runs === 0) pgHint.value = true;
   }

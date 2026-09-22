@@ -100,8 +100,15 @@ the shared controller (a "heavy landing" that reads as weight; if it reads as la
   back when you are back (the first ping on return puts you in the hall at once).
 - **Optional, off until the backend owner and you agree:** the first finished run of the day pays 50 fair points,
   once, as a ledger row `playground_daily`. The only bridge between the two point systems.
-- Gear stays in the Playground in this version. Skates in the fair would pass the server's 12 m/s cap as they are;
-  the Jetpack would need a ceiling and a look at "at a booth". A later switch, either way.
+- **The kits are worn in the fair too** (decided 23 Sep: walking a hall on foot takes time, and the gear a run pays
+  for is the reward that shortens it). One store for both worlds: what is bought on a stand is owned in the halls, the
+  kit chosen in either world is the kit in both, and the server keeps the choice. In the fair, Boots are the fair's
+  own body; Skates keep their speed (a jog of 6, a rim hold of 8.5 m/s) but grip like feet, since an aisle is no
+  place to drift and "Take me there" steers them; the Jetpack is the fair's body with the thrust, flying over every
+  partition and under the glass (a ceiling at 6.5 m, the glass at 9). Every speed stays under the server's 12 m/s,
+  so no kit reads as a teleport and no rule of the mission, the QR scans or the points changes: presence, stamps and
+  "at a booth" go on reading the plan position. A chip above the dock switches among the kits owned once there are
+  two; the Jetpack adds a Fly button (hold) with its fuel. Other people see a flyer on the floor for now.
 
 ### What is not in it
 
@@ -463,6 +470,15 @@ otherwise; a hidden tab sends the run so far as a partial post.
 - Done, all five phases. What remains is not code: the real-phone protocol (`docs/phone-test.md`, rows 17–22) on a
   mid-range Android and an iPhone, the crew's word on the daily bridge, and the three fair-rules items that were never
   the Playground's.
+
+**Phase 6 — done (23 Sep): the kits in the fair.** `src/fair/kits.ts` holds the fair's tunings for the three kits
+(tested under the server's cap, gripping, the ceiling between the partitions and the glass) and the order the chip
+switches through. One store is built at boot (`main.tsx`) and handed to both engines; the store publishes the
+interface's signals itself and both engines listen to it, so a stand in the Playground, the chip in the fair and the
+server's word all land in both worlds at once, and a kit no longer owned falls back to Boots. The fair engine wears
+the kit: the tuning, the glide pose and its ribbons, the flight pose and its exhaust, the ceiling, no footsteps on
+skates, the thrust's sound, the fuel to the Fly button, a seat given up for thrust as for a jump. The kit chosen is
+kept on the server (`POST /api/playground/gear`, only what is owned). `docs/phone-test.md` gains row 23.
 
 **Fix, 23 Sep, after Phase 5.** The keyboard did nothing in either world since Phase 0: the shared input's key
 handler asked the sink it was built with (the stage's idle one) whether keys were allowed, while the pointer handlers
