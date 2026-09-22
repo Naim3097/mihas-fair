@@ -22,15 +22,19 @@ installSfx();
 const vv = window.visualViewport;
 if (vv) { const kb = () => { const h = Math.round(innerHeight - vv.height - vv.offsetTop); document.documentElement.style.setProperty('--kb', (h > 80 ? h : 0) + 'px'); }; vv.addEventListener('resize', kb); vv.addEventListener('scroll', kb); }
 
+/** The booths online and today's drop, every 20 s give or take a fifth (a thousand phones do not line up), and on
+ *  coming back to the tab, though never within 5 s of the last pull. */
 function poll() {
+  let last = 0;
   const pull = () => {
-    if (document.hidden) return;
+    if (document.hidden || Date.now() - last < 5000) return; last = Date.now();
     api.stations().then((s) => (stations.value = s), () => {});
     api.today().then((t) => { drop.value = t.drop; if (phase.value !== 'play') online.value = t.online; }, () => {});
     if (me.value?.cls === 'exhibitor' || me.value?.hosting.length) api.myBooths().then((b) => (myBooths.value = b), () => {});
   };
   pull();
-  setInterval(pull, 20_000);
+  const later = () => setTimeout(() => { pull(); later(); }, 20_000 * (0.8 + Math.random() * 0.4));
+  later();
   document.addEventListener('visibilitychange', () => { if (!document.hidden) pull(); });
 }
 

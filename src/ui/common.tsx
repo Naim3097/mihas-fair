@@ -80,7 +80,12 @@ export function Camera({ onCode, onFail }: { onCode: (s: string) => void; onFail
       const v = video.current!; v.srcObject = stream; await v.play().catch(() => {});
       const BD = (window as unknown as { BarcodeDetector?: new (o: { formats: string[] }) => Detector }).BarcodeDetector;
       const native = BD ? new BD({ formats: ['qr_code'] }) : null;
-      const jsQR = native ? null : (await import('jsqr')).default;
+      let jsQR: typeof import('jsqr').default | null = null;
+      if (!native) { // the fallback decoder is its own chunk: after a deploy the old one may be gone
+        try { jsQR = (await import('jsqr')).default; }
+        catch { if (!done) onFail('The scanner could not load — scan with your phone camera app instead, or reload the page.'); return; }
+      }
+      if (done) return;
       const canvas = document.createElement('canvas'), g = canvas.getContext('2d', { willReadFrequently: true })!;
       const tick = async () => {
         if (done) return;

@@ -9,11 +9,16 @@ import { FLAG_KEYS, TEAM_MAX, TEAM_SCORERS, TRUST_MIN, TRUST_W, type Role } from
 /** The visitor boards are for visitors: whoever runs a booth, or works on a booth team, is not on them. */
 const notExhibitor = (col: string) => `${col} NOT IN (SELECT owner_id FROM stations WHERE status != 'revoked') AND ${col} NOT IN (SELECT member_id FROM booth_team)`;
 
+export interface Totals { players: number; passports: number; docked: number; stamps: number; links: number; stations: number }
+
 export class LiveOps {
   private flagCache: { at: number; v: Record<FlagKey, boolean> } | null = null;
   private lastSpeedFlag = new Map<string, number>();
   private banned: { at: number; ids: Set<string> } | null = null;
   private boardCache = new Map<string, { at: number; rows: BoardRow[] }>();
+  /** The drop's settings (every phone asks every 20 s) and the screen's totals (every 4 s): read once in a while. */
+  private dropCfg: { at: number; s: Record<string, string> } | null = null;
+  private totalsCache: { at: number; v: Totals } | null = null;
 
   constructor(private g: Game, private stationsSvc: Stations) {}
 
@@ -211,8 +216,16 @@ export class LiveOps {
 
   /* ---------------- Daily Drop ---------------- */
 
-  async drop(viewer: string | null): Promise<DailyDrop | null> {
+  private async dropConfig(): Promise<Record<string, string>> {
+    const t = this.g.now();
+    if (this.dropCfg && t - this.dropCfg.at < 10_000) return this.dropCfg.s;
     const rows = await this.g.db.all<{ key: string; value: string }>("SELECT key, value FROM settings WHERE key LIKE 'drop:%'"), s = Object.fromEntries(rows.map((r) => [r.key.slice(5), r.value]));
+    this.dropCfg = { at: t, s };
+    return s;
+  }
+
+  async drop(viewer: string | null): Promise<DailyDrop | null> {
+    const s = await this.dropConfig();
     const b = this.g.stations.get(s.station ?? ''), day = dayStart(this.g.now());
     if (!b || Number(s.day) !== day) return null;
     const done = viewer ? !!(await this.g.db.get("SELECT 1 AS x FROM xp_ledger WHERE player_id = ? AND action = 'daily_drop' AND created_at >= ? AND voided = 0", [viewer, day])) : false;
@@ -224,6 +237,7 @@ export class LiveOps {
     if (!b) throw new GameError('no_station', 'Unknown booth number');
     const n = Math.round(Number(bonus)); if (!(n >= 10 && n <= 500)) throw new GameError('bonus', 'Bonus must be 10–500 XP');
     await this.setting('drop:station', b.id); await this.setting('drop:title', cleanText(title, 60) || 'Daily Drop'); await this.setting('drop:bonus', String(n)); await this.setting('drop:day', String(dayStart(this.g.now())));
+    this.dropCfg = null;
   }
 
   /** Today's drop pays once, and only to someone who was really at the booth. */
@@ -236,8 +250,12 @@ export class LiveOps {
 
   /* ---------------- Mission Control screen ---------------- */
 
-  async totals() {
+  async totals(): Promise<Totals> {
+    const t = this.g.now();
+    if (this.totalsCache && t - this.totalsCache.at < 5000) return this.totalsCache.v;
     const q = async (sql: string) => (await this.g.db.get<{ n: number }>(sql))?.n ?? 0;
-    return { players: await q('SELECT COUNT(*) AS n FROM players WHERE cls IS NOT NULL'), passports: await q('SELECT COUNT(*) AS n FROM passports'), docked: await q('SELECT COUNT(*) AS n FROM players WHERE docked_at IS NOT NULL'), stamps: await q('SELECT COUNT(*) AS n FROM stamps'), links: await q('SELECT COUNT(*) AS n FROM links'), stations: await q("SELECT COUNT(*) AS n FROM stations WHERE status != 'revoked'") };
+    const v = { players: await q('SELECT COUNT(*) AS n FROM players WHERE cls IS NOT NULL'), passports: await q('SELECT COUNT(*) AS n FROM passports'), docked: await q('SELECT COUNT(*) AS n FROM players WHERE docked_at IS NOT NULL'), stamps: await q('SELECT COUNT(*) AS n FROM stamps'), links: await q('SELECT COUNT(*) AS n FROM links'), stations: await q("SELECT COUNT(*) AS n FROM stations WHERE status != 'revoked'") };
+    this.totalsCache = { at: t, v };
+    return v;
   }
 }

@@ -30,6 +30,8 @@ export const guideOn = signal(true);
 /** Where the trail leads. null = the X, until the player has their card; after that, nowhere until they pick a place. */
 export const guideTarget = signal<{ x: number; y: number; label: string } | null>(null);
 export const online = signal(0);
+/** The last request did not get through: a chip says so until one does. */
+export const offline = signal(false);
 /** Booths that are online (an exhibitor brought them into the game). */
 export const stations = signal<StationView[]>([]);
 /** The booth of the day, when the crew has set one. */
@@ -124,7 +126,7 @@ export const journey = computed<Journey | null>(() => {
   if (!m) return null;
   const exhibitor = m.cls === 'exhibitor', b = myBooths.value[0];
   const steps = exhibitor
-    ? boothSteps({ online: m.hosting.length > 0, visits: b?.scans ?? 0, leads: b?.scans ?? 0 })
+    ? boothSteps({ online: m.hosting.length > 0, visits: b?.scans ?? 0, leads: b?.shares ?? 0 }) // a lead is a card left at the booth
     : chapters({ started: m.mission.started, card: !!m.passport, checkpoints: m.mission.checkpoints.filter((c) => c.done).length, target: m.mission.target, claimed: m.docked });
   return { kind: exhibitor ? 'exhibitor' : 'visitor', steps, now: steps.find((s) => !s.done) ?? null, done: steps.filter((s) => s.done).length };
 });

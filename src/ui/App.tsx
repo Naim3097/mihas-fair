@@ -3,7 +3,7 @@ import type { EngineApi as Engine } from '../game/engine-api';
 import { api, ApiError } from '../net/api';
 import { POINTS, ROLE_INFO, chapters, type Role } from '../../shared/rules';
 import type { BoothTeamPeek, PassportInput } from '../../shared/types';
-import { afterCard, boothAction, referral, teamInvite, atLaunchPad, bootError, bootNote, distToGoal, goalVia, guideOn, guideTarget, herePlace, journey, level, me, modal, moveHint, nearLift, nearStation, online, panelStation, phase, routing, seated, stampedSet, stationMap, toast, toasts } from '../state';
+import { afterCard, boothAction, referral, teamInvite, atLaunchPad, bootError, bootNote, distToGoal, goalVia, guideOn, guideTarget, herePlace, journey, level, me, modal, moveHint, nearLift, nearStation, offline, online, panelStation, phase, routing, seated, stampedSet, stationMap, toast, toasts } from '../state';
 import { facts } from '../game/facts';
 import { MapSheet, PhotoSheet } from './world-sheets';
 import { DemoChip, TourSheet } from '../demo/Tour';
@@ -36,6 +36,7 @@ export function App({ engine }: Eng) {
       {m === 'scan' && <ScanSheet />}
       {m === 'jointeam' && <JoinTeamSheet engine={engine} />}
       <Toasts />
+      {offline.value && <div class="offline" role="status">No connection · trying again</div>}
     </>
   );
 }
@@ -266,7 +267,7 @@ function CardForm() {
     catch (x) { setErr(x instanceof ApiError ? x.message : 'Something went wrong'); setBusy(false); }
   };
   return (
-    <Sheet k={exhibitor ? 'First · who runs the booth' : 'First · your card'} title="Your free digital business card">
+    <Sheet k={exhibitor ? 'First · who runs the booth' : 'First · your card'} title="Your free digital business card" onClose={() => { afterCard.value = null; modal.value = null; }}>
       <form onSubmit={submit}>
         <p class="lead">{exhibitor ? 'Your card tells visitors and our crew who is behind the booth. It takes a minute, and it is yours to keep.' : 'Built for you now, yours to keep: a card with its own link and QR. It is what you swap with people and leave at booths.'}</p>
         <CardPreview f={f} />

@@ -2,15 +2,30 @@ import type { BoothTeamPeek } from '../../shared/types';
 import type { ApiResult, Contact, Hologram, HostCode, HostLead, HostStation, LinkCode, LinkPeek, PassportInput, PresencePing, StampRequest, StationClaimInput, StationView, TodayView } from '../../shared/types';
 import type { Role } from '../../shared/rules';
 import type { ShareField } from '../../shared/rules';
-import { me, showEvents } from '../state';
+import { me, offline, showEvents } from '../state';
 
 export class ApiError extends Error { constructor(public code: string, message: string) { super(message); } }
 
+/** How long a request may take, and how long a read waits before its one retry. Tests shorten them. */
+export const NET = { timeoutMs: 12_000, retryMs: 400, retryJitterMs: 600 };
+const OFFLINE = () => new ApiError('offline', 'No connection — check your signal and try again');
+
+/** One request, given up on after the timeout. A read that fails on the network is tried once more after a short
+ *  random wait; a write never is, it may have landed. The offline chip follows: up on a failure, down on the next answer. */
 async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown, quiet = false): Promise<T> {
+  const once = async () => {
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), NET.timeoutMs);
+    try { return await fetch(path, { method, credentials: 'same-origin', headers: body ? { 'content-type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined, signal: ctl.signal }); }
+    finally { clearTimeout(timer); }
+  };
   let res: Response;
-  try {
-    res = await fetch(path, { method, credentials: 'same-origin', headers: body ? { 'content-type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
-  } catch { throw new ApiError('offline', 'No connection — check your signal and try again'); }
+  try { res = await once(); }
+  catch {
+    if (method !== 'GET') { offline.value = true; throw OFFLINE(); }
+    await new Promise((r) => setTimeout(r, NET.retryMs + Math.random() * NET.retryJitterMs));
+    try { res = await once(); } catch { offline.value = true; throw OFFLINE(); }
+  }
+  if (offline.value) offline.value = false;
   let json: ApiResult<T>;
   try { json = await res.json(); } catch { throw new ApiError('server', 'The server sent something unexpected'); }
   if (!json.ok) throw new ApiError(json.code, json.error);

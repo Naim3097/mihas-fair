@@ -60,25 +60,31 @@ function startScene(host: HTMLElement, level: LevelData) {
 }
 
 function Screen() {
-  const [view, setView] = useState<ScreenView | null>(null), [auth, setAuth] = useState(true), [deck, setDeck] = useState('');
+  const [view, setView] = useState<ScreenView | null>(null), [auth, setAuth] = useState(true), [deck, setDeck] = useState(''), [lost, setLost] = useState(false);
   useEffect(() => {
     let scene: ReturnType<typeof startScene> | null = null, stop = false;
+    const timers: ReturnType<typeof setInterval>[] = [];
     (async () => {
-      const level = await fetch('/data/floor.json').then((r) => r.json() as Promise<LevelData>);
+      let level: LevelData;
+      try { level = await fetch('/data/floor.json').then((r) => { if (!r.ok) throw new Error('level'); return r.json() as Promise<LevelData>; }); }
+      catch { setLost(true); return; }
       await document.fonts.load('800 32px Urbanist').catch(() => {});
+      if (stop) return;
       scene = startScene(document.getElementById('stage')!, level);
       const pull = async () => {
-        if (stop) return;
+        if (stop || document.hidden) return; // a screen nobody is looking at asks for nothing
         const v = await getJson<ScreenView>('/api/crew/screen');
+        if (stop) return;
         if (!v) { setAuth(false); return; }
-        setAuth(true); setView(v); scene!.setDots(v.dots); 
-        const st = await getJson<StationView[]>('/api/stations'); if (st) scene!.world.setStations(st);
+        setAuth(true); setView(v); scene?.setDots(v.dots);
+        const st = await getJson<StationView[]>('/api/stations'); if (st && !stop) scene?.world.setStations(st);
       };
-      void pull(); setInterval(pull, 4000); setInterval(() => setDeck(scene!.deckLabel()), 1000);
+      void pull(); timers.push(setInterval(() => void pull(), 4000), setInterval(() => { if (scene) setDeck(scene.deckLabel()); }, 1000));
     })();
-    return () => { stop = true; };
+    return () => { stop = true; for (const t of timers) clearInterval(t); };
   }, []);
 
+  if (lost) return <div class="splash"><div class="xmark err" /><p>The floor plan did not load. Check the connection and reload this page.</p><button class="btn" onClick={() => location.reload()}>Reload</button></div>;
   if (!auth) return <div class="splash"><div class="xmark err" /><p>Sign in on the crew console in this browser first, then reload this page.{demo.value ? ` Demo PIN: ${demoState.value?.crewPin}.` : ''}</p><a class="btn" href="/crew.html">Open the crew console</a></div>;
   const v = view;
   return (

@@ -134,7 +134,7 @@ export class Game {
   }
 
   async me(id: string): Promise<Me> {
-    const p = await this.player(id);
+    const p = await this.player(id), owner = (await this.hooks.teamOwner?.(id)) ?? id; // once: it is asked for twice below
     const [stamps, pass, ticket, avatar, sharePrefs, links, shared, verified, hosting] = await Promise.all([
       this.db.all<{ station_id: string }>('SELECT station_id FROM stamps WHERE player_id = ?', [id]),
       this.passportOf(id),
@@ -144,7 +144,7 @@ export class Game {
       this.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM links WHERE a_id = ? OR b_id = ?', [id, id]),
       this.db.all<{ to_station: string }>('SELECT to_station FROM card_shares WHERE from_player = ? AND to_station IS NOT NULL AND revoked_at IS NULL', [id]),
       this.db.all<{ station_id: string }>('SELECT station_id FROM verified_contacts WHERE player_id = ?', [id]),
-      this.db.all<{ station_id: string }>("SELECT station_id FROM stations WHERE owner_id = ? AND status != 'revoked'", [(await this.hooks.teamOwner?.(id)) ?? id]),
+      this.db.all<{ station_id: string }>("SELECT station_id FROM stations WHERE owner_id = ? AND status != 'revoked'", [owner]),
     ]);
     const docked = p.docked_at != null;
     const t = this.now(), anchor = (await this.hooks.anchorOf?.(id)) ?? null;
@@ -166,7 +166,7 @@ export class Game {
       shared: shared.map((s) => s.to_station),
       verified: verified.map((s) => s.station_id),
       hosting: hosting.map((s) => s.station_id),
-      teamMember: ((await this.hooks.teamOwner?.(id)) ?? id) !== id,
+      teamMember: owner !== id,
       mission: (await this.hooks.mission?.view(id)) ?? { started: false, target: 0, checkpoints: [] },
     };
   }
