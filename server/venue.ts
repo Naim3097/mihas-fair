@@ -1,73 +1,39 @@
-// Presence engine, server side (Systems doc §3): the venue gate, on-site anchors, deck walking, invisibility, and the
-// crew's GPS calibration. On site, the phone places the avatar from GPS through the calibration (shared/geo.ts); the
-// server gates that ("is this person at MITEC?"), holds it to walking pace, and scans still pin the exact booth.
-import { Game, GameError, dayOf } from './game.js';
+// Presence engine, server side (Systems doc §3): on-site anchors (a real booth QR scan puts the player at that booth,
+// and counts as "at MIHAS" for half an hour), walking XP, and invisibility. There is no GPS: everyone plays in the
+// virtual hall, and a scan at the real booth is the only proof of being there.
+import { Game, dayOf } from './game.js';
 import type { XpEvent } from '../shared/types.js';
-import { calibrate, type GeoCalPoint, type GeoCalibration } from '../shared/geo.js';
-import { ONSITE_TTL_MS, VENUE_DEFAULT, VENUE_MAX_ACCURACY_M, WALK_XP_DAILY_CAP, WALK_XP_PER_M } from '../shared/rules.js';
-
-export interface VenueConfig { lat: number; lon: number; radiusM: number }
-/** What the game needs to place a phone: where MITEC is, and each calibrated level's map. */
-export interface GeoView extends GeoCalibration { radiusM: number }
-
-const CAL_KEY = 'geo_cal', SPOTS_KEY = 'spot_moves';
-
-function haversineM(aLat: number, aLon: number, bLat: number, bLon: number): number {
-  const R = 6_371_000, r = Math.PI / 180, dLat = (bLat - aLat) * r, dLon = (bLon - aLon) * r;
-  const s = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * r) * Math.cos(bLat * r) * Math.sin(dLon / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(s));
-}
+import { ONSITE_TTL_MS, WALK_XP_DAILY_CAP, WALK_XP_PER_M } from '../shared/rules.js';
 
 export class Venue {
   readonly hidden = new Set<string>();
   /** Metres accepted on this instance and not yet written down. The database row holds the total and what was paid. */
   private unpaid = new Map<string, number>();
-  /** Every phone asks for the calibration; it changes only while the crew is calibrating. */
-  private geoCache: { at: number; view: GeoView } | null = null;
 
-  constructor(private g: Game, readonly cfg: VenueConfig = VENUE_DEFAULT) {}
-
-  /** The client sends one fix; we keep only the verdict and how far off it was. */
-  async checkIn(id: string, fix: { lat: number; lon: number; acc: number }): Promise<{ onsite: boolean; distanceM: number; reason?: string }> {
-    const { lat, lon, acc } = fix;
-    if (![lat, lon, acc].every(Number.isFinite) || Math.abs(lat) > 90 || Math.abs(lon) > 180 || acc < 0) throw new GameError('bad_fix', 'That location fix is not usable');
-    const dist = Math.round(haversineM(lat, lon, this.cfg.lat, this.cfg.lon));
-    const usable = acc <= VENUE_MAX_ACCURACY_M, ok = usable && dist <= this.cfg.radiusM + Math.min(acc, 100);
-    await this.g.db.run('INSERT INTO venue_checks (player_id, ok, dist_m, acc_m, checked_at) VALUES (?,?,?,?,?) ON CONFLICT(player_id) DO UPDATE SET ok = excluded.ok, dist_m = excluded.dist_m, acc_m = excluded.acc_m, checked_at = excluded.checked_at',
-      [id, ok ? 1 : 0, dist, Math.round(acc), this.g.now()]);
-    this.onsite.delete(id);
-    return { onsite: ok, distanceM: dist, reason: ok ? undefined : usable ? 'outside' : 'inaccurate' };
-  }
-
-  async venueOk(id: string, t: number): Promise<boolean> {
-    const v = await this.g.db.get<{ ok: number; checked_at: number }>('SELECT ok, checked_at FROM venue_checks WHERE player_id = ?', [id]);
-    return !!v && v.ok === 1 && t - v.checked_at <= ONSITE_TTL_MS;
-  }
+  constructor(private g: Game) {}
 
   async anchorOf(id: string): Promise<{ stationId: string; at: number } | null> {
     const a = await this.g.db.get<{ station_id: string; anchored_at: number }>('SELECT station_id, anchored_at FROM anchors WHERE player_id = ?', [id]);
     return a ? { stationId: a.station_id, at: a.anchored_at } : null;
   }
 
-  /** On site = a good venue check, or an on-site scan, within the last half hour. Asked on every on-site ping, so the
-   *  answer is kept 20 s per instance; this instance's own check-ins and anchors refresh it at once. */
+  /** On site = a scan at a real booth within the last half hour. Kept 20 s per instance; this instance's own anchors
+   *  refresh it at once. */
   private onsite = new Map<string, { v: boolean; at: number }>();
   async isOnsite(id: string, t: number): Promise<boolean> {
     const c = this.onsite.get(id);
     if (c && t - c.at >= 0 && t - c.at < 20_000) return c.v;
-    let v = await this.venueOk(id, t);
-    if (!v) { const a = await this.anchorOf(id); v = !!a && t - a.at <= ONSITE_TTL_MS; }
+    const a = await this.anchorOf(id), v = !!a && t - a.at <= ONSITE_TTL_MS;
     if (this.onsite.size > 50_000) this.onsite.clear();
     this.onsite.set(id, { v, at: t });
     return v;
   }
 
-  /** An on-site proof at a station: remember it and place the player there for everyone else. */
+  /** An on-site proof at a station: remember it. (The avatar stays where the player walked it in the virtual hall.) */
   async anchor(id: string, stationId: string, t: number): Promise<void> {
-    const s = this.g.stations.get(stationId); if (!s) return;
+    if (!this.g.stations.has(stationId)) return;
     await this.g.db.run('INSERT INTO anchors (player_id, station_id, anchored_at) VALUES (?,?,?) ON CONFLICT(player_id) DO UPDATE SET station_id = excluded.station_id, anchored_at = excluded.anchored_at', [id, stationId, t]);
     this.onsite.set(id, { v: true, at: t });
-    await this.g.presence.anchor(await this.g.hologramOf(id, { x: s.x, y: s.y, h: 0, deck: true, sigma: 1 }), t);
   }
 
   async isHidden(id: string): Promise<boolean> {
@@ -95,63 +61,5 @@ export class Venue {
       ...(pay ? this.g.award(id, 'walk', pay, null, { metres: Math.round(total) }, t) : []),
     ]);
     return pay ? [{ action: 'walk', xp: pay, target: `${Math.round(total)} m on deck today` }] : [];
-  }
-
-  /* ---------------- GPS calibration: the crew stands at booths and records fixes ---------------- */
-
-  async calPoints(): Promise<GeoCalPoint[]> {
-    const row = await this.g.db.get<{ value: string }>('SELECT value FROM settings WHERE key = ?', [CAL_KEY]);
-    try { return row ? (JSON.parse(row.value) as GeoCalPoint[]) : []; } catch { return []; }
-  }
-  private async saveCal(points: GeoCalPoint[]): Promise<void> {
-    await this.g.db.run('INSERT INTO settings (key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', [CAL_KEY, JSON.stringify(points)]);
-    this.geoCache = null;
-  }
-
-  /** One averaged fix taken standing at a booth. Returns the fit it leads to, so the crew sees the effect at once. */
-  async addCalPoint(stationId: string, fix: { lat: number; lon: number; acc: number }): Promise<GeoView> {
-    const b = this.g.stations.get(String(stationId).trim().toUpperCase());
-    if (!b) throw new GameError('no_station', 'No booth with that number', 404);
-    const { lat, lon, acc } = fix;
-    if (![lat, lon, acc].every(Number.isFinite) || Math.abs(lat) > 90 || Math.abs(lon) > 180 || acc <= 0) throw new GameError('bad_fix', 'That location fix is not usable');
-    if (acc > 60) throw new GameError('bad_fix', `GPS is only good to ${Math.round(acc)} m here — move nearer a door or window and try again`);
-    const points = await this.calPoints();
-    points.push({ id: Math.max(0, ...points.map((p) => p.id)) + 1, deck: b.deck, x: b.x, y: b.y, lat, lon, acc: Math.round(acc * 10) / 10, label: b.id });
-    await this.saveCal(points);
-    return this.geo(true);
-  }
-
-  /* ---------------- "You are here" posters the crew put up somewhere other than the plan's spot ---------------- */
-
-  async spotMoves(): Promise<Record<string, string>> {
-    const row = await this.g.db.get<{ value: string }>('SELECT value FROM settings WHERE key = ?', [SPOTS_KEY]);
-    try { return row ? (JSON.parse(row.value) as Record<string, string>) : {}; } catch { return {}; }
-  }
-
-  /** The poster for spot `id` hangs next to booth `stationId`; null puts it back where the plan has it. */
-  async moveSpot(id: string, stationId: string | null): Promise<Record<string, string>> {
-    if (!/^Y\d{2}$/.test(id)) throw new GameError('bad_spot', 'No spot with that number', 404);
-    const moves = await this.spotMoves();
-    if (stationId == null || stationId === '') delete moves[id];
-    else {
-      const b = this.g.stations.get(stationId.trim().toUpperCase());
-      if (!b) throw new GameError('no_station', 'No booth with that number', 404);
-      moves[id] = b.id;
-    }
-    await this.g.db.run('INSERT INTO settings (key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', [SPOTS_KEY, JSON.stringify(moves)]);
-    return moves;
-  }
-
-  async removeCalPoint(id: number): Promise<GeoView> {
-    await this.saveCal((await this.calPoints()).filter((p) => p.id !== id));
-    return this.geo(true);
-  }
-
-  async geo(fresh = false): Promise<GeoView> {
-    const t = this.g.now();
-    if (!fresh && this.geoCache && t - this.geoCache.at < 30_000) return this.geoCache.view;
-    const view = { ...calibrate(this.cfg.lat, this.cfg.lon, await this.calPoints()), radiusM: this.cfg.radiusM };
-    this.geoCache = { at: t, view };
-    return view;
   }
 }

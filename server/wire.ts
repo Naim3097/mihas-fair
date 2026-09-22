@@ -3,7 +3,7 @@ import { Game } from './game.js';
 import { Stations } from './stations.js';
 import { Social } from './social.js';
 import { Crews } from './crews.js';
-import { Venue, type VenueConfig } from './venue.js';
+import { Venue } from './venue.js';
 import { Director } from './director.js';
 import { GroundControl } from './gc.js';
 import { LiveOps } from './liveops.js';
@@ -19,12 +19,12 @@ import { FEATURES, type Features } from '../shared/rules.js';
 
 export interface Services { game: Game; stations: Stations; checkpoints: Checkpoints; referrals: Referrals; team: BoothTeam; social: Social; crews: Crews; venue: Venue; director: Director; gc: GroundControl; ops: LiveOps; signer: Signer; /** the library game's characters */ ceritera: Ceritera }
 
-export function buildServices(o: { db: Db; secret: string; level: LevelData; publicOrigin: string; venue?: VenueConfig; now?: () => number; /** defaults to in-memory; pass DbPresence on serverless */ presence?: Presence; /** switched-off systems to run anyway (their tests do) */ features?: Partial<Features> }): Services {
+export function buildServices(o: { db: Db; secret: string; level: LevelData; publicOrigin: string; now?: () => number; /** defaults to in-memory; pass DbPresence on serverless */ presence?: Presence; /** switched-off systems to run anyway (their tests do) */ features?: Partial<Features> }): Services {
   const signer = new Signer(o.secret);
   const game = new Game(o.db, signer, o.presence ?? new PresenceStore(), o.level, o.publicOrigin, o.now, { ...FEATURES, ...o.features });
   const team = new BoothTeam(game);
   const stations = new Stations(game, team), social = new Social(game), crews = new Crews(game);
-  const venue = new Venue(game, o.venue), director = new Director(game, stations, venue), gc = new GroundControl(game, stations, venue), ops = new LiveOps(game, stations);
+  const venue = new Venue(game), director = new Director(game, stations, venue), gc = new GroundControl(game, stations, venue), ops = new LiveOps(game, stations);
   const ceritera = new Ceritera(o.db, o.now), checkpoints = new Checkpoints(game, team);
   stations.onStatus = () => checkpoints.forget();
   const referrals = new Referrals(game, team);

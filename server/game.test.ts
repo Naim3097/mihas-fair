@@ -6,7 +6,7 @@ import { createApp } from './app.js';
 import { buildServices } from './wire.js';
 import { testStores } from './test-db.js';
 import type { LevelData, Me } from '../shared/types.js';
-import { MISSION_STAMPS, POINTS, VENUE_DEFAULT, boothSteps, chapters } from '../shared/rules.js';
+import { MISSION_STAMPS, POINTS, boothSteps, chapters } from '../shared/rules.js';
 
 const root = resolve(import.meta.dirname, '..');
 const level = JSON.parse(readFileSync(resolve(root, 'public/data/floor.json'), 'utf8')) as LevelData;
@@ -107,12 +107,11 @@ test('the points and proofs under the mission: card, stamps, booth QRs, the priz
   assert.equal(me.docked, true); assert.equal(me.ticket, null);
   assert.equal(me.xp, POINTS.card + MISSION_STAMPS * POINTS.stamp + POINTS.booth); assert.deepEqual(open(me), [2, 3]);
 
-  // a printed booth QR scores 10 from anywhere, and 50 once the phone is known to be at MIHAS
+  // a printed booth QR is a real-booth scan: no location check, it scores in full
   const beacons = (await call('GET', '/api/crew/beacons', undefined, crewJar)).json.data as { id: string; url: string }[];
   const qr = (id: string) => new URL(beacons.find((b) => b.id === id)!.url).searchParams.get('b')!;
   r = await call('POST', '/api/stamp', { stationId: '7C17', proof: 'beacon', beacon: qr('7C17') });
-  assert.deepEqual([r.json.events[0].action, r.json.events[0].xp], ['stamp', POINTS.stamp], 'not known to be at MIHAS: it counts as a stamp');
-  assert.equal((await call('POST', '/api/venue', { lat: VENUE_DEFAULT.lat, lon: VENUE_DEFAULT.lon, acc: 30 })).json.data.onsite, true);
+  assert.deepEqual([r.json.events[0].action, r.json.events[0].xp], ['scan', POINTS.scan]);
   clock.advance(10_000);
   r = await call('POST', '/api/stamp', { stationId: '7C19', proof: 'beacon', beacon: qr('7C19') });
   assert.deepEqual([r.json.events[0].action, r.json.events[0].xp], ['scan', POINTS.scan]);
@@ -126,7 +125,7 @@ test('the points and proofs under the mission: card, stamps, booth QRs, the priz
   assert.deepEqual(r.json.events, [{ action: 'link', xp: POINTS.swap, target: 'Aisyah R.' }]);
   me = (await call('GET', '/api/me')).json.me as Me;
   assert.deepEqual(open(me), [2, 3], 'swaps score, but the mission is the checkpoints (server/checkpoints.test.ts)');
-  assert.equal(me.xp, POINTS.card + (MISSION_STAMPS + 1) * POINTS.stamp + POINTS.booth + POINTS.scan + POINTS.swap);
+  assert.equal(me.xp, POINTS.card + MISSION_STAMPS * POINTS.stamp + POINTS.booth + 2 * POINTS.scan + POINTS.swap);
 
   // the board: one number, and a sub-line anyone can read
   const board = (await call('GET', '/api/boards?board=xp')).json.data as { title: string; sub: string; value: number; you?: boolean }[];
@@ -185,13 +184,12 @@ test('the exhibitor journey: light up, get scanned, lead', async () => {
 test('expression: a pose is seen by players nearby; anything else is dropped', async () => {
   const { call } = await rig(), a = new Map<string, string>(), b = new Map<string, string>(), s = level.spawns.short;
   await call('POST', '/api/start', { role: 'visitor' }, a); await call('POST', '/api/start', { role: 'visitor' }, b);
-  // people meet at MIHAS: both are there, their avatars following their GPS
-  for (const j of [a, b]) await call('POST', '/api/venue', { lat: VENUE_DEFAULT.lat, lon: VENUE_DEFAULT.lon, acc: 20 }, j);
-  await call('POST', '/api/presence', { x: s.x, y: s.y, h: 0, spawn: true, pose: 'wave', deck: true, sigma: 3 }, a);
-  let seen = (await call('POST', '/api/presence', { x: s.x + 1, y: s.y, h: 0, spawn: true, deck: true, sigma: 3 }, b)).json.data.holograms;
+  // one virtual hall: everyone sees everyone
+  await call('POST', '/api/presence', { x: s.x, y: s.y, h: 0, spawn: true, pose: 'wave'}, a);
+  let seen = (await call('POST', '/api/presence', { x: s.x + 1, y: s.y, h: 0, spawn: true}, b)).json.data.holograms;
   assert.equal(seen[0].pose, 'wave');
-  await call('POST', '/api/presence', { x: s.x, y: s.y, h: 0, pose: '<script>', deck: true, sigma: 3 }, a);
-  seen = (await call('POST', '/api/presence', { x: s.x + 1, y: s.y, h: 0, deck: true, sigma: 3 }, b)).json.data.holograms;
+  await call('POST', '/api/presence', { x: s.x, y: s.y, h: 0, pose: '<script>'}, a);
+  seen = (await call('POST', '/api/presence', { x: s.x + 1, y: s.y, h: 0}, b)).json.data.holograms;
   assert.equal(seen[0].pose, undefined);
   assert.equal(((await call('GET', '/api/me', undefined, a)).json.me as Me).xp, 0, 'expression earns nothing');
 });

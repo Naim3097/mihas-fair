@@ -6,12 +6,11 @@ import { createApp } from './app.js';
 import { buildServices } from './wire.js';
 import { testStores } from './test-db.js';
 import type { BoardRow, HostCode, LevelData, Me, MissionsView, ReviewRow, ScreenView, SectorsView, TeamView, TrustView } from '../shared/types.js';
-import { ALL_FEATURES, VENUE_DEFAULT } from '../shared/rules.js';
+import { ALL_FEATURES } from '../shared/rules.js';
 
 const root = resolve(import.meta.dirname, '..');
 const level = JSON.parse(readFileSync(resolve(root, 'public/data/floor.json'), 'utf8')) as LevelData;
 const booth = (id: string) => level.booths.find((b) => b.id === id)!;
-const AT_MITEC = { lat: VENUE_DEFAULT.lat, lon: VENUE_DEFAULT.lon, acc: 20 };
 
 async function rig() {
   let now = Date.UTC(2026, 8, 23, 2, 5, 0);
@@ -50,7 +49,7 @@ test('one deck: Level 2 only, booth ids unique, and the sectors are Halls 6–8'
   assert.deepEqual(sectors.map((s) => s.hall).sort((a, b) => a - b), [6, 7, 8]);
 });
 
-test('trust: remote play cannot reach the bar; venue + host code + docking does; a teleport attempt costs it', async () => {
+test('trust: remote play cannot reach the bar; a booth QR + the live code + docking does; a teleport attempt costs it', async () => {
   const { clock, user, crew, services } = await rig();
   const host = await user().join('exhibitor', 'Hana Host'), remote = await user().join('visitor', 'Rita Remote'), onsite = await user().join('visitor', 'Omar Onsite');
   await host.post('/api/station/claim', { stationId: '7C17', company: 'Mamee', offer: '', link: '', color: 0 });
@@ -58,15 +57,16 @@ test('trust: remote play cannot reach the bar; venue + host code + docking does;
   let t = (await remote.get('/api/trust')).json.data as TrustView;
   assert.deepEqual([t.score, t.trusted], [0.35, false], 'plausible + nothing-to-contradict: not enough');
 
-  await onsite.post('/api/venue', AT_MITEC);
+  assert.equal((await onsite.post('/api/stamp', { stationId: '7C17', proof: 'beacon', beacon: await services.game.beaconToken('7C17') })).status, 200, 'the printed QR on the counter');
   const code = (await host.get('/api/host/code?station=7C17')).json.data as HostCode;
   assert.equal((await onsite.post('/api/stamp', { stationId: '7C17', proof: 'host', code: code.digits })).status, 200);
   t = (await onsite.get('/api/trust')).json.data;
-  assert.deepEqual([t.score, t.trusted], [0.9, true], 'geofence .25 + host .30 + plausible .20 + steps .15');
+  assert.deepEqual([t.score, t.trusted], [0.9, true], 'booth QR .25 + live code .30 + plausible .20 + steps .15');
 
   // a jump across the hall in one second is refused AND remembered
-  clock.advance(1000);
-  await onsite.post('/api/presence', { x: booth('7C17').x + 60, y: booth('7C17').y, h: 0, deck: true });
+  const gate = level.spawns.short; // at the entrance, outside every hall: no first-visit points muddying the sums
+  await onsite.post('/api/presence', { x: gate.x, y: gate.y, h: 0, spawn: true }); clock.advance(1000);
+  await onsite.post('/api/presence', { x: gate.x + 60, y: gate.y, h: 0 });
   t = (await onsite.get('/api/trust')).json.data;
   assert.equal(t.parts.plausible, false);
   assert.deepEqual([t.score, t.trusted], [0.7, true], 'still just over the bar — one signal alone does not sink an honest player');
@@ -133,7 +133,6 @@ test('teams, kill switches, the Daily Drop, and what the big screen is allowed t
   assert.equal(((await mate.get('/api/missions')).json.data as MissionsView).drop?.stationId, '7C17');
   await mate.walkTo('7C17');
   assert.deepEqual((await mate.post('/api/stamp', { stationId: '7C17', proof: 'virtual' })).json.events.map((e: { action: string }) => e.action), ['stamp'], 'walked up remotely: no drop');
-  await mate.post('/api/venue', AT_MITEC);
   const code = (await boss.get('/api/host/code?station=7C17')).json.data as HostCode;
   const paid = (await mate.post('/api/stamp', { stationId: '7C17', proof: 'host', code: code.digits })).json.events as { action: string; xp: number }[];
   assert.deepEqual(paid.map((e) => [e.action, e.xp]), [['verified_contact', 0], ['daily_drop', 120]]);

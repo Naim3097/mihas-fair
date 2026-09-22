@@ -3,15 +3,13 @@ import type { EngineApi as Engine } from '../game/engine-api';
 import { api, ApiError } from '../net/api';
 import { POINTS, ROLE_INFO, chapters, type Role } from '../../shared/rules';
 import type { BoothTeamPeek, PassportInput } from '../../shared/types';
-import { referral, teamInvite, atLaunchPad, bootError, bootNote, distToGoal, goalVia, guideOn, guideTarget, herePlace, journey, level, me, modal, moveHint, nearLift, nearStation, online, panelStation, phase, seated, stampedSet, stationMap, toast, toasts } from '../state';
+import { afterCard, referral, teamInvite, atLaunchPad, bootError, bootNote, distToGoal, goalVia, guideOn, guideTarget, herePlace, journey, level, me, modal, moveHint, nearLift, nearStation, online, panelStation, phase, seated, stampedSet, stationMap, toast, toasts } from '../state';
 import { facts } from '../game/facts';
 import { MapSheet, PhotoSheet } from './world-sheets';
 import { DemoChip, TourSheet } from '../demo/Tour';
 import { Camera, Sheet, hex } from './common';
 import { handleScan } from '../scan';
 import { BoothSheet, ClaimSheet, ContactsSheet, MenuSheet, MyBoothSheet, SwapSheet } from './sheets';
-import { OnsiteGate, SiteChoice, WeakGps } from './onsite';
-import { onsiteAvailable, setSiteMode, siteMode } from '../onsite';
 
 type Eng = { engine: () => Engine | null };
 
@@ -37,8 +35,6 @@ export function App({ engine }: Eng) {
       {m === 'tour' && <TourSheet />}
       {m === 'scan' && <ScanSheet />}
       {m === 'jointeam' && <JoinTeamSheet engine={engine} />}
-      {phase.value === 'play' && <OnsiteGate />}
-      {phase.value === 'play' && !m && <WeakGps />}
       <Toasts />
     </>
   );
@@ -56,17 +52,23 @@ const Splash = ({ text, error }: { text: string; error?: boolean }) => (
 
 function Start({ engine }: Eng) {
   const [busy, setBusy] = useState<Role | null>(null), was = me.value?.cls ?? null;
-  const where = onsiteAvailable() ? siteMode.value : 'remote';
+  const enter = (role: Role) => {
+    engine()?.start('short'); phase.value = 'play'; api.track('start', { role });
+    if (role === 'exhibitor') modal.value = 'mybooth';
+    else if (!me.value?.mission.started) toast('Welcome to MIHAS', 'Follow the trail to Lean X Digital, Booth 8H18A', 'info', 5000);
+  };
   const go = async (role: Role) => {
-    if (!where) { toast('First: where are you playing?', 'At MIHAS now, or from elsewhere', 'warn'); return; }
     setBusy(role);
     try {
-      await api.start(role); engine()?.start('short'); setSiteMode(where); phase.value = 'play'; api.track('start', { role, site: where });
-      if (role === 'exhibitor') modal.value = me.value?.passport ? 'mybooth' : 'card';
+      await api.start(role);
+      if (me.value?.passport) { enter(role); return; }
+      // everyone registers before entering: the card is how people see you, and what you swap
+      afterCard.value = () => { afterCard.value = null; modal.value = null; enter(role); };
+      modal.value = 'card'; setBusy(null);
     } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not start', undefined, 'warn'); setBusy(null); }
   };
   const door = (role: Role, title: string, sub: string) => (
-    <button class={'door' + (was === role ? ' on' : '')} disabled={!!busy || !where} onClick={() => go(role)}>
+    <button class={'door' + (was === role ? ' on' : '')} disabled={!!busy} onClick={() => go(role)}>
       <span class="dot" style={{ background: hex(ROLE_INFO[role].color) }} /><strong>{busy === role ? 'Landing…' : title}</strong><small>{sub}</small><span class="go" aria-hidden="true">›</span>
     </button>
   );
@@ -76,11 +78,10 @@ function Start({ engine }: Eng) {
       <div class="sheet start">
         <div class="k">Mission X · MIHAS 2026{online.value > 1 && <span class="live">{online.value} in the expo now</span>}</div>
         <h1>Find the <b>X</b>.</h1>
-        <p class="lead">The whole MIHAS expo, live on your phone. Walk it, stamp booths, meet people — and find the X for your free digital business card.</p>
-        <SiteChoice />
+        <p class="lead">The whole MIHAS expo, live on your phone. Make your free digital business card, walk the halls with everyone else in the game, and meet exhibitors.</p>
         {referral.value && !me.value?.hosting.length && was !== 'visitor' && <p class="invite">An exhibitor invited you to put your booth in the game — choose <b>I'm exhibiting</b>.</p>}
         <div class="doors">
-          {door('visitor', was === 'visitor' ? 'Continue visiting' : "I'm visiting", 'Start at Lean X Digital, then scan the QR at 5 exhibitor booths.')}
+          {door('visitor', was === 'visitor' ? 'Continue visiting' : "I'm visiting", 'Make your card, start at Lean X Digital, then scan the QR at 5 exhibitor booths.')}
           {door('exhibitor', was === 'exhibitor' ? 'Back to my booth' : "I'm exhibiting", 'Put your booth in the game. Collect visitor leads, free.')}
         </div>
         <p class="fine">An expo game by Lean X Digital. Unofficial — not affiliated with MATRADE or MIHAS.</p>
@@ -204,7 +205,7 @@ function Hud({ engine }: Eng) {
 
       {/* bottom-centre: the one thing you can do right here */}
       <div class="action">
-        {moveHint.value && !sitting && siteMode.value !== 'onsite' && <p class="hint" role="status">{FINE_POINTER ? <>Click where you want to go, or use <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>. Drag to look around, scroll to zoom.</> : 'Tap where you want to go, or drag the lower left of the screen. Drag elsewhere to look around.'}</p>}
+        {moveHint.value && !sitting && <p class="hint" role="status">{FINE_POINTER ? <>Click where you want to go, or use <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>. Drag to look around, scroll to zoom.</> : 'Tap where you want to go, or drag the lower left of the screen. Drag elsewhere to look around.'}</p>}
         {sitting && <SeatNote />}
         {sitting && <button class="btn big" onClick={() => eng?.stand()}>Stand up<kbd>E</kbd></button>}
         {nearLift.value && <div class="liftrow">{nearLift.value.others.map((l) => <button key={l.deck} class="btn lift" onClick={() => engine()?.useLift(l)}>Level {l.deck}<small>{level.value?.decks.find((d) => d.level === l.deck)?.label.split(' · ')[1]}</small></button>)}</div>}
@@ -245,11 +246,11 @@ function CardForm() {
   const set = (k: keyof PassportInput) => (e: Event) => { const t = e.target as HTMLInputElement, v = t.type === 'checkbox' ? t.checked : t.value; setF((p) => ({ ...p, [k]: v })); };
   const submit = async (e: Event) => {
     e.preventDefault(); setErr(''); setBusy(true);
-    try { await api.card(f); api.track('card'); if (teamInvite.value) { modal.value = 'jointeam'; return; } modal.value = exhibitor ? 'mybooth' : me.value?.mission.started ? null : 'scan'; if (!exhibitor && !me.value?.mission.started) toast('You are registered', 'Now scan the Lean X Digital QR at the booth to start', 'info', 5000); }
+    try { await api.card(f); api.track('card'); if (afterCard.value) { afterCard.value(); if (teamInvite.value) modal.value = 'jointeam'; return; } if (teamInvite.value) { modal.value = 'jointeam'; return; } modal.value = exhibitor ? 'mybooth' : me.value?.mission.started ? null : 'scan'; if (!exhibitor && !me.value?.mission.started) toast('You are registered', 'Now scan the Lean X Digital QR at the booth to start', 'info', 5000); }
     catch (x) { setErr(x instanceof ApiError ? x.message : 'Something went wrong'); setBusy(false); }
   };
   return (
-    <Sheet k={exhibitor ? 'First · who runs the booth' : 'You found the X'} title="Your free digital business card">
+    <Sheet k={exhibitor ? 'First · who runs the booth' : 'First · your card'} title="Your free digital business card">
       <form onSubmit={submit}>
         <p class="lead">{exhibitor ? 'Your card tells visitors and our crew who is behind the booth. It takes a minute, and it is yours to keep.' : 'Built for you now, yours to keep: a card with its own link and QR. It is what you swap with people and leave at booths.'}</p>
         <CardPreview f={f} />

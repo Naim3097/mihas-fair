@@ -6,12 +6,11 @@ import { createApp } from './app.js';
 import { buildServices } from './wire.js';
 import { testStores } from './test-db.js';
 import type { GcView, Hologram, HostCode, LevelData, Me, MissionsView } from '../shared/types.js';
-import { ALL_FEATURES, VENUE_DEFAULT } from '../shared/rules.js';
+import { ALL_FEATURES } from '../shared/rules.js';
 
 const root = resolve(import.meta.dirname, '..');
 const level = JSON.parse(readFileSync(resolve(root, 'public/data/floor.json'), 'utf8')) as LevelData;
 const booth = (id: string) => level.booths.find((b) => b.id === id)!;
-const AT_MITEC = { lat: VENUE_DEFAULT.lat + 0.0005, lon: VENUE_DEFAULT.lon, acc: 25 }, AT_KLCC = { lat: 3.1579, lon: 101.7116, acc: 20 };
 
 async function rig() {
   let now = Date.UTC(2026, 8, 23, 2, 5, 0);
@@ -47,66 +46,35 @@ async function rig() {
   return { clock, user, beacon, services };
 }
 
-test('presence engine: the venue gate decides what a printed beacon is worth; scans anchor; deck walking; invisibility', async () => {
+test('presence engine: a printed booth QR is a real-booth scan and anchors; everyone shares one hall; invisibility', async () => {
   const { clock, user, beacon, services } = await rig();
   const p = await user().join('visitor'), watcher = await user().join('exhibitor');
 
-  // without a venue check a printed code is only worth a remote stamp — it may have been photographed
-  let r = await p.post('/api/stamp', { stationId: '7C17', proof: 'beacon', beacon: await beacon('7C17') });
-  assert.equal(r.json.events[0].xp, 10, 'a stamp, not a real-booth scan');
-  assert.match(r.json.events[0].note, /location/i);
-  assert.equal(r.json.me.onsite, false);
-  assert.equal(r.json.me.anchor, null);
-
-  // fixes that prove nothing
-  assert.deepEqual((await p.post('/api/venue', AT_KLCC)).json.data.reason, 'outside');
-  assert.deepEqual((await p.post('/api/venue', { ...AT_MITEC, acc: 900 })).json.data.reason, 'inaccurate');
-  assert.equal((await p.post('/api/venue', { lat: 'x', lon: 1, acc: 1 })).json.code, 'bad_fix');
-  assert.equal((await p.me()).onsite, false);
-
-  // a good fix opens the gate: the same kind of scan is now an on-site stamp, and it anchors the player there
-  r = await p.post('/api/venue', AT_MITEC);
-  assert.equal(r.json.data.onsite, true);
-  assert.ok(r.json.data.distanceM < 100);
+  // no location check: the booth's own QR, scanned, is a real-booth scan and marks the player as at MIHAS
+  let r = await p.post('/api/stamp', { stationId: '7C18', proof: 'beacon', beacon: await beacon('7C18') });
+  assert.deepEqual([r.json.events[0].action, r.json.events[0].xp], ['scan', 50]);
+  assert.equal(r.json.events[0].note, undefined, 'no "allow location" nudge');
   assert.equal(r.json.me.onsite, true);
-  clock.advance(60_000);
-  r = await p.post('/api/stamp', { stationId: '7C18', proof: 'beacon', beacon: await beacon('7C18') });
-  assert.deepEqual([r.json.events[0].action, r.json.events[0].xp], ['scan', 50], 'known to be at MIHAS: a printed booth QR is a real-booth scan');
   assert.equal(r.json.me.anchor.stationId, '7C18');
-  assert.deepEqual(Object.keys((await services.game.db.get<object>('SELECT * FROM venue_checks'))!).sort(), ['acc_m', 'checked_at', 'dist_m', 'ok', 'player_id'], 'no coordinates are stored');
 
-  // other players see a real person: solid (deck), at the station, snapped to the 1.5 m lattice
+  // the scan does not move the avatar: it stays where the player walked it, and others see it there
   const b = booth('7C18');
-  const near = await user().join('visitor'); await near.post('/api/venue', AT_MITEC); // someone else at MIHAS: people there see each other
-  let seen = (await near.post('/api/presence', { x: b.x + 3, y: b.y, h: 0, spawn: true, deck: true, sigma: 3 })).json.data.holograms as Hologram[];
-  assert.equal(seen.length, 1);
-  assert.equal(seen[0]!.deck, true);
-  assert.ok(Math.abs(seen[0]!.x - b.x) <= 0.75 && seen[0]!.x % 1.5 === 0);
-
-  // deck walking: real metres earn XP — at walking pace (4.5 m every 2 s) …
+  await p.post('/api/presence', { x: b.x - 20, y: b.y, h: 0, spawn: true });
   const pid = (await services.game.db.get<{ id: string }>("SELECT id FROM players WHERE cls = 'visitor'"))!.id;
-  let walked = 0;
-  for (let i = 1; i <= 14; i++) {
-    clock.advance(2000);
-    r = await p.post('/api/presence', { x: b.x - 2.2, y: b.y - i * 4.5, h: 0, deck: true, sigma: 1 + i });
-    assert.equal(r.json.data.deck, true);
-    walked += (r.json.events ?? []).filter((e: { action: string }) => e.action === 'walk').reduce((n: number, e: { xp: number }) => n + e.xp, 0);
-  }
-  assert.equal(walked, 5, '63 m on deck → 6 XP earned, paid in batches of 5');
-  // … and a 20 m dash in 2 s is refused: the server keeps the last believable position
-  clock.advance(2000);
-  await p.post('/api/presence', { x: b.x - 2.2, y: b.y - 83, h: 0, deck: true, sigma: 3 });
-  assert.ok(Math.abs((await services.game.presence.position(pid, clock.now))!.y - (b.y - 63)) < 0.01, 'the sprint was refused');
+  assert.deepEqual(await services.game.presence.position(pid, clock.now), { x: b.x - 20, y: b.y });
+  let seen = (await watcher.post('/api/presence', { x: b.x - 17, y: b.y, h: 0, spawn: true })).json.data.holograms as Hologram[];
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0]!.deck, false, 'nobody is placed by GPS');
 
-  // a remote player asking for deck mode is quietly given free roam
-  assert.equal((await watcher.post('/api/presence', { x: b.x + 3, y: b.y, h: 0, deck: true })).json.data.deck, false);
+  // asking for deck mode changes nothing
+  assert.equal((await watcher.post('/api/presence', { x: b.x - 17, y: b.y, h: 0, deck: true })).json.data.deck, false);
 
   // invisible means invisible
   assert.equal((await p.post('/api/hidden', { hidden: true })).json.me.hidden, true);
-  seen = (await watcher.post('/api/presence', { x: b.x - 2, y: b.y - 80, h: 0 })).json.data.holograms;
+  seen = (await watcher.post('/api/presence', { x: b.x - 17, y: b.y, h: 0 })).json.data.holograms;
   assert.equal(seen.length, 0);
 
-  // the gate closes again after half an hour without a fresh check or scan
+  // "at MIHAS" lapses half an hour after the last real-booth scan
   clock.advance(31 * 60_000);
   assert.equal((await p.me()).onsite, false);
 });
@@ -173,7 +141,7 @@ test('mission director: three different offers, one active at a time, progress f
 });
 
 test('ground control: roles follow reality, only Ground sees the target, only the astronaut can finish it, both are paid in full', async () => {
-  const { clock, user } = await rig();
+  const { clock, user, beacon } = await rig();
   const host = await user().join('exhibitor', 'Hana Host'), ground = await user().join('visitor'), astro = await user().join('visitor', 'Ali Astro'); // scanning an exhibitor's QR needs a card
   await host.post('/api/station/claim', { stationId: '7C17', company: 'Mamee', offer: '', link: '', color: 0 });
   clock.advance(6000);
@@ -182,7 +150,7 @@ test('ground control: roles follow reality, only Ground sees the target, only th
   assert.deepEqual([g.state, g.role], ['queued', 'ground']);
   assert.deepEqual([((await ground.post('/api/gc/join')).json.data as GcView).state], ['queued'], 'joining twice does not pair you with yourself');
 
-  await astro.post('/api/venue', AT_MITEC);
+  await astro.post('/api/stamp', { stationId: '6A17', proof: 'beacon', beacon: await beacon('6A17') }); // at MIHAS: a real booth QR
   let a = (await astro.post('/api/gc/join')).json.data as GcView;
   assert.deepEqual([a.state, a.role, a.target], ['active', 'astro', null], 'the astronaut is not told where to go');
   g = (await ground.get('/api/gc')).json.data;

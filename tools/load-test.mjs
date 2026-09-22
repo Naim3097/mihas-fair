@@ -1,12 +1,11 @@
 // Load test: simulated players against a running API (never production). Usage:
 //   LOAD_BASE=http://localhost:8790 node tools/load-test.mjs 300 600 1000
 // Start the API the way Vercel runs it (server/vercel.ts, presence in the database) against a throwaway Postgres.
-// Simulated players against the production API code. Each: its own session and IP, joins as a visitor; half are "at
-// MIHAS" (venue check, then a GPS-follow ping every 2 s), half "from elsewhere" (a ping every 12 s); all poll the booth
-// list every 20 s like the real client. Reports latency percentiles, errors and throughput per stage.
+// Simulated players against the production API code. Each: its own session and IP, joins as a visitor and pings its
+// position every 3 s (everyone sees everyone); all poll the booth list every 20 s like the real client. Reports latency percentiles, errors and throughput per stage.
 const BASE = process.env.LOAD_BASE ?? 'http://localhost:8790';
 const stages = process.argv.slice(2).map(Number); // e.g. 300 600 1000
-const STAGE_S = 60, LAT = 3.17811, LON = 101.66864;
+const STAGE_S = 60, EVERY_MS = 3000;
 const lat = [], errs = new Map(); let reqs = 0;
 async function req(p, m, path, body) {
   const t0 = performance.now();
@@ -20,18 +19,17 @@ async function req(p, m, path, body) {
 }
 const players = []; let stop = false;
 async function player(i) {
-  const p = { ip: `10.${(i >> 16) & 255}.${(i >> 8) & 255}.${i & 255}`, cookie: '', onsite: i % 2 === 0 };
+  const p = { ip: `10.${(i >> 16) & 255}.${(i >> 8) & 255}.${i & 255}`, cookie: '' };
   players.push(p);
   await req(p, 'GET', '/api/me'); await req(p, 'POST', '/api/start', { role: 'visitor' });
-  if (p.onsite) await req(p, 'POST', '/api/venue', { lat: LAT + (Math.random() - 0.5) * 0.001, lon: LON, acc: 25 });
   let x = 30 + Math.random() * 140, y = 40 + Math.random() * 60, lastPoll = 0;
-  const every = p.onsite ? 2000 : 12000;
+  const every = EVERY_MS;
   await new Promise((r) => setTimeout(r, Math.random() * every)); // spread out, as real phones are
   while (!stop) {
     const t = Date.now();
-    x += (Math.random() - 0.5) * (p.onsite ? 4 : 30); y += (Math.random() - 0.5) * (p.onsite ? 4 : 30);
+    x += (Math.random() - 0.5) * 8; y += (Math.random() - 0.5) * 8;
     x = Math.min(180, Math.max(10, x)); y = Math.min(105, Math.max(40, y));
-    await req(p, 'POST', '/api/presence', { x, y, h: 0, deck: p.onsite || undefined, sigma: p.onsite ? 8 : undefined });
+    await req(p, 'POST', '/api/presence', { x, y, h: 0 });
     if (t - lastPoll > 20000) { lastPoll = t; await req(p, 'GET', '/api/stations'); await req(p, 'GET', '/api/today'); }
     await new Promise((r) => setTimeout(r, Math.max(0, every - (Date.now() - t))));
   }

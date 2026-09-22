@@ -1,6 +1,5 @@
 // The demo world, exercised the way the service worker does it — but in Node, on the same WebAssembly SQLite.
 import { test } from 'node:test';
-import { VENUE_DEFAULT } from '../../shared/rules';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import initSqlJs from 'sql.js';
@@ -61,8 +60,7 @@ test('demo world: seeded, consistent, and every helper works through the real AP
 
   // the world moves and other people are visible
   for (let i = 0; i < 4; i++) { await new Promise((r) => setTimeout(r, 950)); await sim.tick(); }
-  await call('POST', '/api/venue', { lat: VENUE_DEFAULT.lat, lon: VENUE_DEFAULT.lon, acc: 12 }); // people meet at MIHAS
-  const ping = await call<{ holograms: unknown[]; online: number }>('POST', '/api/presence', { x: level.hero.dock.x, y: level.hero.dock.y, h: 0, spawn: true, deck: true, sigma: 3 });
+  const ping = await call<{ holograms: unknown[]; online: number }>('POST', '/api/presence', { x: level.hero.dock.x, y: level.hero.dock.y, h: 0, spawn: true });
   assert.ok(ping.data.online >= 35, `online ${ping.data.online}`); assert.ok(ping.data.holograms.length > 0, 'holograms near the Launch Pad');
 
   // crew docking (helper) — and the crew console's own path stays PIN-protected
@@ -70,12 +68,11 @@ test('demo world: seeded, consistent, and every helper works through the real AP
   await assert.rejects(call('GET', '/api/crew/leads'), /sign-in/i);
   await call('POST', '/api/crew/login', { pin: DEMO_CREW_PIN });
   assert.ok((await call<unknown[]>('GET', '/api/crew/leads')).data.length > 30);
-  const screen = (await call<{ dots: { deck: boolean }[]; onsite: number; board: unknown[]; joinUrl: string }>('GET', '/api/crew/screen')).data; // Mission Control feed
-  assert.ok(screen.dots.length >= 35 && screen.onsite >= 15 && screen.board.length > 5, JSON.stringify({ dots: screen.dots.length, onsite: screen.onsite }));
+  const screen = (await call<{ dots: unknown[]; board: unknown[]; joinUrl: string }>('GET', '/api/crew/screen')).data; // Mission Control feed
+  assert.ok(screen.dots.length >= 35 && screen.board.length > 5, JSON.stringify({ dots: screen.dots.length }));
   assert.ok((await call<unknown[]>('GET', '/api/crew/stations')).data.length === totals.stations && (await call<unknown[]>('GET', '/api/crew/beacons')).data.length === level.booths.length);
 
-  // simulated venue check-in, then the host code shown by the hint → on-site stamp, verified contact, Daily Drop
-  await call('POST', '/api/venue', { lat: 3.17811, lon: 101.66864, acc: 10 });
+  // the host code shown by the hint → on-site stamp, verified contact, Daily Drop
   const hint = (await sim.hint(st.drop!))!;
   assert.ok(hint.claimed && hint.digits);
   const stamped = await call<null>('POST', '/api/stamp', { stationId: st.drop, proof: 'host', code: hint.digits });

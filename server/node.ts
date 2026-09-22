@@ -8,7 +8,6 @@ import { buildServices } from './wire.js';
 import { openNodeDb } from './db/sqlite-node.js';
 import { openPostgres } from './db/postgres.js';
 import { SCHEMA } from './db/schema.js';
-import { VENUE_DEFAULT } from '../shared/rules.js';
 import type { LevelData } from '../shared/types.js';
 
 const root = resolve(import.meta.dirname, '..');
@@ -27,9 +26,7 @@ const level = JSON.parse(readFileSync(resolve(root, 'public/data/floor.json'), '
 const pg = process.env.DATABASE_URL ? openPostgres(process.env.DATABASE_URL) : null;
 if (pg) await pg.migrate();
 const db = pg ?? openNodeDb(process.env.DB_FILE ?? resolve(root, 'data/mission-x.db'), SCHEMA);
-const env = (k: string, d: number) => (Number.isFinite(Number(process.env[k])) && process.env[k] ? Number(process.env[k]) : d);
-const venue = { lat: env('VENUE_LAT', VENUE_DEFAULT.lat), lon: env('VENUE_LON', VENUE_DEFAULT.lon), radiusM: env('VENUE_RADIUS_M', VENUE_DEFAULT.radiusM) };
-const app = createApp({ ...buildServices({ db, secret, level, publicOrigin: PUBLIC_ORIGIN, venue }), crewPin, publicOrigin: PUBLIC_ORIGIN, secureCookies: prod });
+const app = createApp({ ...buildServices({ db, secret, level, publicOrigin: PUBLIC_ORIGIN }), crewPin, publicOrigin: PUBLIC_ORIGIN, secureCookies: prod });
 
 if (existsSync(resolve(root, 'dist/index.html'))) {
   app.get('/fair', (c) => c.redirect('/')); // the fair is the root page; the old address still works

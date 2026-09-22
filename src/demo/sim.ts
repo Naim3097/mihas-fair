@@ -7,7 +7,7 @@
 import type { Services } from '../../server/wire';
 import { dayStart } from '../../server/game';
 import type { Booth, Hologram, LevelData } from '../../shared/types';
-import { HOST_WINDOW_MS, VENUE_DEFAULT, type Pose, type ShareField } from '../../shared/rules';
+import { HOST_WINDOW_MS, type Pose, type ShareField } from '../../shared/rules';
 import { buildPlaces, taken, type Seat } from '../game/places';
 import { NavGrid, type P2 } from '../game/nav';
 
@@ -33,7 +33,6 @@ const ROLES = ['Founder', 'Export Manager', 'Buyer', 'Marketing Lead', 'Business
 const OFFERS = ['Demo host (simulated) — walk up and scan the code on their screen', 'Demo host (simulated) — share your Passport to see the lead flow', 'Demo host (simulated) — this is what an exhibitor profile looks like'];
 const COLORS = [0x17b6d6, 0x3aa8ff, 0x4d7cff, 0xb69cff, 0xff7a66, 0xffc629, 0x9be564, 0x2fd0a0];
 const SHARE: ShareField[] = ['name', 'company', 'role', 'email'];
-const MITEC = { lat: VENUE_DEFAULT.lat, lon: VENUE_DEFAULT.lon, acc: 12 };
 
 function rng(seed: number) { return () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 const quiet = async <T,>(f: () => Promise<T>): Promise<T | null> => { try { return await f(); } catch { return null; } };
@@ -44,7 +43,7 @@ export class DemoSim {
   private botIds = new Set<string>();
   private rand = rng(0x5eed);
   private lastTick = 0; private busy = false;
-  private every = { hosts: 0, players: 0, venue: 0 };
+  private every = { hosts: 0, players: 0 };
   private visits = new Map<string, { n: number; at: number }>();
   private byDeck = new Map<number, Booth[]>();
   private seats = new Map<number, Seat[]>();
@@ -65,7 +64,7 @@ export class DemoSim {
 
   /** Builds a few hours of history. `clock.offset` lets the services believe it is earlier; the caller resets it to 0 afterwards. */
   async seed(clock: { offset: number }): Promise<void> {
-    const { game, stations, social, venue, ops } = this.s, r = this.rand, real = Date.now();
+    const { game, stations, social, ops } = this.s, r = this.rand, real = Date.now();
     const span = 4.5 * 3600_000; let t = real - span; const at = (ms: number) => { t = ms; clock.offset = t - Date.now(); };
     const pickOf = <T,>(a: T[]) => a[Math.floor(r() * a.length)]!;
     at(t);
@@ -113,9 +112,8 @@ export class DemoSim {
       const suspect = walkers.find((w) => w.kind === 'suspect')!; // plays suspiciously often, and sometimes from impossible places
       const bot = n % 7 === 0 ? suspect : walkers[n % walkers.length]!, onsite = bot.kind === 'onsite';
       const b = this.pickBooth(bot.deck, r() < 0.45 ? [...live.keys()] : null), owner = live.get(b.id);
-      const holo = await game.hologramOf(bot.id, { x: b.x, y: b.y, h: 0, deck: onsite, sigma: onsite ? 2 : 0 });
+      const holo = await game.hologramOf(bot.id, { x: b.x, y: b.y, h: 0, deck: false, sigma: 0 });
       await game.presence.update(holo, t, true);
-      if (onsite) await venue.checkIn(bot.id, MITEC);
       const hostHere = owner?.hosting && onsite;
       if (hostHere) await quiet(() => stations.hostCode(owner!.id, b.id));
       await this.rested(bot.id, t);
@@ -177,7 +175,6 @@ export class DemoSim {
     if (this.busy || t - this.lastTick < 900) return;
     const dt = Math.min(5, this.lastTick ? (t - this.lastTick) / 1000 : 1); this.lastTick = t; this.busy = true;
     try {
-      if (t - this.every.venue > 15 * 60_000) { this.every.venue = t; for (const b of this.bots) if (this.onsite(b)) await this.s.venue.checkIn(b.id, MITEC); }
       if (t - this.every.hosts > 20_000) { this.every.hosts = t; for (const b of this.bots) if (b.kind === 'host' && b.hosting) await quiet(() => this.s.stations.hostCode(b.id, b.station!)); }
       if (t - this.every.players > 3000) { this.every.players = t; await this.sendVisitors(t); }
       await this.greet(t);
@@ -196,11 +193,10 @@ export class DemoSim {
     } else if (this.rand() < 0.04) b.h += (this.rand() - 0.5) * 1.2;
 
     if (!b.base || t - b.baseAt > 60_000) { const h = await this.s.game.hologramOf(b.id, { x: 0, y: 0, h: 0, deck: false, sigma: 0 }); b.base = { id: h.id, callsign: h.callsign, cls: h.cls, av: h.av }; b.baseAt = t; }
-    const deck = this.onsite(b);
-    let moved = await this.s.game.presence.update({ ...b.base, x: +b.pos.x.toFixed(2), y: +b.pos.y.toFixed(2), h: +b.h.toFixed(2), pose: b.pose || undefined, deck, sigma: deck ? 2 : 0 }, t, false);
+    let moved = await this.s.game.presence.update({ ...b.base, x: +b.pos.x.toFixed(2), y: +b.pos.y.toFixed(2), h: +b.h.toFixed(2), pose: b.pose || undefined, deck: false, sigma: 0 }, t, false);
     if (moved == null) { // the server refused an implausible jump: exactly what a teleporting client looks like
       await this.s.ops.speedFlag(b.id, `to ${b.pos.x.toFixed(0)},${b.pos.y.toFixed(0)} (demo: jumped across the hall)`);
-      moved = await this.s.game.presence.update({ ...b.base, x: b.pos.x, y: b.pos.y, h: b.h, deck, sigma: 0 }, t, true);
+      moved = await this.s.game.presence.update({ ...b.base, x: b.pos.x, y: b.pos.y, h: b.h, deck: false, sigma: 0 }, t, true);
     }
   }
 
@@ -218,7 +214,7 @@ export class DemoSim {
     if (p && p.length > 1) { b.path = p.slice(1); return true; }
     if (teleportIfBlocked) { // another deck: take the lift
       b.pos = this.nav.nearestWalkable(to.x, to.y) ?? to; b.path = [];
-      if (b.base) void this.s.game.presence.update({ ...b.base, x: b.pos.x, y: b.pos.y, h: b.h, deck: this.onsite(b), sigma: 0 }, this.s.game.now(), true);
+      if (b.base) void this.s.game.presence.update({ ...b.base, x: b.pos.x, y: b.pos.y, h: b.h, deck: false, sigma: 0 }, this.s.game.now(), true);
     }
     return false;
   }
@@ -303,10 +299,9 @@ export class DemoSim {
     const st = await game.db.get<{ station_id: string }>("SELECT station_id FROM stations WHERE owner_id = ? AND status != 'revoked' ORDER BY claimed_at DESC LIMIT 1", [playerId]); if (!st) return null;
     const bot = await this.freshVisitor(st.station_id, true); if (!bot) return null;
     const booth = game.stations.get(st.station_id)!; bot.pos = this.nav.nearestWalkable(booth.x, booth.y) ?? booth; bot.path = []; bot.wait = 8; bot.deck = booth.deck;
-    if (bot.base) await game.presence.update({ ...bot.base, x: bot.pos.x, y: bot.pos.y, h: bot.h, deck: this.onsite(bot), sigma: 0 }, t, true);
+    if (bot.base) await game.presence.update({ ...bot.base, x: bot.pos.x, y: bot.pos.y, h: bot.h, deck: false, sigma: 0 }, t, true);
     await this.rested(bot.id, t);
     await stations.hostCode(playerId, st.station_id);
-    if (this.onsite(bot)) await this.s.venue.checkIn(bot.id, MITEC);
     await game.stamp(bot.id, this.onsite(bot) ? { stationId: booth.id, proof: 'host', code: (await game.hostCode(booth.id, Math.floor(t / HOST_WINDOW_MS))).digits } : { stationId: booth.id, proof: 'virtual' });
     await stations.share(bot.id, booth.id, SHARE);
     return { station: booth.id, name: (await game.passportOf(bot.id))?.name ?? 'A visitor' };

@@ -6,7 +6,6 @@ import { createApp } from './app.js';
 import { buildServices } from './wire.js';
 import { testStores } from './test-db.js';
 import type { BoardRow, BoothScan, BoothTeamView, HostStation, LevelData, Me } from '../shared/types.js';
-import { VENUE_DEFAULT } from '../shared/rules.js';
 
 const level = JSON.parse(readFileSync(resolve(import.meta.dirname, '../public/data/floor.json'), 'utf8')) as LevelData;
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
@@ -68,9 +67,8 @@ test('a company works its booth as a team: colleagues join with a link, each on 
 
   // on the floor: the colleague wears the company name, and plays no visitor mission or board
   tick(60_000);
-  for (const u of [ali, v]) await u.call('POST', '/api/venue', { lat: VENUE_DEFAULT.lat, lon: VENUE_DEFAULT.lon, acc: 20 }); // both at MIHAS: people there see each other
-  await ali.call('POST', '/api/presence', { x: level.spawns.short.x, y: level.spawns.short.y, h: 0, spawn: true, deck: true, sigma: 3 });
-  const seen = (await v.call('POST', '/api/presence', { x: level.spawns.short.x + 1, y: level.spawns.short.y, h: 0, spawn: true, deck: true, sigma: 3 })).json.data.holograms as { callsign: string; company?: string }[];
+  await ali.call('POST', '/api/presence', { x: level.spawns.short.x, y: level.spawns.short.y, h: 0, spawn: true});
+  const seen = (await v.call('POST', '/api/presence', { x: level.spawns.short.x + 1, y: level.spawns.short.y, h: 0, spawn: true})).json.data.holograms as { callsign: string; company?: string }[];
   assert.equal(seen.find((h) => h.callsign.startsWith('Ali'))?.company, 'Kedai Kopi');
   assert.equal((await ali.call('POST', '/api/stamp', { stationId: level.hero.id, proof: 'beacon', beacon: await beacon(level.hero.id) })).json.code, 'exhibitor');
   tick(); await ali.call('POST', '/api/stamp', { stationId: '6A17', proof: 'beacon', beacon: await beacon('6A17') }); // points, but not on the board

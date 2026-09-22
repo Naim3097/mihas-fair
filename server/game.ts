@@ -210,9 +210,6 @@ export class Game {
     return this.level.halls.find((h) => x >= h.x0 && x <= h.x1 && y >= h.y0 && y <= h.y1)?.id ?? null;
   }
 
-  /** Which level a plan y is on (the levels sit side by side in plan space). */
-  private levelAt(y: number): number { return this.level.decks.find((d) => y >= d.y0 - 15 && y <= d.y1 + 15)?.level ?? 0; }
-
   /** What other players are told about this one. */
   /** Name and class as others see them, cached briefly per instance: every ping needs them, they rarely change. */
   private shown = new Map<string, { callsign: string; cls: string | null; at: number }>();
@@ -225,7 +222,6 @@ export class Game {
     return { id, callsign: p.callsign, cls: p.cls as Role | null, av: av.code, ...at };
   }
 
-  /** deck = "my avatar is following my real steps". Only honoured for players who are verifiably on site. */
   /** How many people are in the game right now. */
   onlineNow(): Promise<number> { return this.presence.online(this.now()); }
 
@@ -233,10 +229,7 @@ export class Game {
     if (![pos.x, pos.y, pos.h].every(Number.isFinite)) throw new GameError('bad_pos', 'Bad position');
     if (isSpawn && ![...Object.values(this.level.spawns), ...this.level.lifts].some((s) => Math.hypot(s.x - pos.x, s.y - pos.y) < 4)) isSpawn = false;
     const t = this.now();
-    const deck = pos.deck === true && ((await this.hooks.isOnsite?.(id, t)) ?? false);
-    // on deck, changing level (stairs, escalator, a lift) moves the player across plan space: that is arriving, not speeding
-    if (deck && !isSpawn) { const prev = await this.presence.position(id, t); if (prev) { const a = this.levelAt(prev.y), b = this.levelAt(pos.y); if (a && b && a !== b) isSpawn = true; } } // served from presence's per-instance cache
-    const sigma = deck && Number.isFinite(pos.sigma) ? Math.min(50, Math.max(1, pos.sigma!)) : 0;
+    const deck = false, sigma = 0; // no GPS: every avatar is walked in the virtual hall, none follows a real person's steps
     const pose = (POSES as readonly string[]).includes(pos.pose ?? '') ? pos.pose : '';
     const moved = await this.presence.update(await this.hologramOf(id, { x: pos.x, y: pos.y, h: pos.h, deck, sigma, pose }), t, isSpawn);
     const events: XpEvent[] = [];
@@ -244,9 +237,8 @@ export class Game {
       events.push(...(await this.discover(id, pos.x, pos.y, t, deck ? 'onsite' : 'remote')));
       events.push(...((await this.hooks.afterPing?.({ id, x: pos.x, y: pos.y, deck, movedM: moved, steps: deck && Number.isFinite(pos.steps) ? pos.steps! : 0, t })) ?? []));
     } else await this.hooks.onImplausible?.(id, `to ${pos.x.toFixed(0)},${pos.y.toFixed(0)}${deck ? ' on deck' : ''}`);
-    // People meet people at MIHAS: a player the server knows is at MITEC (their avatar following their GPS) sees the
-    // others who are; a player from elsewhere explores alone — seeing nobody, seen by nobody.
-    const holograms = deck ? (await this.presence.near(id, pos.x, pos.y, t, this.hooks.hiddenSet?.() ?? new Set())).filter((h) => h.deck) : [];
+    // Everyone in the game sees everyone near them: visitors and exhibitors share one virtual hall.
+    const holograms = await this.presence.near(id, pos.x, pos.y, t, this.hooks.hiddenSet?.() ?? new Set());
     if (holograms.some((h) => h.cls === 'exhibitor')) {
       const companies = (await this.hooks.companies?.()) ?? new Map<string, string>();
       for (const h of holograms) if (h.cls === 'exhibitor') for (const [owner, company] of companies) if (owner.startsWith(h.id)) { h.company = company; break; }
@@ -332,8 +324,7 @@ export class Game {
     let presence: Presence2;
     if (req.proof === 'beacon') {
       if (req.beacon !== (await this.beaconToken(station.id))) throw new GameError('bad_beacon', 'That is not a Mission X booth QR');
-      // A printed code can be photographed and passed around, so it only counts as being there with a good venue check.
-      presence = ((await this.hooks.isOnsite?.(id, t)) ?? false) ? 'onsite' : 'remote';
+      presence = 'onsite'; // a booth's own QR, scanned at the booth: there is no location check, so every scan counts in full
     } else if (req.proof === 'host') {
       const claim = await this.db.get<{ owner_id: string; status: string }>('SELECT owner_id, status FROM stations WHERE station_id = ?', [station.id]);
       if (!claim || claim.status === 'revoked') throw new GameError('not_hosted', 'This booth is not online yet');
@@ -363,7 +354,6 @@ export class Game {
     const stmts: Stmt[] = [];
     // an exhibitor's booth goes by the company they gave, not the name on the organiser's plan
     const label = (boothQr ? (await this.db.get<{ company: string }>('SELECT company FROM stations WHERE station_id = ?', [station.id]))?.company : null) || station.name || `Booth ${station.id}`;
-    const geofence = presence === 'onsite' ? (((await this.hooks.isOnsite?.(id, t)) ?? false) ? 'ok' : 'unchecked') : undefined;
     let newVerified = false;
     const already = !!(await this.db.get('SELECT 1 AS x FROM stamps WHERE player_id = ? AND station_id = ?', [id, station.id]));
 
@@ -376,13 +366,13 @@ export class Game {
 
       const storm = (await this.hooks.stampMult?.(station.id, t)) ?? 1;
       const xp = stampPoints(presence) * storm;
-      const detail = { presence, proof: req.proof, geofence, storm: storm > 1 ? storm : undefined };
+      const detail = { presence, proof: req.proof, storm: storm > 1 ? storm : undefined };
       stmts.push(
         ['INSERT INTO stamps (player_id, station_id, hall, proof, created_at) VALUES (?,?,?,?,?)', [id, station.id, station.hall, req.proof, t]],
         ...this.award(id, 'stamp', xp, station.id, detail, t),
         ...this.influence(id, p.cls, station.hall, INFLUENCE.stamp * INFLUENCE_PRESENCE[presence], t),
       );
-      events.push({ action: presence === 'onsite' ? 'scan' : 'stamp', xp, target: label, note: storm > 1 ? 'Signal Storm ×' + storm : presence === 'remote' && req.proof === 'beacon' ? `Allow location while you are at MIHAS and a booth QR scores ${POINTS.scan}` : undefined });
+      events.push({ action: presence === 'onsite' ? 'scan' : 'stamp', xp, target: label, note: storm > 1 ? 'Signal Storm ×' + storm : undefined });
     }
 
     // Scanning the exhibitor's live QR proves a real visit: "met in person", once per booth. It marks the lead for the exhibitor; the points are in the scan.

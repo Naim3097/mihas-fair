@@ -1,4 +1,3 @@
-import type { GeoCalibration } from '../../shared/geo';
 import type { BoothTeamPeek } from '../../shared/types';
 import type { ApiResult, Contact, Hologram, HostCode, HostLead, HostStation, LinkCode, LinkPeek, PassportInput, PresencePing, StampRequest, StationClaimInput, StationView, TodayView } from '../../shared/types';
 import type { Role } from '../../shared/rules';
@@ -27,11 +26,6 @@ export const api = {
   presence: (p: PresencePing & { spawn?: boolean }) => call<{ holograms: Hologram[]; online: number; deck: boolean }>('POST', '/api/presence', p),
   stamp: (r: StampRequest) => call<null>('POST', '/api/stamp', r),
   card: (p: PassportInput) => call<null>('POST', '/api/passport', p),
-  /** One location fix, answered with yes/no: is this phone at MIHAS? Lets a printed booth QR score in full. */
-  venue: (fix: { lat: number; lon: number; acc: number }) => call<{ onsite: boolean; distanceM: number; reason?: 'outside' | 'inaccurate' }>('POST', '/api/venue', fix, true),
-  /** How a GPS fix at MITEC lands on each level's plan (the crew's calibration). */
-  geo: () => call<GeoCalibration & { radiusM: number }>('GET', '/api/geo', undefined, true),
-  spots: () => call<Record<string, string>>('GET', '/api/spots', undefined, true),
   today: () => call<TodayView>('GET', '/api/today'),
   track: (name: string, props?: unknown) => { void call('POST', '/api/event', { name, props }, true).catch(() => {}); },
 

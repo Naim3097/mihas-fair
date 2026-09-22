@@ -67,6 +67,8 @@ export const claimDraft = signal<{ company: string; booths: string[]; manual: bo
 
 /** A card-swap code that arrived in the URL (scanned with the phone's own camera). */
 export const pendingLink = signal<string | null>(null);
+/** The start screen asked for the card first: once it is made, this walks the player into the world. */
+export const afterCard = signal<(() => void) | null>(null);
 
 export interface Toast { id: number; title: string; sub?: string; tone: 'xp' | 'info' | 'warn' }
 /** What is on screen now: at most one. The rest wait their turn, so a busy moment never buries the instruction card. */

@@ -9,7 +9,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   const j = (await r.json()) as Res<T>; if (!j.ok) throw new Error(j.error); return j.data;
 }
 interface LedgerRow { id: number; action: string; target: string | null; xp: number; detail: string | null; voided: number; created_at: number }
-const PART: Record<string, string> = { geofence: 'at MIHAS', hostCode: 'scanned a live booth QR', plausible: 'no jumps', steps: 'steps ok', human: 'came to our booth' };
+const PART: Record<string, string> = { boothQr: 'scanned a booth QR', hostCode: 'scanned a live booth QR', plausible: 'no jumps', steps: 'steps ok', human: 'came to our booth' };
 
 export function ReviewTab() {
   const [kind, setKind] = useState<BoardKind>('xp'), [rows, setRows] = useState<ReviewRow[] | null>(null), [open, setOpen] = useState<string | null>(null), [ledger, setLedger] = useState<LedgerRow[]>([]), [err, setErr] = useState('');

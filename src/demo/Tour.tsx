@@ -131,7 +131,7 @@ export function TourSheet() {
           <button class="chip" onClick={go('rules')}>How to play</button>
           <button class="chip" disabled={busy} onClick={() => { if (confirm('Reset the demo? Your demo player, stamps and leads in this browser are erased and the floor is rebuilt.')) { setBusy(true); try { localStorage.removeItem('mx_complete'); } catch { /* ignore */ } void demoApi.reset().catch(warn); } }}>Reset the demo</button>
         </div>
-        <p class="fine">A demo cannot show two real phones meeting, the camera scanner or GPS — those need the real backend and a real device. Add the database settings in Vercel and this demo switches itself off.</p>
+        <p class="fine">A demo cannot show two real phones meeting or the camera scanner — those need the real backend and a real device. Add the database settings in Vercel and this demo switches itself off.</p>
       </div>
     </Sheet>
   );

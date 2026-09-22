@@ -65,8 +65,8 @@ export class LiveOps {
 
   async trust(id: string): Promise<TrustView> {
     const t = this.g.now(), d0 = dayStart(t);
-    const [venue, host, speed, steps, p] = await Promise.all([
-      this.g.db.get<{ ok: number }>('SELECT ok FROM venue_checks WHERE player_id = ? AND checked_at >= ?', [id, d0]),
+    const [qr, host, speed, steps, p] = await Promise.all([
+      this.g.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM stamps WHERE player_id = ? AND proof = 'beacon' AND created_at >= ?", [id, d0]),
       this.g.db.get<{ n: number }>("SELECT (SELECT COUNT(*) FROM stamps WHERE player_id = ? AND proof = 'host' AND created_at >= ?) + (SELECT COUNT(*) FROM verified_contacts WHERE player_id = ? AND created_at >= ?) AS n", [id, d0, id, d0]),
       this.g.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM flags WHERE player_id = ? AND kind = 'speed' AND created_at >= ?", [id, d0]),
       this.g.db.get<{ steps: number; metres: number }>('SELECT steps, metres FROM step_stats WHERE player_id = ? AND day = ?', [id, d0]),
@@ -74,7 +74,7 @@ export class LiveOps {
     ]);
     const ratio = steps && steps.steps > 0 ? steps.metres / (steps.steps * 0.7) : null;
     const parts = {
-      geofence: venue?.ok === 1,
+      boothQr: (qr?.n ?? 0) > 0, // a booth's own QR, scanned at the booth today
       hostCode: (host?.n ?? 0) > 0,
       plausible: (speed?.n ?? 0) === 0,
       steps: !steps || steps.metres < 40 || (ratio != null && ratio >= 0.6 && ratio <= 1.7), // little deck walking yet = nothing to contradict

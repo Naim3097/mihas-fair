@@ -54,8 +54,8 @@ export interface Chapter { n: number; title: string; todo: string; done: boolean
 /** Chapters 3 and 4 can be finished in either order, and someone standing at the booth may finish 5 early. */
 export function chapters(f: MissionFacts): Chapter[] {
   return [
-    { n: 1, title: 'Find Lean X Digital', todo: 'Follow the trail to Booth 8H18A in Hall 8.', done: f.card || f.started },
-    { n: 2, title: 'Register and start', todo: 'Get your free digital business card, then scan the Lean X Digital QR at the booth.', done: f.card && f.started },
+    { n: 1, title: 'Your card', todo: 'Make your free digital business card.', done: f.card },
+    { n: 2, title: 'Find Lean X Digital', todo: 'Go to Booth 8H18A in Hall 8 and scan the Lean X Digital QR to start.', done: f.started },
     { n: 3, title: 'Checkpoints', todo: `Find your ${f.target || CHECKPOINTS} checkpoint booths and scan the QR at each one.`, done: f.target > 0 && f.checkpoints >= f.target },
   ];
 }
@@ -98,18 +98,11 @@ export const DEFAULT_SHARE: ShareField[] = ['name', 'company', 'role'];
 /** With a card, a player appears as "Aisyah R." above their astronaut and on the board; without one, as "Visitor 4821". */
 export const NAME_ON_BOARD = true;
 
-/** MITEC, Jalan Dutamas 2 — 3°10′41″N 101°40′07″E. Override with VENUE_LAT / VENUE_LON / VENUE_RADIUS_M. */
-export const VENUE_DEFAULT = { lat: 3.17811, lon: 101.66864, radiusM: 400 };
-/** A venue check stays good this long; so does a scan at a real booth. */
+/** A scan at a real booth counts as "at MIHAS" for this long (quests, trust, Ground Control). */
 export const ONSITE_TTL_MS = 30 * 60_000;
-/** GPS fixes worse than this cannot place anyone inside or outside a 400 m circle. */
-export const VENUE_MAX_ACCURACY_M = 250;
-/** How the floor plan is turned against north: its +x runs north, +y west (fitted to the crew's GPS points, -91.6°).
- *  Turns the phone's compass into plan directions for step tracking. */
-export const PLAN_ROT_DEG = -90;
 
 /** Trust: only used by the crew when a prize hangs on the board. Never shown to players. */
-export const TRUST_W = { geofence: 0.25, hostCode: 0.3, plausible: 0.2, steps: 0.15, human: 0.1 } as const;
+export const TRUST_W = { boothQr: 0.25, hostCode: 0.3, plausible: 0.2, steps: 0.15, human: 0.1 } as const;
 export const TRUST_MIN = 0.7;
 /** Switches the crew can flip from the console without a deploy. */
 export const FLAG_KEYS = ['registration', 'claims', 'links', 'holograms'] as const;

@@ -133,7 +133,6 @@ export function createApp({ game, stations, social, crews, venue, director, gc, 
   player.get('/sectors', async (c) => ok(c, await crews.view(), [], false));
 
   /* presence engine: venue gate + invisibility. The fix is used for one distance check and discarded. */
-  player.post('/venue', async (c) => { const b = await body(c); return ok(c, await venue.checkIn(pid(c), { lat: Number(b.lat), lon: Number(b.lon), acc: Number(b.acc) })); });
   player.post('/hidden', async (c) => { await venue.setHidden(pid(c), (await body(c)).hidden === true); return ok(c, null); });
 
   /* what is special today: the booth of the day, set by the crew */
@@ -185,13 +184,9 @@ export function createApp({ game, stations, social, crews, venue, director, gc, 
   crew.post('/drop', async (c) => { const b = await body(c); await ops.setDrop(b.stationId, b.title, b.bonus); return c.json({ ok: true, data: await ops.drop(null) }); });
   crew.get('/screen', async (c) => {
     const t = game.now(), dots = await game.presence.all(t, venue.hidden);
-    return c.json({ ok: true, data: { dots, online: dots.length, onsite: dots.filter((d) => d.deck).length, totals: await ops.totals(), board: await ops.board('today', null), booths: await ops.board('stations', null), sectors: await crews.view(), storm: await director.stormView(), drop: await ops.drop(null), joinUrl: publicOrigin } });
+    return c.json({ ok: true, data: { dots, online: dots.length, totals: await ops.totals(), board: await ops.board('today', null), booths: await ops.board('stations', null), sectors: await crews.view(), storm: await director.stormView(), drop: await ops.drop(null), joinUrl: publicOrigin } });
   });
   crew.get('/referrals', async (c) => c.json({ ok: true, data: await referrals.ranking() }));
-  crew.get('/geocal', async (c) => c.json({ ok: true, data: { points: await venue.calPoints(), geo: await venue.geo(true) } }));
-  crew.post('/geocal', async (c) => { const b = await body(c); await venue.addCalPoint(String(b.stationId ?? ''), { lat: Number(b.lat), lon: Number(b.lon), acc: Number(b.acc) }); return c.json({ ok: true, data: { points: await venue.calPoints(), geo: await venue.geo() } }); });
-  crew.post('/spots', async (c) => { const b = await body(c); return c.json({ ok: true, data: await venue.moveSpot(String(b.id ?? ''), b.stationId == null ? null : String(b.stationId)) }); });
-  crew.post('/geocal/delete', async (c) => { await venue.removeCalPoint(Number((await body(c)).id)); return c.json({ ok: true, data: { points: await venue.calPoints(), geo: await venue.geo() } }); });
   crew.post('/stations/status', async (c) => { const b = await body(c); await stations.crewSetStatus(String(b.stationId), String(b.status)); return c.json({ ok: true, data: null }); });
 
   // The pages ask this first: a healthy answer means "real backend"; anything else and they start the in-browser demo.
@@ -202,9 +197,6 @@ export function createApp({ game, stations, social, crews, venue, director, gc, 
     const l = await checkpoints.image(c.req.param('id'), kind);
     return l ? c.body(l.bytes as unknown as ArrayBuffer, 200, { 'content-type': l.mime, 'cache-control': 'public, max-age=31536000, immutable' }) : c.text('None', 404);
   });
-  // How a phone at MITEC turns GPS into a spot on the plan. Public: it is a map of the building, nothing about anyone.
-  app.get('/api/geo', async (c) => c.json({ ok: true, data: await venue.geo() }));
-  app.get('/api/spots', async (c) => c.json({ ok: true, data: await venue.spotMoves() }));
   app.route('/api/crew', crew);
   app.route('/api', player);
 

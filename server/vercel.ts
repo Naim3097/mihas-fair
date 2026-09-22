@@ -7,12 +7,10 @@ import { createApp } from './app.js';
 import { buildServices } from './wire.js';
 import { DbPresence } from './presence.js';
 import { openPostgres } from './db/postgres.js';
-import { VENUE_DEFAULT } from '../shared/rules.js';
 import type { LevelData } from '../shared/types.js';
 
 export class ConfigError extends Error {}
 const env = (k: string) => process.env[k]?.trim() || undefined;
-const num = (k: string, d: number) => (env(k) && Number.isFinite(Number(env(k))) ? Number(env(k)) : d);
 
 function publicOrigin(): string {
   if (env('PUBLIC_ORIGIN')) return env('PUBLIC_ORIGIN')!.replace(/\/$/, '');
@@ -35,7 +33,6 @@ async function init(): Promise<Hono<never>> {
   const origin = publicOrigin();
   const services = buildServices({
     db, secret: env('MX_SECRET')!, level, publicOrigin: origin, presence: new DbPresence(db),
-    venue: { lat: num('VENUE_LAT', VENUE_DEFAULT.lat), lon: num('VENUE_LON', VENUE_DEFAULT.lon), radiusM: num('VENUE_RADIUS_M', VENUE_DEFAULT.radiusM) },
   });
   return createApp({ ...services, crewPin: env('CREW_PIN')!, publicOrigin: origin, secureCookies: true }) as unknown as Hono<never>;
 }

@@ -12,7 +12,6 @@ import { ensureBackend } from './demo/client';
 import { installBack } from './ui/back';
 import { installSfx } from './sfx';
 import { bootError, bootNote, drop, level, me, modal, myBooths, online, phase, setReferral, stations, teamInvite } from './state';
-import { onsiteAvailable, setSiteMode, siteMode } from './onsite';
 import type { LevelData } from '../shared/types';
 
 let engine: FairEngine | null = null;
@@ -51,10 +50,10 @@ async function boot() {
     const team = new URLSearchParams(location.search).get('team');
     if (team && /^[A-Za-z0-9]{6,10}$/.test(team)) { teamInvite.value = team.toUpperCase(); history.replaceState(null, '', location.pathname); }
     const query = location.search;
-    if (/[?&](b|h|l|w)=/.test(query)) {
+    if (/[?&](b|h|l)=/.test(query)) {
       history.replaceState(null, '', location.pathname);
-      const returning = !!me.value?.cls;
-      if (returning) { engine.start('short'); if (siteMode.value && onsiteAvailable()) setSiteMode(siteMode.value); phase.value = 'play'; }
+      const returning = !!me.value?.cls && !!me.value.passport; // everyone in the world has a card
+      if (returning) { engine.start('short'); phase.value = 'play'; }
       await handleScan(query);
       if (returning) { api.track('boot', { via: 'scan', world: 'nexova' }); return; }
     }

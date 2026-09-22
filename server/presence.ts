@@ -11,8 +11,6 @@ type Dot = { x: number; y: number; cls: Hologram['cls']; deck: boolean };
 export interface Presence {
   /** Returns the metres accepted, or null when the move is implausibly fast (the previous position is kept). */
   update(p: Hologram, now: number, isSpawn: boolean): Promise<number | null>;
-  /** An on-site scan places the player with authority: no speed check, tight uncertainty. */
-  anchor(p: Hologram, now: number): Promise<void>;
   position(id: string, now: number): Promise<{ x: number; y: number } | null>;
   /** Others never get a real person's exact spot: deck positions are snapped to a 1.5 m lattice. Hidden players are omitted. */
   near(id: string, x: number, y: number, now: number, hidden: ReadonlySet<string>, radius?: number, limit?: number): Promise<Hologram[]>;
@@ -51,7 +49,6 @@ export class PresenceStore implements Presence {
     this.map.set(p.id, { ...p, t: now });
     return moved;
   }
-  async anchor(p: Hologram, now: number) { this.map.set(p.id, { ...p, deck: true, sigma: 1, t: now }); }
   async position(id: string, now: number) { const e = this.map.get(id); return e && now - e.t <= FRESH_MS ? { x: e.x, y: e.y } : null; }
   async near(id: string, x: number, y: number, now: number, hidden: ReadonlySet<string>, radius = 90, limit = 60) {
     const out: (Hologram & { d: number })[] = [];
@@ -110,7 +107,6 @@ export class DbPresence implements Presence {
     this.remember(p.id, { x: p.x, y: p.y, deck: p.deck ? 1 : 0, sigma: p.sigma, t: now });
     return moved;
   }
-  async anchor(p: Hologram, now: number) { await this.upsert({ ...p, deck: true, sigma: 1 }, now); this.remember(p.id, { x: p.x, y: p.y, deck: 1, sigma: 1, t: now }); }
   async position(id: string, now: number) {
     const l = this.last.get(id);
     if (l && now - l.t <= LAST_FRESH_MS) return { x: l.x, y: l.y };

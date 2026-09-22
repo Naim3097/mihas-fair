@@ -41,16 +41,15 @@ export function FieldPicker({ value, onChange }: { value: ShareField[]; onChange
   );
 }
 
-export type Scan = { kind: 'host'; stationId: string; code: string } | { kind: 'beacon'; stationId: string; token: string } | { kind: 'link'; code: string } | { kind: 'spot'; id: string };
-/** Understands the QR kinds the game prints, whether scanned in-app (full URL) or opened by the phone camera (query string). */
+export type Scan = { kind: 'host'; stationId: string; code: string } | { kind: 'beacon'; stationId: string; token: string } | { kind: 'link'; code: string };
+/** Understands the three QR kinds the game prints, whether scanned in-app (full URL) or opened by the phone camera (query string). */
 export function parseScan(text: string): Scan | null {
   let params: URLSearchParams;
   try { params = new URL(text.trim()).searchParams; } catch { params = new URLSearchParams(text.trim().replace(/^\?/, '')); }
-  const h = params.get('h'), b = params.get('b'), l = params.get('l'), w = params.get('w')?.toUpperCase();
+  const h = params.get('h'), b = params.get('b'), l = params.get('l');
   if (h) return { kind: 'host', stationId: h.split('.')[0]!, code: h };
   if (b) return { kind: 'beacon', stationId: b.split('.')[0]!, token: b };
   if (l) return { kind: 'link', code: l.toUpperCase() };
-  if (w && /^Y\d{2}$/.test(w)) return { kind: 'spot', id: w };
   return null;
 }
 

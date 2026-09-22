@@ -174,7 +174,7 @@ export interface GcView {
 /* ---------------- M4 ---------------- */
 
 export type FlagKey = (typeof import('./rules.js').FLAG_KEYS)[number];
-export interface TrustView { score: number; trusted: boolean; parts: { geofence: boolean; hostCode: boolean; plausible: boolean; steps: boolean; human: boolean } }
+export interface TrustView { score: number; trusted: boolean; parts: { boothQr: boolean; hostCode: boolean; plausible: boolean; steps: boolean; human: boolean } }
 export type BoardKind = 'xp' | 'today' | 'explorer' | 'connector' | 'stations' | 'companies';
 export interface BoardRow { kind: 'player' | 'station' | 'team'; title: string; sub: string; value: number; unit: string; cls?: Role | null; /** passes the trust bar (players) / verified exhibitor (teams) */ trusted?: boolean; you?: boolean }
 export interface ReviewRow { callsign: string; name: string; company: string; value: number; unit: string; xp: number; trust: TrustView; flags: number; banned: boolean; mix: string }
@@ -185,7 +185,7 @@ export interface DailyDrop { title: string; stationId: string; label: string; x:
 /** Everything the booth's big screen shows. Positions only — no names, no callsigns. */
 export interface ScreenView {
   dots: { x: number; y: number; cls: Role | null; deck: boolean }[];
-  online: number; onsite: number;
+  online: number;
   totals: { players: number; passports: number; docked: number; stamps: number; links: number; stations: number };
   board: BoardRow[]; /** most visited booths */ booths: BoardRow[]; sectors: SectorsView; storm: StormView | null; drop: DailyDrop | null; joinUrl: string;
 }

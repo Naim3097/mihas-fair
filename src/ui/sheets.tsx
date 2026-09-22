@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { onsiteAvailable, pinToBooth, setSiteMode, siteMode } from '../onsite';
 import type { EngineApi as Engine } from '../game/engine-api';
 import { setSound, soundOn } from '../sfx';
 import { api, ApiError } from '../net/api';
@@ -44,7 +43,6 @@ export function BoothSheet({ engine }: Eng) {
         <div class="stack">
           {!stamped && near && <button class="btn primary big" disabled={busy} onClick={() => run(() => engine()!.stamp(b), 'Could not stamp')}>Stamp this booth · +{POINTS.stamp}</button>}
           {!near && <button class="btn big" onClick={() => guideTo(b, title)}>Guide me here</button>}
-          {siteMode.value === 'onsite' && !near && <button class="btn big" onClick={() => { if (pinToBooth(b.id)) { modal.value = null; toast('Got it — you are here', `Booth ${b.id}. Your avatar moves on from this spot as you walk.`, 'info', 3600); } }}>I'm standing at this booth</button>}
 
           {!met && (
             <div class="box">
@@ -319,10 +317,9 @@ export function MenuSheet() {
         {(m.cls === 'exhibitor' || m.hosting.length > 0) && <button onClick={go(m.passport ? 'mybooth' : 'card')}><strong>My booth</strong><small>{m.hosting.length ? m.hosting.join(', ') + ' · QR and leads' : 'Bring it online'}</small></button>}
         <button onClick={go('swap')}><strong>Swap cards</strong><small>Met someone? Exchange cards · +{POINTS.swap} each</small></button>
         <button onClick={go('contacts')}><strong>My contacts</strong><small>{m.links} people · {m.shared.length} booths</small></button>
-        <button onClick={go('map')}><strong>Map</strong><small>All three levels · search · places to go</small></button>
+        <button onClick={go('map')}><strong>Map</strong><small>Halls 6–8 · search · places to go</small></button>
         <button onClick={go('rules')}><strong>How to play</strong><small>The mission and the points, on one page</small></button>
         <button aria-pressed={soundOn.value} onClick={() => setSound(!soundOn.value)}><strong>Sound · {soundOn.value ? 'on' : 'off'}</strong><small>{soundOn.value ? 'Quiet chimes, and a buzz on phones that can' : 'Silent, no vibration'}</small></button>
-        {onsiteAvailable() && <button onClick={() => { setSiteMode(siteMode.value === 'onsite' ? 'remote' : 'onsite'); modal.value = null; }}><strong>{siteMode.value === 'onsite' ? 'Switch to free roam' : "I'm at MIHAS now"}</strong><small>{siteMode.value === 'onsite' ? 'GPS off? Move with the stick instead — booth scans still count in full' : 'Your avatar follows you around the halls'}</small></button>}
         <button onClick={switchRole}><strong>{m.cls === 'exhibitor' ? 'Play as a visitor' : 'I am exhibiting'}</strong><small>{m.cls === 'exhibitor' ? 'Do the five-chapter mission' : 'Put your booth in the game'}</small></button>
       </div>
     </Sheet>

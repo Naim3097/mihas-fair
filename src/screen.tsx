@@ -1,5 +1,5 @@
-// Mission Control: the booth's big screen. A slow fly-over of the live station — every player a dot in their crew colour,
-// solid if they are really on the floor — with today's board, sector control and a QR to join. Crew sign-in required.
+// Mission Control: the booth's big screen. A slow fly-over of the live station — every player a dot in their crew colour —
+// with today's board, sector control and a QR to join. Crew sign-in required.
 import { render } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import * as THREE from 'three';
@@ -10,7 +10,6 @@ import { demo, demoState, ensureBackend } from './demo/client';
 import { World, toWorld } from './game/world';
 import { Qr } from './ui/common';
 import { ROLE_INFO } from '../shared/rules';
-import { THEME } from './theme';
 import type { LevelData, ScreenView, StationView } from '../shared/types';
 
 const DECK_SECONDS = 28, MAX_DOTS = 2000;
@@ -24,8 +23,8 @@ function startScene(host: HTMLElement, level: LevelData) {
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.toneMapping = THREE.NoToneMapping;
   host.prepend(renderer.domElement);
   const world = new World(level), camera = new THREE.PerspectiveCamera(38, 1, 2, 1600);
-  const dots = new THREE.InstancedMesh(new THREE.SphereGeometry(0.9, 12, 10), new THREE.MeshBasicMaterial(), MAX_DOTS), halos = new THREE.InstancedMesh(new THREE.RingGeometry(1.3, 1.8, 24).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }), MAX_DOTS);
-  dots.count = halos.count = 0; dots.frustumCulled = halos.frustumCulled = false; world.scene.add(dots, halos);
+  const dots = new THREE.InstancedMesh(new THREE.SphereGeometry(0.9, 12, 10), new THREE.MeshBasicMaterial(), MAX_DOTS);
+  dots.count = 0; dots.frustumCulled = false; world.scene.add(dots);
 
   const resize = () => { renderer.setSize(host.clientWidth, host.clientHeight); camera.aspect = host.clientWidth / host.clientHeight; camera.updateProjectionMatrix(); };
   new ResizeObserver(resize).observe(host); resize();
@@ -49,14 +48,13 @@ function startScene(host: HTMLElement, level: LevelData) {
     world,
     deckLabel: () => decks[Math.floor(performance.now() / 1000 / DECK_SECONDS) % decks.length]!.label,
     setDots(list: ScreenView['dots']) {
-      let n = 0, h = 0;
+      let n = 0;
       for (const d of list.slice(0, MAX_DOTS)) {
         C.set(d.cls ? ROLE_INFO[d.cls].color : 0xffffff);
         toWorld(d.x, d.y, 1.4, p); M.makeScale(1, 1, 1).setPosition(p); dots.setMatrixAt(n, M); dots.setColorAt(n, C); n++;
-        if (d.deck) { toWorld(d.x, d.y, 0.15, p); M.setPosition(p); halos.setMatrixAt(h, M); halos.setColorAt(h, C.set(THEME.gold)); h++; } // really on the floor
       }
-      dots.count = n; halos.count = h; dots.instanceMatrix.needsUpdate = halos.instanceMatrix.needsUpdate = true;
-      for (const m of [dots, halos]) if (m.instanceColor) m.instanceColor.needsUpdate = true;
+      dots.count = n; dots.instanceMatrix.needsUpdate = true;
+      if (dots.instanceColor) dots.instanceColor.needsUpdate = true;
     },
   };
 }
@@ -88,7 +86,7 @@ function Screen() {
       <header>
         <div class="mc-brand"><span>lean<b>.x</b>digital</span><i /><span>ne<b>x</b>ova</span></div>
         <div class="mc-title"><strong>MISSION <b>X</b></strong><span>Live from the MIHAS floor · {deck}</span></div>
-        <div class="mc-live"><span class="live-dot" />{v?.online ?? 0} playing now · {v?.onsite ?? 0} on the floor</div>
+        <div class="mc-live"><span class="live-dot" />{v?.online ?? 0} playing now</div>
       </header>
 
       <aside class="mc-left">
