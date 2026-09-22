@@ -2,20 +2,25 @@
 // all around, the booths built clearly as booths, and the same signs of meaning as Mission X: orange where an
 // exhibitor is online (MIHAS's colour), gold where you have stamped, blue for what you can do. Everything is flat
 // and matte, drawn in a few dozen calls, so a phone keeps its frame rate; the only textures are the roof names, the
-// floor lettering and the sky.
+// floor lettering, the sky and the light baked into the carpets. One sun throws real shadows from a map that
+// follows the player; fog gives the far end of a hall its distance.
 import * as THREE from 'three';
 import type { Booth, LevelData, StationView } from '../../shared/types';
 import { type Place, type Tone } from '../game/places';
 import { BoothSet } from './booths';
 import { FAIR } from './palette';
 import { css } from '../theme';
-import { DECK_MARGIN, GLASS_H, toWorld, type FairLevel } from './level';
+import { DECK_MARGIN, GLASS_H, toWorld, wallRect, type FairLevel } from './level';
 
 export { FAIR };
 /** The video's window on the sky: half its width in radians of azimuth; its height on a unit cylinder (the width
  * of arc divided by the frame's 1.973 aspect, so nothing is squashed); how far up the frame its horizon line sits. */
 const SKY = { halfWidth: 1.134, height: 2.268 / 1.973, horizon: 0.21, centre: -0.5 } as const; // centre: the window's middle 29° west of north puts the planet due north
 const TONE: Record<Tone, number> = { white: 0xffffff, soft: 0xeceff3, mid: FAIR.inkSoft, ink: FAIR.ink, area: FAIR.area };
+/** Half the width of the sun's shadow map on the floor (m): it follows the player, so this is all it needs to cover. */
+const SHADOW_R = 32;
+/** Where the sun stands relative to what it lights: south-west and 50° up. */
+const SUN_OFF = new THREE.Vector3(-80, 120, 60);
 
 export interface Label { text: string; pos: THREE.Vector3; kind: 'area' | 'gate' | 'hero' | 'lift' }
 const W = (x: number, y: number, h = 0) => { const p = toWorld(x, y, h); return new THREE.Vector3(p.x, p.y, p.z); };
@@ -36,21 +41,45 @@ export class FairWorld {
   private videoTex: THREE.VideoTexture | null = null;
   private still: THREE.Texture | null = null;
   private skyMat!: THREE.ShaderMaterial;
+  private sun!: THREE.DirectionalLight;
+  private tmp = new THREE.Vector3(); private tmpM = new THREE.Matrix4();
 
-  constructor(private level: LevelData, fair: FairLevel, private lean = false) {
+  /** lean: the phone tier; shadows: whether the sun throws any (the engine turns them off under load). */
+  constructor(private level: LevelData, fair: FairLevel, private lean = false, shadows = true) {
     this.places = fair.places;
     this.boothH = level.booth.h;
     this.heroPos = W(level.hero.x, level.hero.y);
     this.scene.background = new THREE.Color(FAIR.space);
-    // a bright hall: the hemisphere carries most of it (Lambert divides by pi, so 2.3 keeps the partitions white), a sun from the
-    // south-west for the shading, a fill from the north so no wall goes grey
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0xcfd5dc, 2.3));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.3); sun.position.set(-80, 140, 60); this.scene.add(sun);
-    const fill = new THREE.DirectionalLight(0xffffff, 0.5); fill.position.set(40, 90, -90); this.scene.add(fill);
+    // a bright hall: the hemisphere carries most of it (Lambert divides by pi), a sun from the south-west that throws
+    // the shadows, a fill from the north so no wall in shadow goes dark. Fog to a pale haze gives the far end depth.
+    this.scene.add(new THREE.HemisphereLight(0xffffff, 0xcfd5dc, 2.0));
+    const sun = new THREE.DirectionalLight(0xffffff, 1.7); sun.position.copy(SUN_OFF); this.scene.add(sun, sun.target); this.sun = sun;
+    const sc = sun.shadow.camera; sc.left = sc.bottom = -SHADOW_R; sc.right = sc.top = SHADOW_R; sc.near = 10; sc.far = 340;
+    sun.shadow.mapSize.setScalar(lean ? 1024 : 2048); sun.shadow.bias = -0.0004; sun.shadow.normalBias = this.texel(); sun.castShadow = shadows;
+    const fill = new THREE.DirectionalLight(0xffffff, 0.35); fill.position.set(40, 90, -90); this.scene.add(fill);
+    this.scene.fog = new THREE.Fog(FAIR.haze, 90, 460);
     this.sky(); this.levels(fair); this.glass(fair); this.furnish(); this.gates(); this.lifts(); this.stands(fair); this.theX();
   }
 
   private flat(color: number) { return new THREE.MeshLambertMaterial({ color }); }
+
+  get shadows(): boolean { return this.sun.castShadow; }
+  /** One texel of the shadow map on the floor (m): what the normal bias has to cover so curved surfaces do not stripe. */
+  private texel(): number { return (2 * SHADOW_R) / this.sun.shadow.mapSize.width; }
+  /** Shadows on or off, and how fine: every material is compiled again, so this is for a change of tier, not a frame. */
+  setShadows(on: boolean, mapSize?: number) {
+    if (mapSize && mapSize !== this.sun.shadow.mapSize.width) { this.sun.shadow.mapSize.setScalar(mapSize); this.sun.shadow.map?.dispose(); this.sun.shadow.map = null; this.sun.shadow.normalBias = this.texel(); }
+    if (on === this.sun.castShadow) return;
+    this.sun.castShadow = on;
+    this.scene.traverse((o) => { const m = (o as THREE.Mesh).material; if (m) for (const mat of Array.isArray(m) ? m : [m]) mat.needsUpdate = true; });
+  }
+  /** The sun's shadow map is a window that follows the player, moved a whole texel at a time so its edges never
+   *  swim; the sun itself keeps its direction. */
+  followSun(x: number, z: number) {
+    const s = this.sun.shadow, cam = s.camera, texel = (cam.right - cam.left) / s.mapSize.width, t = this.tmp.set(x, 0, z);
+    t.applyMatrix4(cam.matrixWorldInverse); t.x = Math.round(t.x / texel) * texel; t.y = Math.round(t.y / texel) * texel; t.applyMatrix4(cam.matrixWorld);
+    this.sun.target.position.copy(t); this.sun.position.copy(t).add(SUN_OFF); this.sun.target.updateMatrixWorld();
+  }
   private decal(o: THREE.MeshBasicMaterialParameters) { return new THREE.MeshBasicMaterial({ ...o, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }); }
 
   /** The Nexova sky: one closed dome, drawn first. Stars everywhere and a faint blue toward the horizon; the video
@@ -103,7 +132,7 @@ export class FairWorld {
       side: THREE.BackSide, depthWrite: false, fog: false,
     });
     const dome = new THREE.Mesh(new THREE.SphereGeometry(1200, 48, 32), this.skyMat);
-    dome.frustumCulled = false; dome.renderOrder = -10; this.scene.add(dome);
+    dome.frustumCulled = false; dome.renderOrder = 100; this.scene.add(dome); // last of the opaque: only the sky that shows is shaded
     const video = document.createElement('video');
     video.src = '/fair/space.mp4'; video.muted = true; video.loop = true; video.playsInline = true; video.preload = 'auto'; video.crossOrigin = 'anonymous';
     const tex = new THREE.VideoTexture(video);
@@ -116,15 +145,17 @@ export class FairWorld {
   playSky() { void this.video?.play().catch(() => {}); }
 
   private levels(fair: FairLevel) {
-    const slab = this.flat(FAIR.floor), carpet = this.decal({ color: FAIR.hall }), curb = this.flat(FAIR.curb);
+    const slab = this.flat(FAIR.floor), curb = this.flat(FAIR.curb);
     for (const d of this.level.decks) {
       const w = d.x1 - d.x0 + DECK_MARGIN * 2, dp = d.y1 - d.y0 + DECK_MARGIN * 2, c = W((d.x0 + d.x1) / 2, (d.y0 + d.y1) / 2);
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, 1, dp), slab); m.position.set(c.x, -0.5, c.z); this.scene.add(m);
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, 1, dp), slab); m.position.set(c.x, -0.5, c.z); m.receiveShadow = true; this.scene.add(m);
       const rim = new THREE.Mesh(new THREE.BoxGeometry(w + 0.6, 0.18, dp + 0.6), this.flat(FAIR.frame)); rim.position.set(c.x, -1.0, c.z); this.scene.add(rim);
     }
     for (const h of this.level.halls) {
+      // under the booths' own carpets (0.02): what shows is the aisles, with the light baked along the partitions
+      const carpet = new THREE.MeshLambertMaterial({ color: FAIR.hall, map: this.bakedLight(h, fair), depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
       const m = new THREE.Mesh(new THREE.PlaneGeometry(h.x1 - h.x0, h.y1 - h.y0).rotateX(-Math.PI / 2), carpet);
-      m.position.copy(W((h.x0 + h.x1) / 2, (h.y0 + h.y1) / 2, 0.02)); m.renderOrder = 1; this.scene.add(m);
+      m.position.copy(W((h.x0 + h.x1) / 2, (h.y0 + h.y1) / 2, 0.008)); m.renderOrder = 1; m.receiveShadow = true; this.scene.add(m);
       this.floorText(`HALL ${h.id}`, h.x0 + (h.x1 - h.x0) * 0.82, h.y0 - 4.5, 5);
     }
     this.floorText('HALL 5 · REGISTRATION', 196, 64, 4, -Math.PI / 2);
@@ -132,12 +163,27 @@ export class FairWorld {
       const m = new THREE.Mesh(new THREE.BoxGeometry(Math.max(0.4, r.x1 - r.x0), 0.8, Math.max(0.4, r.y1 - r.y0)), curb);
       m.position.copy(W((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2, 0.4)); this.scene.add(m);
     }
-    void fair;
+  }
+
+  /** The light on a hall's carpet, baked: white, darkened a little at the foot of every partition and low wall and
+   *  blurred out over half a metre, so the booths stand on the floor where the sun's shadow does not say so. An open
+   *  front gets none: nothing stands there. Drawn with the canvas's own shadow (the shape itself is drawn off the
+   *  canvas), which every browser can do. */
+  private bakedLight(h: { x0: number; y0: number; x1: number; y1: number }, fair: FairLevel): THREE.CanvasTexture {
+    const w = h.x1 - h.x0, d = h.y1 - h.y0, k = Math.min(8, 1024 / Math.max(w, d)), c = document.createElement('canvas'); c.width = Math.ceil(w * k); c.height = Math.ceil(d * k);
+    const g = c.getContext('2d')!; g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+    const OFF = 4096; g.shadowColor = 'rgba(20,26,40,0.3)'; g.shadowBlur = 0.55 * k * 2; g.shadowOffsetX = OFF; g.fillStyle = '#000';
+    const rect = (x0: number, y0: number, x1: number, y1: number) => g.fillRect((x0 - h.x0) * k - OFF, (h.y1 - y1) * k, (x1 - x0) * k, (y1 - y0) * k);
+    const inHall = (x: number, y: number) => x >= h.x0 - 1 && x <= h.x1 + 1 && y >= h.y0 - 1 && y <= h.y1 + 1;
+    for (const st of fair.stands) for (const c of st.cells) { if (!inHall(c.b.x, c.b.y)) continue; for (const s of c.walled) { const r = wallRect(c.b, s, st.w, st.d); rect(r.x0 - 0.22, r.y0 - 0.22, r.x1 + 0.22, r.y1 + 0.22); } }
+    for (const wl of this.level.walls) rect(wl.x0 - 0.2, wl.y0 - 0.2, Math.max(wl.x1, wl.x0 + 0.4) + 0.2, Math.max(wl.y1, wl.y0 + 0.4) + 0.2);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+    return t;
   }
 
   /** The containment: one pane per side of each level with a silver frame every twelve metres and a rail along the top. */
   private glass(fair: FairLevel) {
-    const pane = new THREE.MeshBasicMaterial({ color: FAIR.glass, transparent: true, opacity: 0.13, depthWrite: false, side: THREE.DoubleSide });
+    const pane = new THREE.MeshBasicMaterial({ color: FAIR.glass, transparent: true, opacity: 0.13, depthWrite: false }); // one face: the near one is what you see through
     const frame = this.flat(FAIR.frame), post = new THREE.BoxGeometry(0.28, GLASS_H, 0.28), unit = new THREE.BoxGeometry(1, 1, 1);
     const posts: THREE.Matrix4[] = [], rails: THREE.Matrix4[] = [], M = new THREE.Matrix4();
     for (const { box } of fair.glass) {
@@ -147,7 +193,7 @@ export class FairWorld {
       rails.push(M.makeScale(along ? len : 0.34, 0.34, along ? 0.34 : len).setPosition(cx, GLASS_H + 0.1, cz).clone());
       for (let k = 0; k <= len; k += 12) posts.push(M.makeTranslation(along ? box.min.x + k : cx, GLASS_H / 2, along ? cz : box.min.z + k).clone());
     }
-    const pm = new THREE.InstancedMesh(post, frame, posts.length); posts.forEach((m, i) => pm.setMatrixAt(i, m));
+    const pm = new THREE.InstancedMesh(post, frame, posts.length); posts.forEach((m, i) => pm.setMatrixAt(i, m)); pm.castShadow = true;
     const rm = new THREE.InstancedMesh(unit, frame, rails.length); rails.forEach((m, i) => rm.setMatrixAt(i, m));
     this.scene.add(pm, rm);
   }
@@ -162,19 +208,19 @@ export class FairWorld {
 
   /** Cafés, lounges, stages, kitchens: their floors and furniture, a handful of instanced meshes. */
   private furnish() {
-    const floor = this.decal({ color: FAIR.area }), M = new THREE.Matrix4(), C = new THREE.Color();
+    const floor = new THREE.MeshLambertMaterial({ color: FAIR.area, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), M = new THREE.Matrix4(), C = new THREE.Color();
     const white = this.flat(0xffffff), boxGeo = new THREE.BoxGeometry(1, 1, 1), roundGeo = new THREE.CylinderGeometry(0.5, 0.5, 1, 14);
     const build = (list: Place['solids'], geo: THREE.BufferGeometry) => {
       if (!list.length) return;
       const m = new THREE.InstancedMesh(geo, white, list.length);
       list.forEach((s, i) => { M.makeScale(s.w, s.h, s.d).setPosition(W(s.x, s.y, s.z + s.h / 2)); m.setMatrixAt(i, M); m.setColorAt(i, C.set(TONE[s.tone])); });
-      m.computeBoundingSphere(); this.scene.add(m);
+      m.computeBoundingSphere(); m.castShadow = true; m.receiveShadow = true; this.scene.add(m);
     };
     const all = this.places.flatMap((pl) => pl.solids);
     build(all.filter((s) => !s.round), boxGeo); build(all.filter((s) => s.round), roundGeo);
     for (const pl of this.places) {
       const r = pl.rect, cx = (r.x0 + r.x1) / 2, cy = (r.y0 + r.y1) / 2;
-      if (pl.open) { const f = new THREE.Mesh(new THREE.PlaneGeometry(r.x1 - r.x0, r.y1 - r.y0).rotateX(-Math.PI / 2), floor); f.position.copy(W(cx, cy, 0.025)); f.renderOrder = 2; this.scene.add(f); }
+      if (pl.open) { const f = new THREE.Mesh(new THREE.PlaneGeometry(r.x1 - r.x0, r.y1 - r.y0).rotateX(-Math.PI / 2), floor); f.position.copy(W(cx, cy, 0.025)); f.renderOrder = 2; f.receiveShadow = true; this.scene.add(f); }
       this.labels.push({ text: pl.name, pos: W(cx, cy, pl.open ? 4.4 : 2.8), kind: 'area' });
       if (pl.spot) this.backdrop(pl);
     }
@@ -196,7 +242,7 @@ export class FairWorld {
     const m = this.flat(FAIR.inkSoft), post = new THREE.BoxGeometry(0.35, 5, 0.35), top = new THREE.BoxGeometry(9.35, 0.35, 0.35);
     for (const g of this.level.gates) {
       const grp = new THREE.Group(), a = new THREE.Mesh(post, m), b = new THREE.Mesh(post, m), t = new THREE.Mesh(top, m);
-      a.position.set(-4.5, 2.5, 0); b.position.set(4.5, 2.5, 0); t.position.set(0, 5.17, 0); grp.add(a, b, t);
+      a.position.set(-4.5, 2.5, 0); b.position.set(4.5, 2.5, 0); t.position.set(0, 5.17, 0); grp.add(a, b, t); a.castShadow = b.castShadow = t.castShadow = true;
       if (g.axis === 'y') grp.rotation.y = Math.PI / 2;
       grp.position.copy(W(g.x, g.y, 0)); this.scene.add(grp);
       this.labels.push({ text: g.name, pos: W(g.x, g.y, 6.6), kind: 'gate' });
@@ -217,7 +263,7 @@ export class FairWorld {
     this.level.booths.forEach((b, i) => this.boothIndex.set(b.id, i));
     this.booths = new BoothSet(this.level, fair.stands, this.lean); this.scene.add(this.booths.group);
     this.pins = new THREE.InstancedMesh(new THREE.OctahedronGeometry(0.55), this.flat(FAIR.orange), 256);
-    this.pins.count = 0; this.pins.frustumCulled = false; this.scene.add(this.pins);
+    this.pins.count = 0; this.pins.frustumCulled = false; this.pins.castShadow = true; this.scene.add(this.pins);
   }
 
   /** Blue on the floor of the booth under the pointer or the one you asked to walk to. */
@@ -250,7 +296,7 @@ export class FairWorld {
   /** Booth 8H18A, built by hand: open to the west aisle, the X turning above it. */
   private theX() {
     const hero = new THREE.Group(); hero.position.copy(this.heroPos); this.scene.add(hero);
-    const X = new THREE.Group(), bar = (color: number, rz: number, depth: number) => { const m = new THREE.Mesh(new THREE.BoxGeometry(1.1, 5.4, depth), this.flat(color)); m.rotation.z = rz; return m; };
+    const X = new THREE.Group(), bar = (color: number, rz: number, depth: number) => { const m = new THREE.Mesh(new THREE.BoxGeometry(1.1, 5.4, depth), this.flat(color)); m.rotation.z = rz; m.castShadow = true; return m; };
     X.add(bar(FAIR.xBlue, Math.PI / 5, 0.7), bar(FAIR.xYellow, -Math.PI / 5, 0.56)); X.position.y = 8.5;
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.94, 1, 64).rotateX(-Math.PI / 2), this.decal({ color: FAIR.gold, transparent: true })); ring.position.y = 0.04; ring.renderOrder = 3;
     hero.add(X, ring);
@@ -264,8 +310,8 @@ export class FairWorld {
     X.rotation.y = t * 0.6; X.position.y = 8.5 + Math.sin(t * 1.2) * 0.25;
     const k = (t * 0.35) % 1, s = 3 + k * 9; ring.scale.set(s, 1, s); (ring.material as THREE.MeshBasicMaterial).opacity = (1 - k) * 0.55;
     if (this.pinned.length) {
-      const M = new THREE.Matrix4(), y = this.boothH + 1.5 + Math.sin(t * 2) * 0.18;
-      this.pinned.forEach((bi, n) => { const b = this.level.booths[bi]!; M.makeRotationY(t * 0.9).setPosition(W(b.x, b.y, y)); this.pins.setMatrixAt(n, M); });
+      const M = this.tmpM, y = this.boothH + 1.5 + Math.sin(t * 2) * 0.18;
+      this.pinned.forEach((bi, n) => { const b = this.level.booths[bi]!, p = toWorld(b.x, b.y, y); M.makeRotationY(t * 0.9).setPosition(p.x, p.y, p.z); this.pins.setMatrixAt(n, M); });
       this.pins.instanceMatrix.needsUpdate = true;
     }
   }

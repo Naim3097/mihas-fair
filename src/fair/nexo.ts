@@ -83,6 +83,7 @@ export class NexoActor {
   private mats: THREE.MeshStandardMaterial[] = [];
   private tint = new THREE.Color(0xffffff);
   private blob: THREE.Mesh;
+  private meshes: THREE.Mesh[] = [];
   private suit: THREE.MeshLambertMaterial | null = null;
   /** How much of the source rig's stride this body has: the hip-height ratio, damped (power 0.3) so a small body
    * steps quicker than a tall one but keeps a cadence people read as natural; the rest is foot slide. */
@@ -98,7 +99,8 @@ export class NexoActor {
   /** A loop state of our own for bodies the sim does not own (other people). */
   private state: AnimState = { key: 'idle', loop: true, fit: 0, from: 0, serial: 0, rate: 1 };
 
-  constructor(gltf: GLTF | null, lib: Library | null, role: NexoRole) {
+  /** receive: whether the booths' shadows fall on this body too (a coarse shadow map stripes a curved suit; the phone tier leaves it out). */
+  constructor(gltf: GLTF | null, lib: Library | null, role: NexoRole, receive = true) {
     this.tint.set(ROLE_TINT[role]);
     if (gltf) {
       const model = cloneSkeleton(gltf.scene);
@@ -109,7 +111,9 @@ export class NexoActor {
       model.traverse((o) => {
         const m = o as THREE.Mesh;
         if (!m.isMesh) return;
-        m.frustumCulled = false;
+        // culled by a sphere with room for the arms and a dance: a body behind the camera costs nothing
+        const sk = m as THREE.SkinnedMesh; if (sk.isSkinnedMesh) { sk.computeBoundingSphere(); if (sk.boundingSphere) sk.boundingSphere.radius *= 1.7; }
+        m.frustumCulled = true; m.castShadow = true; m.receiveShadow = receive; this.meshes.push(m);
         const src = Array.isArray(m.material) ? m.material : [m.material];
         const cloned = src.map((mat) => {
           const s = (mat as THREE.MeshStandardMaterial).clone();
@@ -134,12 +138,18 @@ export class NexoActor {
       this.anims = null;
       const { group, suit } = primitiveNexo(ROLE_TINT[role]);
       this.suit = suit;
+      group.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) { m.castShadow = true; this.meshes.push(m); } });
       this.root.add(group);
     }
     this.blob = new THREE.Mesh(new THREE.CircleGeometry(0.5, 20).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x1b2130, transparent: true, opacity: 0.16, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
     this.blob.position.y = 0.02;
     this.root.add(this.blob);
   }
+
+  /** The soft blob under the feet stands in for a shadow when the sun throws none. */
+  setBlob(on: boolean): void { this.blob.visible = on; }
+  /** Far bodies do not throw shadows: the map's texels are better spent on what is near. */
+  setCastShadow(on: boolean): void { for (const m of this.meshes) m.castShadow = on; }
 
   setRole(role: NexoRole): void {
     this.tint.set(ROLE_TINT[role]);

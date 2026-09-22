@@ -43,7 +43,6 @@ export class BoothSet {
   readonly group = new THREE.Group();
   private fascia!: THREE.InstancedMesh;
   private counters: THREE.InstancedMesh | null = null;
-  private carpets!: THREE.InstancedMesh;
   private bands: THREE.InstancedMesh;
   private bandAt: { x: number; y: number; z: number; sx: number; sz: number }[] = [];
   private fasciaOf = new Map<number, number[]>();   // cell index → fascia instances
@@ -74,7 +73,7 @@ export class BoothSet {
         const b = c.b, hw = st.w / 2, hd = st.d / 2;
         if (st.kind !== 'island') {
           const r = rectBox({ x0: b.x - hw + 0.02, y0: b.y - hd + 0.02, x1: b.x + hw - 0.02, y1: b.y + hd - 0.02 }, 0, 0.012);
-          this.carpetOf.set(c.i, carpet.at((r.min.x + r.max.x) / 2, 0.012, (r.min.z + r.max.z) / 2, r.max.x - r.min.x, 1, r.max.z - r.min.z, 0, hero ? 0x3d424a : FAIR.carpet));
+          this.carpetOf.set(c.i, carpet.at((r.min.x + r.max.x) / 2, 0.02, (r.min.z + r.max.z) / 2, r.max.x - r.min.x, 1, r.max.z - r.min.z, 0, hero ? 0x3d424a : FAIR.carpet)); // over the hall carpet (0.008)
         }
         if (st.kind === 'island') continue; // an island is open all round: a platform, a tower, plinths, no shell scheme
         for (const s of c.walled) {
@@ -127,11 +126,13 @@ export class BoothSet {
         }
       }
     }
-    for (const part of [carpet, wall, fascia, post, rail, spot, counter, seat, back, bin, platform, tower, plinth]) { const m = part.build(); if (m) this.group.add(m); }
-    this.carpets = carpet.build()!; // kept apart so the hero cell and online stands can be recoloured
-    this.group.remove(this.group.children.find((o) => (o as THREE.InstancedMesh).geometry === carpet.geo)!); this.group.add(this.carpets);
-    this.fascia = this.group.children.find((o) => (o as THREE.InstancedMesh).geometry === fascia.geo && (o as THREE.InstancedMesh).count === fascia.items.length) as THREE.InstancedMesh;
-    this.counters = (this.group.children.find((o) => (o as THREE.InstancedMesh).geometry === counter.geo && (o as THREE.InstancedMesh).count === counter.items.length) as THREE.InstancedMesh) ?? null;
+    const built = new Map<Part, THREE.InstancedMesh>();
+    for (const part of [carpet, wall, fascia, post, rail, spot, counter, seat, back, bin, platform, tower, plinth]) { const m = part.build(); if (m) { built.set(part, m); this.group.add(m); } }
+    // what throws a shadow and what one falls on: the walls and everything that stands in a booth, the floors
+    for (const part of [wall, fascia, post, spot, counter, seat, back, bin, tower, plinth]) { const m = built.get(part); if (m) m.castShadow = true; }
+    for (const part of [carpet, wall, fascia, counter, platform, tower, plinth]) { const m = built.get(part); if (m) m.receiveShadow = true; }
+    this.fascia = built.get(fascia)!;
+    this.counters = built.get(counter) ?? null;
     this.bands = new THREE.InstancedMesh(this.unit, flat(FAIR.gold), 512); this.bands.count = 0; this.bands.frustumCulled = false; this.group.add(this.bands);
     this.names();
     this.hero();
@@ -227,6 +228,7 @@ export class BoothSet {
       const legs = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.98, 0.04), flat(0x1e2126)); legs.position.set(0, 0.5, 0); legs.rotation.x = -0.12; frame.add(legs);
     }
     const bin = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.13, 0.42, 14), flat(0xffffff)); bin.position.set(h - 0.3, 0.21, -z(0.35)); g.add(bin);
+    g.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && m.geometry.type !== 'PlaneGeometry') { m.castShadow = true; m.receiveShadow = true; } });
   }
 
   /** The screen in the Lean X booth shows this (the fair's sky video, once it plays). */

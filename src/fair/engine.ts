@@ -55,7 +55,7 @@ interface Label { text: string; pos: THREE.Vector3; kind: 'area' | 'gate' | 'her
 
 export class FairEngine implements EngineApi {
   private renderer: THREE.WebGLRenderer;
-  private camera = new THREE.PerspectiveCamera(50, 1, 0.1, 2600);
+  private camera = new THREE.PerspectiveCamera(50, 1, 0.35, 1600);
   private rig: CameraRig;
   private world: FairWorld;
   private fair: FairLevel;
@@ -85,7 +85,10 @@ export class FairEngine implements EngineApi {
   private trailAt = 0;
   private ping: { mesh: THREE.Mesh; t: number };
   private running = false; private last = 0; private pingAt = 0; private proxAt = 0; private firstPing = true; private arrivalSeen = 0;
-  private fps = { acc: 0, n: 0, dpr: 1, at: 0 };
+  /** The quality ladder: 0 is everything; each step gives a little (a finer shadow map first, then pixels, then the shadows) and comes back when the phone can. */
+  private fps = { acc: 0, n: 0, dpr: 1, at: 0, level: 0, good: 0, changedAt: 0 };
+  private shadowsWanted = new URLSearchParams(location.search).get('shadows') !== '0';
+  private paused = false;
   private pose: Pose = ''; private poseUntil = 0;
   private seat: Seat | null = null; private seatGoal: Seat | null = null; private wantBeforeSit = CAM.dist;
   private liftT = 1; private hallNow: number | null = null; private walked = 0; private picked: Booth | null = null;
@@ -99,11 +102,12 @@ export class FairEngine implements EngineApi {
     this.renderer.setPixelRatio(this.fps.dpr);
     this.renderer.toneMapping = THREE.NoToneMapping;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.shadowMap.enabled = this.shadowsWanted; this.renderer.shadowMap.type = quality === 'high' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     host.prepend(this.renderer.domElement);
 
     this.fair = buildFairLevel(level);
     this.sim = new Sim('pengembara', classByKey('pengembara')!.base, this.fair.def, 1, FAIR_MOVEMENT);
-    this.world = new FairWorld(level, this.fair, quality === 'low');
+    this.world = new FairWorld(level, this.fair, quality === 'low', this.shadowsWanted);
     // the camera collides with what the body does (partitions, counters, glass): in a 2.5 m aisle it rides over the wall tops
     this.rig = new CameraRig(this.camera, this.sim.world);
     this.rig.dist = CAM.dist; this.rig.pitch = CAM.pitch;
@@ -141,6 +145,9 @@ export class FairEngine implements EngineApi {
     const ro = new ResizeObserver(() => this.resize()); ro.observe(host); this.stops.push(() => ro.disconnect()); this.resize();
     const canvas = this.renderer.domElement;
     canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.running = false; toast('Graphics paused', 'Reloading…', 'warn', 6000); setTimeout(() => location.reload(), 1500); });
+    // a hidden tab draws nothing; back in view, the loop picks up from now
+    const vis = () => { if (!document.hidden && this.paused && this.running) { this.paused = false; this.loop(true); } };
+    document.addEventListener('visibilitychange', vis); this.stops.push(() => document.removeEventListener('visibilitychange', vis));
     this.stops.push(effect(() => this.world.setStamped(stampedSet.value)));
     this.stops.push(effect(() => this.world.setStations(stations.value)));
     this.stops.push(effect(() => { void guideTarget.value; this.trailAt = 0; }));
@@ -166,7 +173,7 @@ export class FairEngine implements EngineApi {
     for (const o of this.holos.values()) { if (!o.actor.root.visible) continue; const p = o.actor.root.position, d = Math.hypot(p.x - x, p.z - z); if (d < bd) { bd = d; best = o; } }
     return best ? this.face.set(best.actor.root.position.x, best.actor.root.position.y + 1.3, best.actor.root.position.z) : null;
   }
-  private makeActor(role: NexoRole): NexoActor { const a = new NexoActor(this.gltf, this.lib, role); this.world.scene.add(a.root); return a; }
+  private makeActor(role: NexoRole): NexoActor { const a = new NexoActor(this.gltf, this.lib, role, this.quality === 'high'); a.setBlob(!this.world.shadows); this.world.scene.add(a.root); return a; }
   /** The model file arrived: every body gets it, in place. */
   private rebuildBodies() {
     if (this.player) { this.player.dispose(); this.player = this.makeActor(this.role()); }
@@ -211,6 +218,7 @@ export class FairEngine implements EngineApi {
     if (first) { this.running = true; this.last = performance.now(); }
     const frame = (now: number) => {
       if (!this.running) return;
+      if (document.hidden) { this.paused = true; return; }
       const dt = Math.min(0.05, (now - this.last) / 1000); this.last = now;
       this.tick(now, dt); requestAnimationFrame(frame);
     };
@@ -224,6 +232,7 @@ export class FairEngine implements EngineApi {
       // behind the first screen: a slow turn around the X
       this.orbit += dt * 0.08; const h = this.world.heroPos;
       this.camera.position.set(h.x + Math.sin(this.orbit) * 26, 10, h.z + Math.cos(this.orbit) * 26); this.camera.lookAt(h.x, 3.5, h.z);
+      this.world.followSun(h.x, h.z);
     } else {
       if (this.introT >= 0) { // settle in from above, easing out, rather than cut
         this.introT += dt; const k = Math.min(1, this.introT / INTRO.s), e = 1 - Math.pow(1 - k, 3);
@@ -245,11 +254,12 @@ export class FairEngine implements EngineApi {
       if (this.player) { this.player.place(b.pos.x, b.pos.y, b.pos.z, p.yaw, b.grounded ? Math.min(0.8, sp / 11) * 0.16 : 0); this.player.attend(this.nearestFace(b.pos.x, b.pos.z, 6)); this.player.applySim(p.anim, dt, sp); }
       this.sounds(sp, b.grounded, dt);
       this.updateCamera(dt, it);
+      this.world.followSun(b.pos.x, b.pos.z);
     }
     this.updatePing(dt); this.updateLabels();
     this.renderer.render(this.world.scene, this.camera);
     this.adaptQuality(now);
-    if (this.perf) { const pf = this.perf; pf.frames++; if (now - pf.t0 >= 1000) { const i = this.renderer.info.render; pf.el.textContent = `${Math.round((pf.frames * 1000) / (now - pf.t0))} fps · ${i.calls} calls · ${Math.round(i.triangles / 1000)}k tris · dpr ${this.fps.dpr} · people ${this.holos.size}`; pf.t0 = now; pf.frames = 0; } }
+    if (this.perf) { const pf = this.perf; pf.frames++; if (now - pf.t0 >= 1000) { const i = this.renderer.info.render; pf.el.textContent = `${Math.round((pf.frames * 1000) / (now - pf.t0))} fps · ${i.calls} calls · ${Math.round(i.triangles / 1000)}k tris · dpr ${this.fps.dpr} · q${this.fps.level}${this.world.shadows ? '' : ' no-shadow'} · people ${this.holos.size}`; pf.t0 = now; pf.frames = 0; } }
   }
 
   /* ---------------- movement: the stick, or a route (a tap, "take me there", walking to a seat) ---------------- */
@@ -354,18 +364,23 @@ export class FairEngine implements EngineApi {
     if (!spot && room(heading) < 6) heading = [0.5, -0.5, 1, 0.25, -0.25, 0.75, -0.75].map((k) => heading + k * Math.PI).reduce((best, h) => (room(h) > room(best) ? h : best), heading);
     p.yaw = heading;
     const dist = spot ? 6.6 : Math.max(3, Math.min(6.6, room(heading) - 0.2));
-    const W = 1080, H = 1350, cam = new THREE.PerspectiveCamera(Math.min(58, 31 * (6.6 / dist)), W / H, 0.5, 2600), r = this.renderer;
+    const W = 1080, H = 1350, cam = new THREE.PerspectiveCamera(Math.min(58, 31 * (6.6 / dist)), W / H, 0.5, 1600), r = this.renderer;
     const b = p.body, fwd = new THREE.Vector3(Math.sin(heading), 0, Math.cos(heading)), at = new THREE.Vector3(b.pos.x, 1.1, b.pos.z);
     cam.position.copy(at).addScaledVector(fwd, dist).setY(1.5); cam.lookAt(at.x, 0.75, at.z);
     oneShot(p, 'wave', 2); actor.place(b.pos.x, b.pos.y, b.pos.z, heading); actor.applySim(p.anim, 0.7);
-    const size = r.getSize(new THREE.Vector2()), pr = r.getPixelRatio(), trail = this.trail.visible;
+    const trail = this.trail.visible;
     this.trail.visible = false; this.ping.mesh.visible = false; this.myLabel.style.opacity = '0';
-    sfx('shutter'); r.setPixelRatio(1); r.setSize(W, H, false); r.render(this.world.scene, cam);
-    const shot = await createImageBitmap(r.domElement).catch(() => null);
-    r.setPixelRatio(pr); r.setSize(size.x, size.y, false); this.trail.visible = trail; loop(p, 'idle');
-    if (!shot) { toast('Could not take the photo on this device', undefined, 'warn'); return; }
-    const c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d')!;
-    g.drawImage(shot, 0, 0, W, H); g.fillStyle = '#fff'; g.fillRect(0, H - 170, W, 170);
+    sfx('shutter');
+    // drawn into a target of its own, so the screen's buffer is never resized under the player's feet
+    const rt = new THREE.WebGLRenderTarget(W, H, { colorSpace: THREE.SRGBColorSpace, samples: 4 }), px = new Uint8Array(W * H * 4);
+    let ok = true;
+    try { r.setRenderTarget(rt); r.render(this.world.scene, cam); r.readRenderTargetPixels(rt, 0, 0, W, H, px); } catch { ok = false; } finally { r.setRenderTarget(null); rt.dispose(); }
+    this.trail.visible = trail; loop(p, 'idle');
+    if (!ok) { toast('Could not take the photo on this device', undefined, 'warn'); return; }
+    const c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d')!, img = g.createImageData(W, H);
+    for (let y = 0; y < H; y++) img.data.set(px.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4); // the target's rows come bottom first
+    for (let i = 3; i < img.data.length; i += 4) img.data[i] = 255;
+    g.putImageData(img, 0, 0); g.fillStyle = '#fff'; g.fillRect(0, H - 170, W, 170);
     g.fillStyle = '#1b2130'; g.textBaseline = 'alphabetic'; g.font = '800 46px Urbanist, Arial'; g.fillText(me.value?.callsign ?? 'Mission X', 56, H - 96);
     g.fillStyle = '#5a6172'; g.font = '600 30px Urbanist, Arial'; g.fillText('at MIHAS 2026 · MITEC Kuala Lumpur · Nexova', 56, H - 50);
     g.textAlign = 'right'; g.fillStyle = '#1b2130'; g.font = '800 40px Urbanist, Arial'; g.fillText('MISSION X', W - 56, H - 96); g.fillStyle = '#2457f5'; g.font = '700 30px Urbanist, Arial'; g.fillText('Find the X · Booth 8H18A', W - 56, H - 50);
@@ -574,21 +589,28 @@ export class FairEngine implements EngineApi {
     for (const [id, o] of this.holos) if (now - o.seen > PING_MS * 3) { o.actor.dispose(); o.label.remove(); this.holos.delete(id); }
   }
 
+  private holoFrame = 0;
   private updateHolos(now: number, dt: number) {
-    const far = this.rig.dist * 2.4 + 60, me = this.position;
+    const far = this.rig.dist * 2.4 + 60, me = this.position, mp = this.sim.player.body.pos; this.holoFrame++;
+    let n = 0;
     for (const o of this.holos.values()) {
-      const r = o.track; r.step(now, dt);
+      const r = o.track; r.step(now, dt); n++;
       const hidden = Math.abs(r.x - me.x) > far || Math.abs(r.y - me.y) > far;
       o.actor.root.visible = !hidden; if (hidden) continue;
-      const w = toWorld(r.x, r.y, 0);
-      o.actor.place(w.x, 0, w.z, r.h); const mp = this.sim.player.body.pos; o.actor.attend(Math.hypot(mp.x - w.x, mp.z - w.z) < 6 ? this.face.set(mp.x, mp.y + 1.3, mp.z) : null); o.actor.applyRemote(r.speed, o.pose, dt);
+      const w = toWorld(r.x, r.y, 0), d = Math.hypot(mp.x - w.x, mp.z - w.z);
+      o.actor.place(w.x, 0, w.z, r.h); o.actor.attend(d < 6 ? this.face.set(mp.x, mp.y + 1.3, mp.z) : null);
+      o.actor.setCastShadow(d < 18); // the shadow map's texels go to the people near you
+      if (d > 30 && (this.holoFrame + n) % 2) { o.actor.applyRemote(r.speed, o.pose, dt * 2); continue; } // far bodies animate at half rate, every other frame with a double step
+      if (d > 30) continue;
+      o.actor.applyRemote(r.speed, o.pose, dt);
     }
   }
 
   /* ---------------- labels: HTML, snapped to whole pixels, measured for real, never over each other or the body ---------------- */
 
+  private lv = new THREE.Vector3(); private lp = new THREE.Vector3(); private taken: [number, number, number, number][] = [];
   private updateLabels() {
-    const v = new THREE.Vector3(), w = this.host.clientWidth, h = this.host.clientHeight, taken: [number, number, number, number][] = [];
+    const v = this.lv, w = this.host.clientWidth, h = this.host.clientHeight, taken = this.taken; taken.length = 0;
     const write = (el: HTMLDivElement, opacity: string, transform?: string) => {
       let c = this.labelCache.get(el); if (!c) this.labelCache.set(el, c = { o: '', t: '', key: null, hw: 0, hh: 0 });
       if (c.o !== opacity) el.style.opacity = c.o = opacity;
@@ -607,7 +629,7 @@ export class FairEngine implements EngineApi {
       }
       if (vis) write(el, always ? '1' : THREE.MathUtils.clamp((maxD - d) / (maxD * 0.25), 0, 1).toFixed(2), `translate(-50%,-50%) translate(${x}px,${y}px)`); else write(el, '0');
     };
-    const p = new THREE.Vector3();
+    const p = this.lp;
     if (this.started) {
       const b = this.sim.player.body, mine = this.role() === 'exhibitor' ? (myBooths.value[0]?.company || me.value?.callsign || '') : (me.value?.callsign ?? '');
       if (this.myLabel.textContent !== mine) this.myLabel.textContent = mine;
@@ -635,12 +657,23 @@ export class FairEngine implements EngineApi {
     f.acc += gap / 1000; f.n++;
     if (f.acc < 3) return;
     const fps = f.n / f.acc; f.acc = 0; f.n = 0;
-    const capped30 = fps > 27 && fps < 33;
-    if (fps < 42 && !capped30 && f.dpr > 1) { f.dpr = Math.max(1, f.dpr - 0.25); this.renderer.setPixelRatio(f.dpr); }
+    const capped30 = fps > 27 && fps < 33; // a display that runs at 30 is not a phone in trouble
+    if (fps < 42 && !capped30) { f.good = 0; if (f.level < 4) this.setLevel(f.level + 1, now); }
+    else if (fps > 56 && now - f.changedAt > 8000 && ++f.good >= 2 && f.level > 0) { f.good = 0; this.setLevel(f.level - 1, now); }
+    else if (fps <= 56) f.good = 0;
+  }
+  /** 0: everything. 1: a coarser shadow map. 2: a quarter fewer pixels. 3: half, and no shadows. 4: one pixel per CSS pixel. */
+  private setLevel(level: number, now: number) {
+    const f = this.fps, max = Math.min(devicePixelRatio || 1, 2), fine = this.quality === 'high' ? 2048 : 1024;
+    f.level = level; f.changedAt = now;
+    f.dpr = Math.max(1, level >= 4 ? 1 : level >= 3 ? max - 0.5 : level >= 2 ? max - 0.25 : max); this.renderer.setPixelRatio(f.dpr);
+    const shadows = this.shadowsWanted && level < 3; this.renderer.shadowMap.enabled = shadows;
+    this.world.setShadows(shadows, level >= 1 ? fine / 2 : fine);
+    this.player?.setBlob(!shadows); for (const o of this.holos.values()) o.actor.setBlob(!shadows);
   }
 
   dispose() {
-    this.running = false; this.input.dispose(); this.stops.forEach((s) => s());
+    this.running = false; this.paused = false; this.input.dispose(); this.stops.forEach((s) => s());
     for (const o of this.holos.values()) { o.actor.dispose(); o.label.remove(); }
     this.player?.dispose(); this.steps.dispose(); this.world.dispose(); this.tip.remove();
     this.renderer.dispose(); this.renderer.domElement.remove();
