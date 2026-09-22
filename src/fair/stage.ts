@@ -22,6 +22,8 @@ export interface Scene {
   applyLevel(level: number, shadows: boolean, mapSize: number): void;
   /** the tail of the perf box's second line */
   perfExtra(): string;
+  /** the scene's HTML labels: shown only while it has the stage */
+  readonly overlay?: HTMLElement;
 }
 
 const IDLE_SINK: FairSink = { onTap() {}, onOrbit() {}, onZoom() {}, onKey() {}, enabled: () => false };
@@ -72,7 +74,8 @@ export class Stage {
   /** Hand the stage to a world: from now on it gets the frames, the input and the quality step. */
   use(scene: Scene) {
     if (this.active === scene) return;
-    this.active = scene;
+    if (this.active?.overlay) this.active.overlay.style.display = 'none';
+    this.active = scene; if (scene.overlay) scene.overlay.style.display = '';
     this.input.release(); this.input.setSink(scene.sink);
     scene.resize(this.size.w, this.size.h); scene.applyLevel(this.fps.level, this.shadows, this.mapSize());
     this.last = performance.now();

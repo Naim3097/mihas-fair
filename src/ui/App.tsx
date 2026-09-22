@@ -3,7 +3,8 @@ import type { EngineApi as Engine } from '../game/engine-api';
 import { api, ApiError } from '../net/api';
 import { POINTS, ROLE_INFO, chapters, type Role } from '../../shared/rules';
 import type { BoothTeamPeek, PassportInput } from '../../shared/types';
-import { afterCard, boothAction, referral, teamInvite, atLaunchPad, bootError, bootNote, distToGoal, goalVia, guideOn, guideTarget, herePlace, journey, level, me, modal, moveHint, nearLift, nearStation, offline, online, panelStation, phase, routing, seated, stampedSet, stationMap, toast, toasts } from '../state';
+import { afterCard, boothAction, referral, teamInvite, atLaunchPad, bootError, bootNote, distToGoal, goalVia, guideOn, guideTarget, herePlace, journey, level, me, modal, moveHint, nearLift, nearStation, offline, online, panelStation, phase, routing, seated, stampedSet, stationMap, toast, toasts, world } from '../state';
+import { PlaygroundHud } from './playground';
 import { facts } from '../game/facts';
 import { MapSheet, PhotoSheet } from './world-sheets';
 import { DemoChip, TourSheet } from '../demo/Tour';
@@ -20,7 +21,7 @@ export function App({ engine }: Eng) {
       {phase.value === 'boot' && <Splash text={bootNote.value} />}
       {phase.value === 'error' && <Splash text={bootError.value} error />}
       {phase.value === 'start' && <Start engine={engine} />}
-      {phase.value === 'play' && <Hud engine={engine} />}
+      {phase.value === 'play' && (world.value === 'playground' ? <PlaygroundHud /> : <Hud engine={engine} />)}
       {m === 'card' && <CardForm />}
       {(m === 'claimed' || m === 'complete') && <Finish />}
       {m === 'rules' && <Rules />}
@@ -227,6 +228,7 @@ function Hud({ engine }: Eng) {
         {nearLift.value && <div class="liftrow">{nearLift.value.others.map((l) => <button key={l.deck} class="btn lift" onClick={() => engine()?.useLift(l)}>Level {l.deck}<small>{level.value?.decks.find((d) => d.level === l.deck)?.label.split(' · ')[1]}</small></button>)}</div>}
         {atLaunchPad.value && !m.passport && <button class="btn primary big" onClick={() => (modal.value = 'card')}>Get my free card</button>}
         {atLaunchPad.value && m.passport && !m.mission.started && j.kind === 'visitor' && <button class="btn primary big" onClick={() => (modal.value = 'scan')}>Scan the start QR</button>}
+        {atLaunchPad.value && m.passport && <button class="chip" onClick={() => (world.value = 'playground')}>Playground ›</button>}
         {!sitting && (st || place?.verb) && (
           <div class="chiprow">
             {place?.verb === 'photo' && <button class="chip act" onClick={() => void eng?.photo()}>Take a photo<kbd>E</kbd></button>}

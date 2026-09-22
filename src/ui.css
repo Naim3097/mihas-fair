@@ -204,6 +204,20 @@ input::placeholder,textarea::placeholder{color:var(--ink-3)}textarea{resize:vert
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
+/* ---- the Playground: the run card, the Jump button, the fade of a fall, the stands' labels ---- */
+.runcard.live{min-width:min(300px,calc(var(--vw) - 24px))}
+.o2{height:8px;border-radius:4px;background:var(--surface-3);margin:8px 0 6px;overflow:hidden}.o2 i{display:block;height:100%;border-radius:4px;background:var(--accent,#00b8d4);transition:width .12s linear}.o2 i.low{background:var(--red);animation:pulse .6s ease-in-out infinite alternate}
+@keyframes pulse{from{opacity:1}to{opacity:.45}}
+.runrow{display:flex;align-items:center;gap:12px;font-size:13.5px;font-weight:700;font-variant-numeric:tabular-nums}.runrow .air{color:var(--ink-2)}.runrow .combo{margin-left:auto;background:var(--gold);color:var(--ink);padding:2px 10px;border-radius:999px;font-weight:800;animation:turn-in .2s ease-out}
+.jumpbtn{position:absolute;right:calc(12px + var(--safe-r));bottom:calc(84px + var(--safe-b));width:84px;height:84px;border-radius:50%;border:0;background:var(--blue);color:#fff;font:inherit;font-weight:800;font-size:16px;box-shadow:var(--shadow);cursor:pointer;display:grid;place-items:center;gap:2px;touch-action:none;-webkit-user-select:none;user-select:none;transition:transform .08s ease-out}.jumpbtn:active{transform:scale(.94)}.jumpbtn kbd{margin:0;font-size:10px;opacity:.75}
+.pgdock{bottom:calc(16px + var(--safe-b))}.pgdock .chip{margin-bottom:6px}
+.pgfade{position:absolute;inset:0;background:var(--space,#070b16);animation:fadeout .5s ease-out forwards;pointer-events:none!important;z-index:8}
+@keyframes fadeout{from{opacity:.9}to{opacity:0}}
+.hint.pghint{position:absolute;left:50%;bottom:calc(16px + var(--safe-b));transform:translateX(-50%);max-width:min(360px,calc(var(--vw) - 130px))}
+.lbl.stand,.lbl.portal{font-size:calc(12px * var(--ui));letter-spacing:.02em;text-transform:none;font-weight:800;color:#fff;background:var(--ink);padding:5px 11px;border-radius:999px;text-shadow:none}
+.lbl.score{font-size:calc(15px * var(--ui));letter-spacing:0;text-transform:none;font-weight:800;color:var(--gold);text-shadow:0 0 3px var(--space,#070b16),0 0 3px var(--space,#070b16),0 0 6px var(--space,#070b16);transition:none}
+@media (max-height:520px){.jumpbtn{width:64px;height:64px;font-size:14px;bottom:calc(64px + var(--safe-b))}}
+
 /* the checkpoint list in the mission card */
 .cps{list-style:none;margin:8px 0 4px;padding:0;display:grid;gap:4px}
 .cps li{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700}.cps li small{margin-left:auto;font-weight:600;color:var(--ink-3);font-size:12px}

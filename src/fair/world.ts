@@ -11,17 +11,11 @@ import { BoothSet } from './booths';
 import { FAIR } from './palette';
 import { css } from '../theme';
 import { DECK_MARGIN, GLASS_H, toWorld, wallRect, type FairLevel } from './level';
+import { Light } from './light';
+import { Sky } from './sky';
 
 export { FAIR };
-/** The video's window on the sky: half its width in radians of azimuth; its height on a unit cylinder (the width
- * of arc divided by the frame's 1.973 aspect, so nothing is squashed); how far up the frame its horizon line sits. */
-const SKY = { halfWidth: 1.134, height: 2.268 / 1.973, horizon: 0.21, centre: -0.5 } as const; // centre: the window's middle 29° west of north puts the planet due north
 const TONE: Record<Tone, number> = { white: 0xffffff, soft: 0xeceff3, mid: FAIR.inkSoft, ink: FAIR.ink, area: FAIR.area };
-/** Half the width of the sun's shadow map on the floor (m): it follows the player, so this is all it needs to cover. */
-const SHADOW_R = 32;
-/** Where the sun stands relative to what it lights: south-west and 50° up. */
-const SUN_OFF = new THREE.Vector3(-80, 120, 60);
-
 export interface Label { text: string; pos: THREE.Vector3; kind: 'area' | 'gate' | 'hero' | 'lift' }
 const W = (x: number, y: number, h = 0) => { const p = toWorld(x, y, h); return new THREE.Vector3(p.x, p.y, p.z); };
 
@@ -37,12 +31,9 @@ export class FairWorld {
   private boothH: number;
   private marks: Partial<Record<'hover' | 'goal', THREE.Group>> = {};
   private heroBits!: { X: THREE.Group; ring: THREE.Mesh };
-  private video: HTMLVideoElement | null = null;
-  private videoTex: THREE.VideoTexture | null = null;
-  private still: THREE.Texture | null = null;
-  private skyMat!: THREE.ShaderMaterial;
-  private sun!: THREE.DirectionalLight;
-  private tmp = new THREE.Vector3(); private tmpM = new THREE.Matrix4();
+  private sky: Sky;
+  private light: Light;
+  private tmpM = new THREE.Matrix4();
 
   /** lean: the phone tier; shadows: whether the sun throws any (the engine turns them off under load). */
   constructor(private level: LevelData, fair: FairLevel, private lean = false, shadows = true) {
@@ -50,100 +41,22 @@ export class FairWorld {
     this.boothH = level.booth.h;
     this.heroPos = W(level.hero.x, level.hero.y);
     this.scene.background = new THREE.Color(FAIR.space);
-    // a bright hall: the hemisphere carries most of it (Lambert divides by pi), a sun from the south-west that throws
-    // the shadows, a fill from the north so no wall in shadow goes dark. Fog to a pale haze gives the far end depth.
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0xcfd5dc, 2.0));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.7); sun.position.copy(SUN_OFF); this.scene.add(sun, sun.target); this.sun = sun;
-    const sc = sun.shadow.camera; sc.left = sc.bottom = -SHADOW_R; sc.right = sc.top = SHADOW_R; sc.near = 10; sc.far = 340;
-    sun.shadow.mapSize.setScalar(lean ? 1024 : 2048); sun.shadow.bias = -0.0004; sun.shadow.normalBias = this.texel(); sun.castShadow = shadows;
-    const fill = new THREE.DirectionalLight(0xffffff, 0.35); fill.position.set(40, 90, -90); this.scene.add(fill);
-    this.scene.fog = new THREE.Fog(FAIR.haze, 90, 460);
-    this.sky(); this.levels(fair); this.glass(fair); this.furnish(); this.gates(); this.lifts(); this.stands(fair); this.theX();
+    this.light = new Light(this.scene, lean, shadows);
+    this.sky = new Sky(lean); this.scene.add(this.sky.dome); this.sky.onVideo = (tex) => this.booths?.setScreen(tex);
+    this.levels(fair); this.glass(fair); this.furnish(); this.gates(); this.lifts(); this.stands(fair); this.theX();
   }
 
   private flat(color: number) { return new THREE.MeshLambertMaterial({ color }); }
 
-  get shadows(): boolean { return this.sun.castShadow; }
-  /** One texel of the shadow map on the floor (m): what the normal bias has to cover so curved surfaces do not stripe. */
-  private texel(): number { return (2 * SHADOW_R) / this.sun.shadow.mapSize.width; }
+  get shadows(): boolean { return this.light.shadows; }
   /** Shadows on or off, and how fine: every material is compiled again, so this is for a change of tier, not a frame. */
-  setShadows(on: boolean, mapSize?: number) {
-    if (mapSize && mapSize !== this.sun.shadow.mapSize.width) { this.sun.shadow.mapSize.setScalar(mapSize); this.sun.shadow.map?.dispose(); this.sun.shadow.map = null; this.sun.shadow.normalBias = this.texel(); }
-    if (on === this.sun.castShadow) return;
-    this.sun.castShadow = on;
-    this.scene.traverse((o) => { const m = (o as THREE.Mesh).material; if (m) for (const mat of Array.isArray(m) ? m : [m]) mat.needsUpdate = true; });
-  }
-  /** The sun's shadow map is a window that follows the player, moved a whole texel at a time so its edges never
-   *  swim; the sun itself keeps its direction. */
-  followSun(x: number, z: number) {
-    const s = this.sun.shadow, cam = s.camera, texel = (cam.right - cam.left) / s.mapSize.width, t = this.tmp.set(x, 0, z);
-    t.applyMatrix4(cam.matrixWorldInverse); t.x = Math.round(t.x / texel) * texel; t.y = Math.round(t.y / texel) * texel; t.applyMatrix4(cam.matrixWorld);
-    this.sun.target.position.copy(t); this.sun.position.copy(t).add(SUN_OFF); this.sun.target.updateMatrixWorld();
-  }
+  setShadows(on: boolean, mapSize?: number) { this.light.setShadows(this.scene, on, mapSize); }
+  /** The sun's shadow map follows the player. */
+  followSun(x: number, z: number) { this.light.follow(x, z); }
   private decal(o: THREE.MeshBasicMaterialParameters) { return new THREE.MeshBasicMaterial({ ...o, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }); }
 
-  /** The Nexova sky: one closed dome, drawn first. Stars everywhere and a faint blue toward the horizon; the video
-   * projected once into a window over the north end, on a cylinder so nothing is squashed, with its own horizon
-   * line at floor level so the luminous band sits where the platforms float; and a halo of the frame's blurred
-   * edge colour so the window ends nowhere. No lid, no seam, no repeat. */
-  private sky() {
-    const still = new THREE.TextureLoader().load('/fair/space.jpg', () => { this.skyMat.uniformsNeedUpdate = true; });
-    still.colorSpace = THREE.SRGBColorSpace; still.wrapS = still.wrapT = THREE.ClampToEdgeWrapping; still.minFilter = THREE.LinearMipmapLinearFilter; still.generateMipmaps = true;
-    this.still = still;
-    this.skyMat = new THREE.ShaderMaterial({
-      uniforms: {
-        uVideo: { value: still }, uHalo: { value: still }, uTime: { value: 0 },
-        uWindow: { value: new THREE.Vector4(SKY.halfWidth, SKY.height, SKY.centre, SKY.horizon) },
-        uHorizon: { value: new THREE.Color(0x1a2c55) }, uZenith: { value: new THREE.Color(0x090f1f) },
-      },
-      vertexShader: `varying vec3 vDir; void main() { vec4 wp = modelMatrix * vec4(position, 1.0); vDir = wp.xyz - cameraPosition; gl_Position = projectionMatrix * viewMatrix * wp; }`,
-      fragmentShader: `
-        uniform sampler2D uVideo; uniform sampler2D uHalo; uniform float uTime; uniform vec4 uWindow; uniform vec3 uHorizon; uniform vec3 uZenith;
-        varying vec3 vDir;
-        float hash(vec3 p) { p = fract(p * 0.3183099 + vec3(0.1, 0.2, 0.3)); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
-        float stars(vec3 d, float scale, float density, float size) {
-          vec3 p = d * scale, c = floor(p), f = p - c;
-          if (hash(c) > density) return 0.0;
-          vec3 sp = vec3(hash(c + 1.7), hash(c + 3.1), hash(c + 5.3));
-          return smoothstep(size, 0.0, length(f - sp)) * (0.45 + 0.55 * hash(c + 9.1));
-        }
-        void main() {
-          vec3 d = normalize(vDir);
-          float el = asin(clamp(d.y, -1.0, 1.0)), az = atan(d.x, -d.z);
-          vec3 col = mix(uHorizon, uZenith, smoothstep(-0.25, 0.55, d.y));
-          float tw = 0.8 + 0.2 * sin(uTime * 1.6 + hash(floor(d * 60.0)) * 6.2832);
-          col += vec3(0.85, 0.92, 1.0) * (stars(d, 60.0, 0.45, 0.09) + 0.6 * stars(d, 150.0, 0.35, 0.07)) * tw;
-          // the video window: azimuth linear, elevation as a cylinder, its horizon at uWindow.w up the frame
-          float dAz = az - uWindow.z; dAz = atan(sin(dAz), cos(dAz));
-          vec2 uv = vec2(0.5 + dAz / (2.0 * uWindow.x), uWindow.w + tan(clamp(el, -1.2, 1.2)) / uWindow.y);
-          vec2 span = vec2(2.0 * uWindow.x, uWindow.y);
-          vec2 outside = max(vec2(0.0), max(-uv, uv - 1.0)) * span;
-          float outDist = length(outside);
-          vec2 edge = min(uv, 1.0 - uv) * span;
-          float inside = step(0.0, min(edge.x, edge.y));
-          float feather = smoothstep(0.0, 0.14, min(edge.x, edge.y)) * inside;
-          vec2 cuv = clamp(uv, 0.0, 1.0);
-          vec3 halo = texture2D(uHalo, cuv, 5.0).rgb;
-          float haloA = exp(-outDist * outDist / (2.0 * 0.17 * 0.17)) * 0.85;
-          col = mix(col, halo, haloA);
-          col = mix(col, texture2D(uVideo, cuv).rgb, feather);
-          gl_FragColor = vec4(col, 1.0);
-        }`,
-      side: THREE.BackSide, depthWrite: false, fog: false,
-    });
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(1200, 48, 32), this.skyMat);
-    dome.frustumCulled = false; dome.renderOrder = 100; this.scene.add(dome); // last of the opaque: only the sky that shows is shaded
-    if (this.lean) return; // the phone tier keeps the still: no decode and no texture upload every frame
-    const video = document.createElement('video');
-    video.src = '/fair/space.mp4'; video.muted = true; video.loop = true; video.playsInline = true; video.preload = 'auto'; video.crossOrigin = 'anonymous';
-    const tex = new THREE.VideoTexture(video);
-    tex.colorSpace = THREE.SRGBColorSpace; tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping; tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false;
-    video.addEventListener('playing', () => { this.skyMat.uniforms.uVideo!.value = tex; this.booths?.setScreen(tex); }, { once: true });
-    this.video = video; this.videoTex = tex;
-    this.playSky();
-  }
   /** Autoplay is allowed muted; some browsers still want a gesture first, so the engine calls this again on the first touch. */
-  playSky() { void this.video?.play().catch(() => {}); }
+  playSky() { this.sky.play(); }
 
   private levels(fair: FairLevel) {
     const slab = this.flat(FAIR.floor), curb = this.flat(FAIR.curb);
@@ -263,7 +176,7 @@ export class FairWorld {
   private stands(fair: FairLevel) {
     this.level.booths.forEach((b, i) => this.boothIndex.set(b.id, i));
     this.booths = new BoothSet(this.level, fair.stands, this.lean); this.scene.add(this.booths.group);
-    if (this.lean && this.still) this.booths.setScreen(this.still); // the hero screen shows the sky still where there is no video
+    if (this.lean) this.booths.setScreen(this.sky.still); // the hero screen shows the sky still where there is no video
     this.pins = new THREE.InstancedMesh(new THREE.OctahedronGeometry(0.55), this.flat(FAIR.orange), 256);
     this.pins.count = 0; this.pins.frustumCulled = false; this.pins.castShadow = true; this.scene.add(this.pins);
   }
@@ -307,7 +220,7 @@ export class FairWorld {
   }
 
   update(t: number, _dt: number) {
-    this.skyMat.uniforms.uTime!.value = t;
+    this.sky.update(t);
     const { X, ring } = this.heroBits;
     X.rotation.y = t * 0.6; X.position.y = 8.5 + Math.sin(t * 1.2) * 0.25;
     const k = (t * 0.35) % 1, s = 3 + k * 9; ring.scale.set(s, 1, s); (ring.material as THREE.MeshBasicMaterial).opacity = (1 - k) * 0.55;
@@ -319,7 +232,7 @@ export class FairWorld {
   }
 
   dispose() {
-    this.video?.pause(); this.video?.removeAttribute('src'); this.videoTex?.dispose(); this.still?.dispose();
+    this.sky.dispose();
     this.scene.traverse((o) => { const m = o as THREE.Mesh; if (!m.isMesh) return; m.geometry?.dispose(); for (const mat of Array.isArray(m.material) ? m.material : [m.material]) mat.dispose(); });
   }
 }

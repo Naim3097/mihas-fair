@@ -128,12 +128,13 @@ optional part of the movement tuning that the RPG does not set.
 | coyote / buffer | 0.14 s / 0.18 s | same | same |
 | gravity / fall / terminal | 22 · ×1.3 · 30 m/s | same | same; thrust cancels it |
 
-Jump maths (gravity 22, fall ×1.3): a Boots jump is 0.63 s in the air, so a running jump clears 2.8 m, a top-speed
-one 3.8 m; the air jump adds 0.55 s, so 5.2 m at a run, 7 m at top speed. Skates clear 4.4 m in one jump and 8.5 m
-with the air jump. The course's gaps come from these and the tests check them on the real physics: **Boardwalk
-2.0–2.5 m** (one jump, any gear), **Stairs 3–4 m with 1 m rises** (the air jump), **Sky Line 6–8 m** (Skates at
-speed, or the Jetpack). Momentum is not new code: the controller already accelerates the velocity toward the
-stick's direction at the tuning's rate, so a low rate is a glide.
+Jump reach, measured on the physics (the body's 0.36 m radius lands a toe on an edge): a running jump at the edge
+clears 3.2 m, half a metre early 2.7 m; the air jump 4.7 m and 4.2 m; at top speed 4.2 / 3.7 m and, with the air
+jump, 6.3 / 5.8 m. The course's gaps are set to what a jump half a metre early still clears, and the tests jump
+every one both ways: **Boardwalk 1.8–2.2 m** (one jump, any gear), **Stairs 2.6–2.8 m with 1 m rises** (the air
+jump), the jump pad for the tall step, **Sky Line 6–8 m** (Skates at speed, or the Jetpack). Momentum is not new
+code: the controller already accelerates the velocity toward the stick's direction at the tuning's rate, so a low
+rate is a glide.
 
 ### The Jetpack
 
@@ -169,10 +170,11 @@ you can use, gold for what you earn, cyan for air and fuel, orange only on the J
 
 1. **The pad**: the three gear stands, the portal back, the start line. The first run only: a floor arrow and a hint
    chip ("Tap to jump" / "Space") that goes when the first jump lands.
-2. **Boardwalk** (0–70 m): floor at 0, gaps of 2–2.5 m, stars in arcs over the gaps, a boost pad, rings at 0 and 35.
-   Teaches the jump and the combo.
-3. **Stairs** (70–140 m): platforms rising 1 m at a time with 3–4 m gaps and a jump pad, stars on the rises, rings
-   at 70 and 105, the Boots diamond off the top stair. Teaches the air jump.
+2. **Boardwalk** (0–70 m): floor at 0, gaps of 1.8–2.2 m, stars in arcs over the gaps, a boost pad, rings at 10 and
+   50, bubbles on the line and just off it. Teaches the jump and the combo.
+3. **Stairs** (70–150 m): platforms rising 1 m at a time with 2.6–2.8 m gaps and a jump pad for the one tall step,
+   stars on the rises, rings at 78, 105 and 137, the Boots diamond on a ledge 4 m past the top (a top-speed jump or
+   the air jump). Teaches the air jump.
 4. **Sky Line** (140–210 m): a long glide with 6–8 m gaps and boost pads (the Skates line, cyan-ringed stars, its
    diamond at the end), a lower safe path with 2.5 m gaps for Boots, and above both the Jetpack's line (orange-ringed
    stars at 4–8 m up, its diamond at the top), rings at 140 and 175, then the gate back at the pad.
@@ -333,3 +335,30 @@ Yours:
    much as yours.
 3. Whether gear should ever enter the fair (a later switch either way).
 4. The prices (100 / 250) and the run length (40 s of O₂ + 96 s of bubbles): tuned by play once Phase 1 stands.
+
+## Progress
+
+**Phase 0 — done (23 Sep).** The renderer, canvas, input, frame loop, quality ladder and perf box live in
+`src/fair/stage.ts`; the fair engine is the first Scene on it, unchanged in behaviour. The guide trail is placed
+through the level's own mapping (it was drawn with the raw plan y, up to 3 m off the body on the compressed level)
+and laid from the body every frame, the first dot a metre ahead, nothing behind (`nearestOnPath`, `dotsAlong`, tested).
+
+**Phase 1 — done (23 Sep): the Playground is playable on Boots.** `src/playground/`: the course as data with the
+tests jumping every gap on the real physics both at the edge and half a metre early; the run's rules as a pure
+state machine (10 tests); the world on the shared sky and light (`src/fair/sky.ts`, `src/fair/light.ts`, lifted
+out of the fair's world); the engine as a Scene with the course-guided camera, the landing marker, pickups per
+simulation step, rings and the gate as line crossings, pads by the tag under the feet, the gear stands, the portal,
+stars banked on pickup, the floating scores, the fade of a fall; the run card, the Jump button, the summary and
+the first-run hint in `src/ui/playground.tsx`; the store on this device; the door in from the fair's menu and the
+chip at the X, the door out from the summary, the menu and the portal; Back leaves for the fair (the world owns a
+history entry under any sheet, tested). Each world's labels live in an overlay shown only while it has the stage.
+- Measured on the physics and written into the course: a running jump at the edge clears 3.2 m, half a metre early
+  2.7 m; the air jump 4.7 / 4.2 m; top speed 4.2 / 3.7 and 6.3 / 5.8 m. Gaps are 1.8–2.2 m on the Boardwalk,
+  2.6–2.8 m with metre rises on the Stairs, 2.4 m with drops on the return lane; the diamond's ledge is 4 m out.
+- Verified in the browser at 597 × 859 and 375 × 812: entering from the menu, a scripted run over the course
+  (2,320 points, ×4 combo, out of air after falls), the summary, Again, Back to the fair from the menu with the
+  fair resuming at once, re-entering with the same engine. The Playground draws 14 calls and 72k triangles.
+- For working on it: `?pg` (dev only) goes straight into the Playground after the first screen; the browser pane's
+  hidden state pauses the stage like a hidden tab, so a scripted run in the pane drives `__stage.frame` itself.
+- Not yet: Skates (Phase 2), the Jetpack (Phase 3), the boards, the chimes per combo level and the phone pass
+  (Phase 4), the server (Phase 5). Skates and Jetpack stands say "coming soon" until then.

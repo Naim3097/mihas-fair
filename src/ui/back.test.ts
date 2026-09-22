@@ -10,6 +10,7 @@ class FakeHistory {
   onpop: () => void = () => {};
   get state() { return this.entries[this.i]; }
   pushState(s: unknown) { this.entries.splice(this.i + 1); this.entries.push(s); this.i++; }
+  replaceState(s: unknown) { this.entries[this.i] = s; }
   back() { this.backs++; setTimeout(() => { if (this.i > 0) { this.i--; this.onpop(); } }, 0); }
   /** what a user does with the Back button */
   userBack() { return new Promise<void>((r) => { this.i--; this.onpop(); r(); }); }
@@ -19,11 +20,12 @@ class FakeHistory {
 const tick = () => new Promise((r) => setTimeout(r, 12)); // long enough for the stand-in's back() under a loaded machine
 
 function world(playing = true) {
-  const h = new FakeHistory(); let open: string | null = null, clock = 1000; const said: string[] = [];
-  const r = backRules(h, { isOpen: () => open != null, close: () => { open = null; }, playing: () => playing, say: (t) => said.push(t), now: () => clock });
+  const h = new FakeHistory(); let open: string | null = null, inWorld = false, clock = 1000; const said: string[] = [];
+  const r = backRules(h, { isOpen: () => open != null, close: () => { open = null; }, playing: () => playing, say: (t) => said.push(t), now: () => clock, inWorld: () => inWorld, leaveWorld: () => { inWorld = false; } });
   h.onpop = r.pop;
   const set = (m: string | null) => { open = m; r.sync(); };
-  return { h, r, set, said, get open() { return open; }, tickClock: (ms: number) => { clock += ms; } };
+  const enter = (on: boolean) => { inWorld = on; r.sync(); };
+  return { h, r, set, enter, said, get open() { return open; }, get inWorld() { return inWorld; }, tickClock: (ms: number) => { clock += ms; } };
 }
 
 test('play adds its entry; a sheet adds one more; closing it with its own button drops that one', async () => {
@@ -82,4 +84,18 @@ test('a page reloaded on a sheet entry with nothing open drops back to the game'
   const w = world(); w.h.pushState({ mx: 'play' }); w.h.pushState({ mx: 'sheet' });
   w.set(null); await tick();
   assert.equal(w.h.at(), 'play');
+});
+
+test('a world owns an entry under any sheet: entering from the menu keeps you in it; Back leaves it for the fair, not the site', async () => {
+  const w = world(); w.set(null); await tick(); w.set('menu'); await tick();
+  w.enter(true); w.set(null); await tick(); // the menu's Playground button: the world on, the sheet gone, in one moment
+  assert.ok(w.inWorld, 'still in the world'); assert.equal(w.h.at(), 'world'); assert.equal(w.h.depth, 2); assert.equal(w.h.backs, 0);
+  w.set('menu'); await tick(); assert.equal(w.h.at(), 'sheet'); assert.equal(w.h.depth, 3);
+  w.set(null); await tick(); assert.equal(w.h.at(), 'world'); assert.equal(w.h.depth, 2);
+  await w.h.userBack(); await tick();
+  assert.ok(!w.inWorld, 'Back leaves the world'); assert.equal(w.h.at(), 'play'); assert.equal(w.h.depth, 1);
+  await w.h.userBack(); await tick();
+  assert.deepEqual(w.said, ['Press back again to leave']); assert.equal(w.h.at(), 'play');
+  w.enter(true); await tick(); assert.equal(w.h.at(), 'world');
+  w.enter(false); await tick(); assert.equal(w.h.at(), 'play', 'leaving from the menu drops the entry');
 });

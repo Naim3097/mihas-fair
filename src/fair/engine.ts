@@ -53,6 +53,7 @@ export class FairEngine implements EngineApi, Scene {
   private renderer: THREE.WebGLRenderer;
   private host: HTMLElement;
   readonly sink: FairSink;
+  readonly overlay: HTMLDivElement;
   private camera = new THREE.PerspectiveCamera(50, 1, 0.35, 1600);
   private rig: CameraRig;
   private world: FairWorld;
@@ -93,7 +94,8 @@ export class FairEngine implements EngineApi, Scene {
   private stops: (() => void)[] = [];
 
   constructor(private stage: Stage, private level: LevelData, private quality: Quality) {
-    this.renderer = stage.renderer; const host = this.host = stage.host;
+    this.renderer = stage.renderer; this.host = stage.host;
+    const host = this.overlay = Object.assign(document.createElement('div'), { className: 'lbls' }); stage.host.appendChild(host);
 
     this.fair = buildFairLevel(level);
     this.sim = new Sim('pengembara', classByKey('pengembara')!.base, this.fair.def, 1, FAIR_MOVEMENT);
@@ -149,6 +151,9 @@ export class FairEngine implements EngineApi, Scene {
     void Promise.all([loadNexo(), lod ? loadNexoLod() : loadNexo(), loadNexoLibrary()]).then(([g, o, lib]) => { if (this.disposed) return; this.gltf = g; this.gltfOthers = o ?? g; this.lib = lib; this.rebuildBodies(); });
     stage.use(this);
   }
+
+  /** The stage is back with the fair: say where we are at once, look around afresh. */
+  resume() { this.pingAt = 0; this.proxAt = 0; this.hover(null); this.orbitAt = 0; }
 
   private role(): NexoRole { return me.value?.cls === 'exhibitor' ? 'exhibitor' : 'visitor'; }
   private face = new THREE.Vector3();
@@ -549,7 +554,7 @@ export class FairEngine implements EngineApi, Scene {
       if (o && o.cls !== h.cls) { o.actor.dispose(); o.label.remove(); this.holos.delete(h.id); o = undefined; }
       if (!o) {
         const actor = this.makeActor(h.cls === 'exhibitor' ? 'exhibitor' : 'visitor');
-        const label = Object.assign(document.createElement('div'), { className: 'lbl holo' }); this.host.appendChild(label);
+        const label = Object.assign(document.createElement('div'), { className: 'lbl holo' }); this.overlay.appendChild(label);
         o = { actor, cls: h.cls, track: new RemoteTrack({ t: now, x: h.x, y: h.y, h: h.h }), label, seen: now, pose: '', tx: h.x, ty: h.y }; this.holos.set(h.id, o);
       }
       const text = h.cls === 'exhibitor' && h.company ? h.company : h.callsign;
@@ -634,8 +639,7 @@ export class FairEngine implements EngineApi, Scene {
   dispose() {
     this.disposed = true; this.stops.forEach((s) => s());
     for (const o of this.holos.values()) { o.actor.dispose(); o.label.remove(); }
-    this.player?.dispose(); this.steps.dispose(); this.world.dispose(); this.tip.remove();
-    for (const { el } of this.labelEls) el.remove(); for (const { el } of this.boothEls) el.remove(); this.myLabel.remove();
+    this.player?.dispose(); this.steps.dispose(); this.world.dispose(); this.overlay.remove();
   }
 }
 

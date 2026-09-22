@@ -34,7 +34,7 @@ export class Sim implements CombatCtx {
   private seed: number;
 
   /** The movement tuning this world runs on: Ceritera's by default, a fair passes its own. */
-  constructor(cls: ClassKey, stats: Stats, readonly level: LevelDef = HALL, seed = 1, readonly movement: MovementDef = MOVEMENT) {
+  constructor(cls: ClassKey, stats: Stats, readonly level: LevelDef = HALL, seed = 1, public movement: MovementDef = MOVEMENT) {
     this.world = { boxes: level.boxes, grid: buildGrid(level.boxes) };
     this.player = newPlayer(cls, stats, level.spawn.pos, level.spawn.yaw, movement);
     this.enemies = level.enemies.map((e) => newEnemy(enemyByKey(e.key)!, e.pos, e.yaw));

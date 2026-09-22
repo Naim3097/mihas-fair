@@ -5,10 +5,11 @@ import { api, ApiError } from '../net/api';
 import { handleScan } from '../scan';
 import { shrink } from './images';
 import { Camera, FieldPicker, Qr, Sheet, useCountdown } from './common';
+import { pgControls } from '../playground/state';
 import { POINTS, ROLE_INFO, type ShareField } from '../../shared/rules';
 import type { Booth, Contact, LinkCode, LinkPeek } from '../../shared/types';
 import { LinkDemoHint, StationDemoHint } from '../demo/Tour';
-import { boothAction, referral, setReferral, drop, guideOn, guideTarget, journey, level, me, modal, myBooths, nearStation, online, panelStation, pendingLink, stampedSet, stationMap, stations, toast } from '../state';
+import { boothAction, referral, setReferral, drop, guideOn, guideTarget, journey, level, me, modal, myBooths, nearStation, online, panelStation, pendingLink, stampedSet, stationMap, stations, toast, world } from '../state';
 
 type Eng = { engine: () => Engine | null };
 const fail = (e: unknown, fallback: string) => toast(e instanceof ApiError ? e.message : fallback, undefined, 'warn', 4500);
@@ -292,7 +293,10 @@ export function MenuSheet() {
         {(m.cls === 'exhibitor' || m.hosting.length > 0) && <button onClick={go(m.passport ? 'mybooth' : 'card')}><strong>My booth</strong><small>{m.hosting.length ? m.hosting.join(', ') + ' · QR and leads' : 'Bring it online'}</small></button>}
         <button onClick={go('swap')}><strong>Swap cards</strong><small>Met someone? Exchange cards · +{POINTS.swap} each</small></button>
         <button onClick={go('contacts')}><strong>My contacts</strong><small>{m.links} people · {m.shared.length} booths</small></button>
-        <button onClick={go('map')}><strong>Map</strong><small>Halls 6–8 · search · places to go</small></button>
+        {world.value === 'playground'
+          ? <button class="wide" onClick={() => { pgControls.value?.leave(); world.value = 'fair'; modal.value = null; }}><strong>Back to the fair</strong><small>A run under way ends here</small></button>
+          : <button onClick={() => { world.value = 'playground'; modal.value = null; }}><strong>Playground</strong><small>Jump for stars, earn the gear · beside the X</small></button>}
+        {world.value !== 'playground' && <button onClick={go('map')}><strong>Map</strong><small>Halls 6–8 · search · places to go</small></button>}
         <button onClick={go('rules')}><strong>How to play</strong><small>The mission and the points, on one page</small></button>
         <button aria-pressed={soundOn.value} onClick={() => setSound(!soundOn.value)}><strong>Sound · {soundOn.value ? 'on' : 'off'}</strong><small>{soundOn.value ? 'Quiet chimes, and a buzz on phones that can' : 'Silent, no vibration'}</small></button>
         <button onClick={switchRole}><strong>{m.cls === 'exhibitor' ? 'Play as a visitor' : 'I am exhibiting'}</strong><small>{m.cls === 'exhibitor' ? 'Do the five-chapter mission' : 'Put your booth in the game'}</small></button>
