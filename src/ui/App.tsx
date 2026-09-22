@@ -3,7 +3,7 @@ import type { EngineApi as Engine } from '../game/engine-api';
 import { api, ApiError } from '../net/api';
 import { POINTS, ROLE_INFO, chapters, type Role } from '../../shared/rules';
 import type { BoothTeamPeek, PassportInput } from '../../shared/types';
-import { afterCard, boothAction, referral, teamInvite, atLaunchPad, bootError, bootNote, distToGoal, goalVia, guideOn, guideTarget, herePlace, journey, level, me, modal, moveHint, nearLift, nearStation, online, panelStation, phase, seated, stampedSet, stationMap, toast, toasts } from '../state';
+import { afterCard, boothAction, referral, teamInvite, atLaunchPad, bootError, bootNote, distToGoal, goalVia, guideOn, guideTarget, herePlace, journey, level, me, modal, moveHint, nearLift, nearStation, online, panelStation, phase, routing, seated, stampedSet, stationMap, toast, toasts } from '../state';
 import { facts } from '../game/facts';
 import { MapSheet, PhotoSheet } from './world-sheets';
 import { DemoChip, TourSheet } from '../demo/Tour';
@@ -147,16 +147,22 @@ function Hud({ engine }: Eng) {
     if (!b) return; const c = cps.find((x) => x.stationId === b.id)!; guideTarget.value = { x: b.x, y: b.y, label: `${c.company} · Booth ${b.id}` }; guideOn.value = true;
   };
   const scanBtn = (label: string) => <button class="btn primary" onClick={(e) => { e.stopPropagation(); modal.value = 'scan'; }}>{label}</button>;
+  // walking there on its own, or stopping: one button, in both shapes of the card
+  const goBtn = (label: string) => routing.value
+    ? <button class="btn" onClick={(e) => { e.stopPropagation(); engine()?.stop(); }}>Stop</button>
+    : <button class="btn primary" onClick={(e) => { e.stopPropagation(); engine()?.autopilot(); }}>{label}</button>;
+  const nextLeft = !goal && j.kind === 'visitor' && j.now?.n === 3 && left.length > 0; // checkpoints still to scan: the folded card can walk you to the nearest
 
   return (
     <>
       {/* top-left: what to do now. One card, nothing else up here — or, folded away, one slim line. */}
       {mini ? (
         <div class="objective mini" role="button" tabIndex={0} aria-label="Show the mission" onClick={() => setMini(false)}>
-          {!goal && <div class="dots" aria-hidden="true">{j.steps.map((s) => <i key={s.n} class={s.done ? 'on' : s === j.now ? 'now' : ''} />)}</div>}
+          {!goal && !nextLeft && <div class="dots" aria-hidden="true">{j.steps.map((s) => <i key={s.n} class={s.done ? 'on' : s === j.now ? 'now' : ''} />)}</div>}
           <span class="t">{goal ? goal.label : j.now ? j.now.title : 'Free play'}</span>
           {trail && distToGoal.value != null && <span class="d">{distToGoal.value} m</span>}
-          {trail ? <button class="btn primary" onClick={(e) => { e.stopPropagation(); engine()?.autopilot(); }}>Go</button>
+          {trail ? goBtn('Go')
+            : nextLeft ? <><button class="btn primary" onClick={(e) => { e.stopPropagation(); toNext(); engine()?.autopilot(); }}>Next</button>{scanBtn('Scan')}</>
             : !goal && j.kind === 'visitor' && ((j.now?.n === 2 && m.passport) || j.now?.n === 3) ? scanBtn('Scan')
             : !goal && j.kind === 'exhibitor' ? <button class="btn primary" onClick={(e) => { e.stopPropagation(); modal.value = m.passport ? 'mybooth' : 'card'; }}>Booth</button> : null}
           <span class="score" title="Points">{points.toLocaleString()}</span>
@@ -182,7 +188,7 @@ function Hud({ engine }: Eng) {
         {trail && goalVia.value && <div class="via">{goalVia.value}</div>}
         {trail && (
           <div class="go-row"><span>{distToGoal.value} m {goalVia.value ? 'to the lift' : ''}</span>
-            <span>{goal && <button class="link" style={{ marginRight: '12px' }} onClick={(e) => { e.stopPropagation(); guideTarget.value = null; }}>Cancel</button>}<button class="btn primary" onClick={(e) => { e.stopPropagation(); engine()?.autopilot(); }}>Take me there</button></span></div>
+            <span>{goal && <button class="link" style={{ marginRight: '12px' }} onClick={(e) => { e.stopPropagation(); engine()?.stop(); guideTarget.value = null; }}>Cancel</button>}{goBtn('Take me there')}</span></div>
         )}
       </div>
       )}

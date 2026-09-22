@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import type { LevelData } from '../../shared/types';
 import { BoothPicker, type Ray } from './pick';
+import { fixY } from '../fair/level';
+import { planStands } from '../fair/stands';
 
 const level = JSON.parse(readFileSync('public/data/floor.json', 'utf8')) as LevelData;
 const picker = new BoothPicker(level), H = level.booth.h;
@@ -34,4 +36,32 @@ test('a booth is never picked through the one in front of it, and open floor pic
   assert.equal(hit?.id, a.id, 'the near booth is in the way');
   const s = level.spawns.short; assert.equal(picker.pick(ray([s.x, s.y - 10, 20], [s.x, s.y, 0])), null, 'the entrance floor is not a booth');
   assert.equal(picker.pick({ ox: 0, oy: 0, oz: 20, dx: 1, dy: 0, dz: 0 }), null, 'a level ray hits nothing');
+});
+
+test('from below the roofs (a low camera in an aisle) the booth in front is still picked; the booth the eye stands in never is', () => {
+  const stands = planStands(level), open = new Map<string, Set<string>>();
+  for (const s of stands) for (const c of s.cells) open.set(c.b.id, c.open);
+  let n = 0;
+  for (const b of level.booths) {
+    if (!open.get(b.id)?.has('S') || b.deck !== 2) continue;
+    const hd = level.decks.find((d) => d.level === b.deck)!.boothD / 2;
+    // eye 1.8 m up in the aisle, 1.2 m out from the open front, looking at the counter height inside the cell
+    assert.equal(picker.pick(ray([b.x, b.y - hd - 1.2, 1.8], [b.x, b.y, 1.0]))?.id, b.id, `${b.id} from the aisle`);
+    // eye inside the cell (the camera followed the body in), looking down at the floor in front: not this booth
+    assert.notEqual(picker.pick(ray([b.x, b.y - hd + 0.4, 1.6], [b.x, b.y - hd - 1.0, 0]))?.id, b.id, `${b.id} from inside`);
+    if (++n > 40) break;
+  }
+  assert.ok(n > 20);
+});
+
+test('a level drawn with its plan y compressed: rays given in the drawn space still pick the right booth', () => {
+  const pk = new BoothPicker(level, fixY);
+  let n = 0;
+  for (const b of level.booths.filter((x) => x.deck === 2)) {
+    const y = fixY(b.y);
+    assert.equal(pk.pick(ray([b.x, y, 40], [b.x, y, 0]))?.id, b.id, `${b.id} straight down`);
+    assert.equal(pk.pick(ray([b.x + 8, y - 12, 22], [b.x, y, H]))?.id, b.id, `${b.id} at an angle`);
+    n++;
+  }
+  assert.ok(n > 100);
 });

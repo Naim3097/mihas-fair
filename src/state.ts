@@ -24,6 +24,8 @@ export const nearLift = signal<{ here: Lift; others: Lift[] } | null>(null);
 export const goalVia = signal<string | null>(null);
 export const currentDeck = signal(2);
 export const distToGoal = signal<number | null>(null);
+/** The body is walking somewhere on its own (a tap, "Take me there"): the card offers Stop. */
+export const routing = signal(false);
 export const guideOn = signal(true);
 /** Where the trail leads. null = the X, until the player has their card; after that, nowhere until they pick a place. */
 export const guideTarget = signal<{ x: number; y: number; label: string } | null>(null);

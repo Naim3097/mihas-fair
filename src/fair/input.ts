@@ -1,12 +1,14 @@
 // One-thumb controls for the fair, the way Mission X does them, feeding the Ceritera controller: a floating stick in
-// the lower-left, tap-to-walk anywhere, drag to look around, pinch or wheel to zoom. Desktop: WASD or arrows,
-// Shift walks, Space jumps, C rolls, E does the thing in front of you, 1 2 3 express, M is the map; click to walk,
-// drag to look. A touch in the stick zone is not a stick until the thumb moves: lifted in place, it is a tap.
+// the lower-left, tap-to-walk anywhere, drag to look around, pinch or wheel to zoom. A push on the stick jogs; held
+// out past its rim for a moment, it sprints. Desktop: WASD or arrows, Shift sprints, Space jumps, C rolls, E does
+// the thing in front of you, 1 2 3 express, M is the map; click to walk, drag to look. A touch in the stick zone is
+// not a stick until the thumb moves: lifted in place, it is a tap.
 import type { Intent } from '../ceritera/game/controller';
 import { emptyIntent } from '../ceritera/game/controller';
 
 export interface FairSink {
-  onTap(x: number, y: number): void;
+  /** `coarse`: a finger, which wants some tolerance; a mouse is exact. */
+  onTap(x: number, y: number, coarse: boolean): void;
   onOrbit(dYaw: number, dPitch: number): void;
   onZoom(factor: number): void;
   onHover?(at: { x: number; y: number } | null): void;
@@ -16,6 +18,8 @@ export interface FairSink {
 }
 
 const STICK_R = 52, STICK_DEAD = 9, TAP_SLOP = 9, TAP_MS = 450;
+/** A stick held out past its rim for this long sprints: a flick to the edge is still a jog. */
+const RIM_MAG = 0.98, RIM_MS = 300;
 const typing = (t: EventTarget | null) => t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement || (t instanceof HTMLElement && t.isContentEditable);
 
 export class FairInput {
@@ -26,6 +30,7 @@ export class FairInput {
   private stick: { id: number; x: number; y: number; t: number; live: boolean } | null = null;
   private drags = new Map<number, { x: number; y: number; sx: number; sy: number; t: number; moved: boolean }>();
   private pinch = 0;
+  private rimAt: number | null = null;
   private cursor = 'grab'; private grabbing = false;
   private base: HTMLDivElement; private knob: HTMLDivElement;
   private off: (() => void)[] = [];
@@ -65,7 +70,7 @@ export class FairInput {
 
   /** Let go of everything: a sheet opened, the tab went away. */
   release() {
-    this.keys.clear(); this.drags.clear(); this.pinch = 0; this.grabbing = false; this.paintCursor();
+    this.keys.clear(); this.drags.clear(); this.pinch = 0; this.rimAt = null; this.grabbing = false; this.paintCursor();
     if (this.stick) { this.stick = null; this.base.style.display = 'none'; }
     this.move.x = this.move.y = 0; this.edges.jump = this.edges.dodge = false;
   }
@@ -73,11 +78,15 @@ export class FairInput {
   /** A press from a button on the interface. */
   press(edge: 'jump' | 'dodge') { this.edges[edge] = true; }
 
-  /** This frame's intent for the controller. Shift walks; a full stick sprints; taps are cleared once read. */
+  /** Is a thumb on the stick right now? */
+  get stickHeld(): boolean { return !!this.stick?.live; }
+
+  /** This frame's intent for the controller. Shift sprints on the keys; a stick held out past its rim sprints; taps are cleared once read. */
   poll(): Intent {
-    const k = this.keys, walk = k.has('ShiftLeft') || k.has('ShiftRight');
-    const mag = Math.hypot(this.move.x, this.move.y);
-    const it: Intent = { ...emptyIntent(), move: { x: this.move.x, y: this.move.y }, walk, sprint: !walk && mag > 0.92, jump: this.edges.jump, dodge: this.edges.dodge };
+    const k = this.keys, mag = Math.hypot(this.move.x, this.move.y), now = performance.now();
+    if (this.stick?.live && mag >= RIM_MAG) this.rimAt ??= now; else this.rimAt = null;
+    const sprint = this.stick?.live ? now - (this.rimAt ?? now) >= RIM_MS : k.has('ShiftLeft') || k.has('ShiftRight');
+    const it: Intent = { ...emptyIntent(), move: { x: this.move.x, y: this.move.y }, walk: false, sprint, jump: this.edges.jump, dodge: this.edges.dodge };
     this.edges.jump = this.edges.dodge = false;
     return it;
   }
@@ -123,12 +132,12 @@ export class FairInput {
     const s = this.stick;
     if (s?.id === e.pointerId) {
       this.stick = null; this.base.style.display = 'none'; this.move.x = this.move.y = 0; this.fromKeys();
-      if (!s.live && !cancelled && performance.now() - s.t < TAP_MS) this.sink.onTap(e.clientX, e.clientY);
+      if (!s.live && !cancelled && performance.now() - s.t < TAP_MS) this.sink.onTap(e.clientX, e.clientY, true);
       return;
     }
     const d = this.drags.get(e.pointerId); this.drags.delete(e.pointerId); this.pinch = 0;
     if (this.grabbing && this.drags.size === 0) { this.grabbing = false; this.paintCursor(); if (!cancelled) this.sink.onHover?.({ x: e.clientX, y: e.clientY }); }
-    if (d && !cancelled && !d.moved && performance.now() - d.t < TAP_MS && this.drags.size === 0) this.sink.onTap(e.clientX, e.clientY);
+    if (d && !cancelled && !d.moved && performance.now() - d.t < TAP_MS && this.drags.size === 0) this.sink.onTap(e.clientX, e.clientY, e.pointerType !== 'mouse');
   }
 
   dispose() { this.off.forEach((f) => f()); this.base.remove(); }

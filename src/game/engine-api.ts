@@ -7,8 +7,10 @@ export interface EngineApi {
   /** Drop the player in at a spawn and hand over control. */
   start(spawn: 'short' | 'epic'): void;
   stamp(b: Booth): Promise<void>;
-  /** Walk to the current goal on its own. */
+  /** Walk to where the trail leads, on its own. Nothing happens when it leads nowhere. */
   autopilot(): void;
+  /** Stop walking there. */
+  stop(): void;
   useLift(to: Lift): void;
   /** Where the player stands, in floor-plan metres. */
   readonly position: P2;
