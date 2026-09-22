@@ -1,11 +1,16 @@
-/* The Nexova fair: Mission X's interface over a hall in space. Only what differs from ui.css lives here. */
-body{background:#070b16}
-#stage{background:#070b16}
+/* The Nexova fair: Mission X's interface over a hall in space. Only what differs from ui.css lives here, and the
+   fair's own colours are tokens like the rest (src/fair/palette.ts holds the same values for the world). */
+:root{--space:#070b16;--orange:#f07a1d;--orange-soft:#ffe1c7;--accent:#00e5ff;--holo:#7ff3ff;--holo-exhib:#ffb27a}
+body{background:var(--space)}
+#stage{background:var(--space)}
 #stage canvas{cursor:grab}
-/* holographic names: cyan for visitors, MIHAS orange for exhibitors, a beam down to the head */
-.lbl.holo{font-size:calc(11.5px * var(--ui));letter-spacing:.04em;text-transform:none;font-weight:700;color:#7ff3ff;background:rgba(6,20,36,.55);border:1px solid rgba(0,229,255,.45);padding:3px 10px;border-radius:999px;text-shadow:0 0 8px rgba(0,229,255,.75);backdrop-filter:blur(3px);max-width:calc(200px * var(--ui));overflow:hidden;text-overflow:ellipsis}
-.lbl.holo::after{content:"";position:absolute;left:50%;top:100%;width:1px;height:14px;background:linear-gradient(180deg,rgba(0,229,255,.8),transparent)}
-.lbl.holo.exhib{color:#ffb27a;border-color:rgba(240,122,29,.6);text-shadow:0 0 8px rgba(240,122,29,.8)}
-.lbl.holo.exhib::after{background:linear-gradient(180deg,rgba(240,122,29,.9),transparent)}
-.lbl.holo.me{border-color:rgba(0,229,255,.85);background:rgba(6,20,36,.7)}
-.lbl.booth.online::before{background:#f07a1d}
+/* type in the world reads against the space sky: light ink with a dark halo (ui.css sets paper's) */
+.lbl{color:#d6dbe6;text-shadow:0 0 3px var(--space),0 0 3px var(--space),0 0 6px var(--space)}
+.lbl.lift{color:#8fb0ff}
+/* holographic names: cyan for visitors, MIHAS orange for exhibitors, a beam down to the head. Flat, no blur. */
+.lbl.holo{font-size:calc(11.5px * var(--ui));letter-spacing:.04em;text-transform:none;font-weight:700;color:var(--holo);background:rgba(6,20,36,.8);border:1px solid rgba(0,229,255,.45);padding:3px 10px;border-radius:999px;text-shadow:none;max-width:calc(200px * var(--ui));overflow:hidden;text-overflow:ellipsis}
+.lbl.holo::after{content:"";position:absolute;left:50%;top:100%;width:1px;height:12px;background:var(--accent);opacity:.7}
+.lbl.holo.exhib{color:var(--holo-exhib);border-color:rgba(240,122,29,.6)}
+.lbl.holo.exhib::after{background:var(--orange)}
+.lbl.holo.me{border-color:rgba(0,229,255,.85)}
+.lbl.booth.online::before{background:var(--orange)}

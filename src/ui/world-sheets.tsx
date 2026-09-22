@@ -11,7 +11,9 @@ type Eng = { engine: () => Engine | null };
 const COLORS = { floor: '#d9d5cb', hall: '#e6e3db', area: '#d5dcd8', booth: '#ffffff', edge: '#c6c1b5', ink: '#1b2130', soft: '#8b91a0', blue: '#2457f5', gold: '#f2b01e', green: '#cdeadb', greenInk: '#1e9e6a' };
 
 export function MapSheet({ engine }: Eng) {
-  const lv = level.value!, [deck, setDeck] = useState(currentDeck.value), [q, setQ] = useState(''), canvas = useRef<HTMLCanvasElement>(null), wrap = useRef<HTMLDivElement>(null);
+  const lv = level.value!, [deck, setDeck] = useState(currentDeck.value), [q, setQ] = useState(''), [width, setWidth] = useState(0), canvas = useRef<HTMLCanvasElement>(null), wrap = useRef<HTMLDivElement>(null);
+  // the map is drawn for the width it has; a turned phone or a resized window draws it again, so taps keep lining up
+  useEffect(() => { const w = wrap.current; if (!w) return; const ro = new ResizeObserver(() => setWidth(w.clientWidth)); ro.observe(w); return () => ro.disconnect(); }, [q]);
   const places = useMemo(() => buildPlaces(lv).filter((p) => p.open), [lv]), halls = useMemo(() => hallCards(lv), [lv]);
   const d = lv.decks.find((k) => k.level === deck)!, sm = stationMap.value, stamped = stampedSet.value, been = seen.value;
   const total = places.length + halls.length, count = [...been].filter((k) => k.startsWith('place:') || k.startsWith('hall:')).length;
@@ -42,7 +44,7 @@ export function MapSheet({ engine }: Eng) {
     const me = engine()?.position; if (me && engine()!.levelOf(me) === deck) { g.fillStyle = '#fff'; g.beginPath(); g.arc(v.px(me.x), v.py(me.y), 7, 0, 7); g.fill(); g.fillStyle = COLORS.blue; g.beginPath(); g.arc(v.px(me.x), v.py(me.y), 4.5, 0, 7); g.fill(); }
     g.fillStyle = COLORS.ink; g.font = '700 10px Urbanist, Arial';
     for (const p of places.filter((k) => k.deck === deck && (k.rect.x1 - k.rect.x0) * v.s > 56)) g.fillText(p.name.split(' · ')[0]!.slice(0, 22), v.px((p.rect.x0 + p.rect.x1) / 2), v.py((p.rect.y0 + p.rect.y1) / 2));
-  }, [deck, stamped, sm, lv]);
+  }, [deck, stamped, sm, lv, width]);
 
   const tap = (e: MouseEvent) => {
     const v = view(), r = canvas.current!.getBoundingClientRect(), x = d.x0 - 4 + (e.clientX - r.left - 6) / v.s, y = d.y1 + 4 - (e.clientY - r.top - 6) / v.s;

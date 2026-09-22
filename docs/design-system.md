@@ -11,13 +11,17 @@ on a phone. If a colour, an effect or an element is not on this page, it is not 
 | **Blue** `#2457F5` | you, and what you can do | your ring on the floor, the trail, primary buttons, lifts, visitor jackets, progress |
 | **Gold** `#F2B01E` | what you have earned | points, stamped booth roofs, the pad under the X |
 | **Green** `#1E9E6A` | an exhibitor is there | booths online (soft green), the marker over a booth whose exhibitor is at the counter, exhibitor jackets |
-| Ink `#1B2130` · greys | type and structure | text, gate frames, toasts |
-| Paper `#F2F0EB` · floor · white | the place | sky, slab, carpet, booths, cards |
+| Ink `#1B2130` · greys | type and structure | text, gate frames, toasts (the softest grey, `#6C7383`, is 4.7:1 on white) |
+| Paper `#F2F0EB` · floor · white | the place | slab, carpet, booths, cards |
 | Red `#D6453D` | something went wrong | errors only |
+| Space `#070B16` | the sky the fair floats in | page and stage background; world labels are light ink with a dark halo over it |
+| MIHAS orange `#F07A1D` | an exhibitor, in the fair | booths online, exhibitors' holographic names |
+| Accent `#00E5FF` · holo `#7FF3FF` | a person, as a hologram | visitors' names and Nexo's lights |
 
 The only other colour in the world is **the X itself**, in the logo's own blue and yellow — so the brand is the one
-saturated object on a quiet floor. One file holds the palette for the 3D world (`src/theme.ts`); the interface reads the
-same values from `:root` in `src/ui.css`.
+saturated object on a quiet floor. One file holds the palette for the 3D world (`src/fair/palette.ts`; `src/theme.ts`
+is the daylight model the big screen still draws); the interface reads the same values from `:root` in `src/ui.css`
+and, for the fair's own colours, `src/fair/fair.css`.
 
 ## The world: what is in it, and what was removed
 
@@ -129,7 +133,11 @@ The game is built for a thumb first. On a desk it must not feel like a phone pag
   (`src/game/pick.ts`), front-most booth first, so nothing is picked through the booth in front of it.
 - **Keys are written on the buttons** (`<kbd>`, shown only with a mouse): E on the action button, 1 2 3 and Space in
   the express tray, M in the map tooltip. The round buttons have instant dark tooltips instead of the browser's.
-- **One interface scale** (`--ui` in `ui.css`): 1 up to a laptop, 1.15 from 1700 × 880, 1.3 from 2300 × 1180. The whole
+- **Toasts never cover the mission card**: the card reports where it ends (`--hud-b`) and toasts come down from there;
+  on a wide screen that is the top edge, as before.
+- **Focus stays where it should**: a sheet takes focus, Tab wraps inside it, and focus returns to where it was when
+  the sheet closes. Back and Escape close a sheet (`src/ui/back.ts`, tested against a stand-in history).
+- **One interface scale** (`--ui` in `ui.css`): 1 on a phone and a laptop, 1.1 from 1200 × 700, 1.2 from 1700 × 880, 1.3 from 2300 × 1180. The whole
   interface and the labels in the world grow together; `--vw` / `--vh` are the screen in grown pixels, and everything
   sized from the screen uses them. The crew console and the big screen opt out.
 

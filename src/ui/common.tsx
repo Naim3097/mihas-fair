@@ -9,7 +9,22 @@ export const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
 export function Sheet({ k, title, gold, wide, onClose, children }: { k?: string; title?: string; gold?: boolean; wide?: boolean; onClose?: (() => void) | false; children: ComponentChildren }) {
   const close = onClose === false ? null : onClose ?? (() => (modal.value = null));
   const box = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (!box.current?.contains(document.activeElement)) box.current?.focus({ preventScroll: true }); }, []);
+  // focus goes into the sheet, stays in it (Tab wraps), and returns to where it was when the sheet closes
+  useEffect(() => {
+    const el = box.current; if (!el) return;
+    const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (!el.contains(document.activeElement)) el.focus({ preventScroll: true });
+    const trap = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+      const f = [...el.querySelectorAll<HTMLElement>('button,[href],input,textarea,select,[tabindex]:not([tabindex="-1"])')].filter((x) => !x.hasAttribute('disabled') && x.offsetParent !== null);
+      if (!f.length) { e.preventDefault(); return; }
+      const first = f[0]!, last = f[f.length - 1]!, on = document.activeElement;
+      if (e.shiftKey && (on === first || on === el)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && on === last) { e.preventDefault(); first.focus(); }
+    };
+    el.addEventListener('keydown', trap);
+    return () => { el.removeEventListener('keydown', trap); if (before?.isConnected) before.focus({ preventScroll: true }); };
+  }, []);
   return (
     <div class="scrim" onClick={(e) => e.target === e.currentTarget && close?.()}>
       <div ref={box} tabIndex={-1} class={'sheet' + (wide ? ' wider' : '')} role="dialog" aria-modal="true" aria-label={title}>

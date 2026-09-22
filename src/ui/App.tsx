@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { EngineApi as Engine } from '../game/engine-api';
 import { api, ApiError } from '../net/api';
 import { POINTS, ROLE_INFO, chapters, type Role } from '../../shared/rules';
@@ -121,6 +121,14 @@ function Hud({ engine }: Eng) {
   const [mini, setMiniState] = useState(() => { try { const v = localStorage.getItem('mx_hud'); if (v) return v === 'mini'; } catch { /* private mode */ } return innerHeight < 520; });
   const setMini = (v: boolean) => { setMiniState(v); try { localStorage.setItem('mx_hud', v ? 'mini' : 'full'); } catch { /* private mode */ } };
   const place = herePlace.value, sitting = seated.value, eng = engine(), points = useRolling(m.xp);
+  // where the card ends: toasts come down below it, never over it (--hud-b on #ui, read by .toasts)
+  const card = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = card.current, ui = document.getElementById('ui'); if (!el || !ui) return;
+    const set = () => ui.style.setProperty('--hud-b', `${el.offsetTop + el.offsetHeight}px`);
+    set(); const ro = new ResizeObserver(set); ro.observe(el);
+    return () => { ro.disconnect(); ui.style.removeProperty('--hud-b'); };
+  }, [mini]);
   const express = (f: () => void) => () => { f(); setTray(false); };
   useEffect(() => { // an open tray is a question; tapping anywhere else is the answer "never mind"
     if (!tray) return;
@@ -157,7 +165,7 @@ function Hud({ engine }: Eng) {
     <>
       {/* top-left: what to do now. One card, nothing else up here — or, folded away, one slim line. */}
       {mini ? (
-        <div class="objective mini" role="button" tabIndex={0} aria-label="Show the mission" onClick={() => setMini(false)}>
+        <div ref={card} class="objective mini" role="button" tabIndex={0} aria-label="Show the mission" onClick={() => setMini(false)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setMini(false); } }}>
           {!goal && !nextLeft && <div class="dots" aria-hidden="true">{j.steps.map((s) => <i key={s.n} class={s.done ? 'on' : s === j.now ? 'now' : ''} />)}</div>}
           <span class="t">{goal ? goal.label : j.now ? j.now.title : 'Free play'}</span>
           {trail && distToGoal.value != null && <span class="d">{distToGoal.value} m</span>}
@@ -168,7 +176,7 @@ function Hud({ engine }: Eng) {
           <span class="score" title="Points">{points.toLocaleString()}</span>
         </div>
       ) : (
-      <div class={'objective' + (open ? ' open' : '')} onClick={() => setOpen(!open)}>
+      <div ref={card} class={'objective' + (open ? ' open' : '')} onClick={() => setOpen(!open)}>
         <div class="top">
           <span class="k">{goal ? 'Guiding you to' : j.now ? `${word} ${j.now.n} of ${j.steps.length}` : j.kind === 'visitor' ? 'Mission complete' : 'Your booth is working'}</span>
           <span class="right"><span class={'score' + (points !== m.xp ? ' up' : '')} title="Points">{points.toLocaleString()}</span>

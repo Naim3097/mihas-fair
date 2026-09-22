@@ -18,6 +18,9 @@ let engine: FairEngine | null = null;
 render(<App engine={() => engine} />, document.getElementById('ui')!);
 installBack();
 installSfx();
+// the on-screen keyboard: the interface ends above it, so a sheet's fields stay in view while they are typed in
+const vv = window.visualViewport;
+if (vv) { const kb = () => { const h = Math.round(innerHeight - vv.height - vv.offsetTop); document.documentElement.style.setProperty('--kb', (h > 80 ? h : 0) + 'px'); }; vv.addEventListener('resize', kb); vv.addEventListener('scroll', kb); }
 
 function poll() {
   const pull = () => {

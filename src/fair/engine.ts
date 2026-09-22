@@ -72,7 +72,7 @@ export class FairEngine implements EngineApi {
   private started = false;
   private holos = new Map<string, Holo>();
   private labelEls: { el: HTMLDivElement; l: Label }[] = [];
-  private labelCache = new WeakMap<HTMLDivElement, { o: string; t: string }>();
+  private labelCache = new WeakMap<HTMLDivElement, { o: string; t: string; key: string | null; hw: number; hh: number }>();
   private boothEls: { el: HTMLDivElement; booth: Booth | null; pos: THREE.Vector3 }[] = [];
   private myLabel: HTMLDivElement;
   /** the tag over the booth under the mouse */
@@ -86,7 +86,6 @@ export class FairEngine implements EngineApi {
   private ping: { mesh: THREE.Mesh; t: number };
   private running = false; private last = 0; private pingAt = 0; private proxAt = 0; private firstPing = true; private arrivalSeen = 0;
   private fps = { acc: 0, n: 0, dpr: 1, at: 0 };
-  private ui = 1;
   private pose: Pose = ''; private poseUntil = 0;
   private seat: Seat | null = null; private seatGoal: Seat | null = null; private wantBeforeSit = CAM.dist;
   private liftT = 1; private hallNow: number | null = null; private walked = 0; private picked: Booth | null = null;
@@ -178,7 +177,6 @@ export class FairEngine implements EngineApi {
     const w = this.host.clientWidth || innerWidth, h = this.host.clientHeight || innerHeight;
     this.renderer.setSize(w, h); this.camera.aspect = w / h; this.rig.baseFov = w < h ? 58 : 50;
     if (!this.started) this.camera.fov = this.rig.baseFov; // in play the rig eases the lens to it
-    this.ui = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui')) || 1;
     this.camera.updateProjectionMatrix();
   }
 
@@ -587,12 +585,12 @@ export class FairEngine implements EngineApi {
     }
   }
 
-  /* ---------------- labels: HTML, snapped to whole pixels ---------------- */
+  /* ---------------- labels: HTML, snapped to whole pixels, measured for real, never over each other or the body ---------------- */
 
   private updateLabels() {
     const v = new THREE.Vector3(), w = this.host.clientWidth, h = this.host.clientHeight, taken: [number, number, number, number][] = [];
     const write = (el: HTMLDivElement, opacity: string, transform?: string) => {
-      let c = this.labelCache.get(el); if (!c) this.labelCache.set(el, c = { o: '', t: '' });
+      let c = this.labelCache.get(el); if (!c) this.labelCache.set(el, c = { o: '', t: '', key: null, hw: 0, hh: 0 });
       if (c.o !== opacity) el.style.opacity = c.o = opacity;
       if (transform && c.t !== transform) el.style.transform = c.t = transform;
     };
@@ -602,7 +600,9 @@ export class FairEngine implements EngineApi {
       let vis = v.z < 1 && Math.abs(v.x) < 1.05 && Math.abs(v.y) < 1.05;
       const x = Math.round((v.x * 0.5 + 0.5) * w), y = Math.round((-v.y * 0.5 + 0.5) * h);
       if (vis) {
-        const hw = ((el.textContent?.length ?? 8) * 3.6 + 14) * this.ui, hh = 11 * this.ui, box: [number, number, number, number] = [x - hw, y - hh, x + hw, y + hh];
+        let c = this.labelCache.get(el); if (!c) this.labelCache.set(el, c = { o: '', t: '', key: null, hw: 0, hh: 0 });
+        if (c.key !== el.textContent) { c.key = el.textContent; c.hw = el.offsetWidth / 2 + 3; c.hh = el.offsetHeight / 2 + 2; } // measured once per text, not guessed from its length
+        const hw = c.hw, hh = c.hh, box: [number, number, number, number] = [x - hw, y - hh, x + hw, y + hh];
         if (taken.some((t) => box[0] < t[2] && box[2] > t[0] && box[1] < t[3] && box[3] > t[1])) vis = false; else taken.push(box);
       }
       if (vis) write(el, always ? '1' : THREE.MathUtils.clamp((maxD - d) / (maxD * 0.25), 0, 1).toFixed(2), `translate(-50%,-50%) translate(${x}px,${y}px)`); else write(el, '0');
@@ -613,8 +613,14 @@ export class FairEngine implements EngineApi {
       if (this.myLabel.textContent !== mine) this.myLabel.textContent = mine;
       this.myLabel.classList.toggle('exhib', this.role() === 'exhibitor');
       place(this.myLabel, p.set(b.pos.x, b.pos.y + 2.05, b.pos.z), 0, true);
-    } else write(this.myLabel, '0');
-    if (this.hovered) place(this.tip, this.tipPos, 0, true); else write(this.tip, '0');
+      if (this.hovered) place(this.tip, this.tipPos, 0, true); else write(this.tip, '0');
+      // the body's own patch of screen: no place name is written across the helmet
+      const feet = v.set(b.pos.x, b.pos.y, b.pos.z).project(this.camera), head = p.set(b.pos.x, b.pos.y + 2.0, b.pos.z).project(this.camera);
+      if (feet.z < 1 && head.z < 1) {
+        const fy = (-feet.y * 0.5 + 0.5) * h, hy = (-head.y * 0.5 + 0.5) * h, cx = (head.x * 0.5 + 0.5) * w, half = Math.abs(fy - hy) * 0.28;
+        taken.push([cx - half, Math.min(fy, hy), cx + half, Math.max(fy, hy)]);
+      }
+    } else { write(this.myLabel, '0'); write(this.tip, '0'); }
     const hero = this.labelEls.find((x) => x.l.kind === 'hero'); if (hero) place(hero.el, hero.l.pos, 0, true);
     for (const s of this.boothEls) { if (s.booth) place(s.el, s.pos, 52); else write(s.el, '0'); }
     for (const o of this.holos.values()) { if (!o.actor.root.visible) { write(o.label, '0'); continue; } const w2 = toWorld(o.track.x, o.track.y, 2.05); place(o.label, p.set(w2.x, w2.y, w2.z), 40); }
