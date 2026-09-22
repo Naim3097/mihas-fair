@@ -7,6 +7,7 @@
 // counter with the logo, the A-frame at the aisle.
 import * as THREE from 'three';
 import type { Booth, LevelData, Rect } from '../../shared/types';
+import { boothLabel } from '../../shared/rules';
 import { css } from '../theme';
 import { WALL_H, WALL_T, rectBox, toWorld, wallKey, wallRect } from './level';
 import { FAIR } from './palette';
@@ -137,33 +138,20 @@ export class BoothSet {
   }
 
   /** Every booth's name on every open side of its fascia — a stand of eight cells carries it eight times, as the
-   *  real shell scheme does. The name is, in order: the approved exhibitor's company, Lean X's exhibitor list, the
-   *  organiser's plan, or the booth number, so no fascia is blank. Drawn from packed atlases (names, and a smaller one
-   *  for booth numbers), one draw call each, fading with distance; rebuilt only when a name changes. */
+   *  real shell scheme does. A booth shows its number until an exhibitor registers it; then its number and their
+   *  company. Drawn from packed atlases (named booths, and a smaller one for bare numbers), one draw call each, fading
+   *  with distance; rebuilt only when a name changes. */
   private labelMeshes: THREE.InstancedMesh[] = [];
-  private listed = new Map<string, string>();
   private live = new Map<string, string>();
   private labelKey = '';
 
   private labelOf(b: Booth): string {
-    return this.live.get(b.id) ?? this.listed.get(b.id) ?? (b.name || `Booth ${b.id}`);
+    return b.id === this.level.hero.id ? b.name : boothLabel(b.id, this.live.get(b.id));
   }
 
-  /** Lean X's exhibitor list: one company per booth number; a booth several companies share is a pavilion. */
-  setDirectory(list: { company: string; onPlan: string[] }[]) {
-    const who = new Map<string, string[]>();
-    for (const e of list) for (const id of e.onPlan) (who.get(id) ?? who.set(id, []).get(id)!).push(e.company);
-    this.listed.clear();
-    for (const [id, cos] of who) {
-      const plan = this.level.booths[this.cellOfId.get(id) ?? -1]?.name;
-      this.listed.set(id, cos.length === 1 ? shortCompany(cos[0]!) : plan || 'Shared pavilion');
-    }
-    this.names();
-  }
-
-  /** Approved exhibitors: the company they registered goes up on every booth they run. */
-  private setLiveNames(list: { id: string; company: string; status: string }[]) {
-    this.live = new Map(list.filter((s) => s.status === 'approved' && s.company && s.id !== this.level.hero.id).map((s) => [s.id, shortCompany(s.company)]));
+  /** Registered booths (the list leaves out revoked ones): the company goes up the moment the exhibitor registers. */
+  private setLiveNames(list: { id: string; company: string }[]) {
+    this.live = new Map(list.filter((s) => s.company && s.id !== this.level.hero.id).map((s) => [s.id, shortCompany(s.company)]));
     this.names();
   }
 
@@ -189,8 +177,8 @@ export class BoothSet {
     this.labelKey = key;
     for (const m of this.labelMeshes) { m.geometry.dispose(); const mat = m.material as THREE.ShaderMaterial; (mat.uniforms.map!.value as THREE.Texture).dispose(); mat.dispose(); m.removeFromParent(); }
     this.labelMeshes = [];
-    // names get wide slots; booth numbers ("Booth 7C17") narrow ones, so every booth fits in two textures
-    const isNumber = (t: string) => /^Booth \S+$/.test(t);
+    // names get wide slots; bare booth numbers ("7C17") narrow ones, so every booth fits in two textures
+    const isNumber = (t: string) => /^\S+$/.test(t);
     this.labelMeshes.push(...atlasMeshes(labels.filter((l) => !isNumber(l.text)), 256, 32), ...atlasMeshes(labels.filter((l) => isNumber(l.text)), 128, 32));
     for (const m of this.labelMeshes) this.group.add(m);
   }

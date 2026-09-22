@@ -96,7 +96,7 @@ export class Director {
     }
     // Supply runs prefer online stations at both ends: two exhibitors get a visitor.
     const liveHere = live.map((s) => this.booth(s.id)!).filter((b) => b && b.deck === deck);
-    const pool = (liveHere.length >= 2 ? liveHere : booths.filter((b) => b.name)).filter((b) => b.id !== this.g.level.hero.id);
+    const pool = (liveHere.length >= 2 ? liveHere : booths).filter((b) => b.id !== this.g.level.hero.id);
     const byNear = [...pool].sort((a, b) => dist(a) - dist(b));
     for (const a of byNear.slice(0, 3)) {
       const b = [...pool].filter((x) => x.hall !== a.hall).sort((x, y) => Math.hypot(y.x - a.x, y.y - a.y) - Math.hypot(x.x - a.x, x.y - a.y))[0];

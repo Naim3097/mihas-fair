@@ -1,35 +1,26 @@
 // What the game can truthfully say about the show: everything here is counted from floor.json (the organiser's floor
-// plan and official exhibitor list), never written by hand. Shown when you walk into a hall, and while you sit.
+// plan), never written by hand. Booths carry no company names in the plan, so nothing here names an exhibitor.
+// Shown when you walk into a hall, and while you sit.
 import type { LevelData } from '../../shared/types';
 
-export interface HallCard { hall: number; level: number; booths: number; named: number; top: string | null }
-
-const tally = <T extends string | number>(list: T[]) => { const m = new Map<T, number>(); for (const k of list) m.set(k, (m.get(k) ?? 0) + 1); return [...m].sort((a, b) => b[1] - a[1]); };
+export interface HallCard { hall: number; level: number; booths: number }
 
 export function hallCards(level: LevelData): HallCard[] {
-  return level.halls.map((h) => {
-    const booths = level.booths.filter((b) => b.hall === h.id), sectors = tally(booths.flatMap((b) => (b.sector ? [b.sector] : [])));
-    return { hall: h.id, level: h.deck, booths: booths.length, named: booths.filter((b) => b.name).length, top: sectors[0]?.[0] ?? null };
-  });
+  return level.halls.map((h) => ({ hall: h.id, level: h.deck, booths: level.booths.filter((b) => b.hall === h.id).length }));
 }
-export const hallLine = (c: HallCard) => `${c.booths} booths${c.top ? ` · mostly ${c.top}` : ''}`;
+export const hallLine = (c: HallCard) => `${c.booths} booths`;
 
 /** Short, checkable sentences for the "while you sit" card. */
 export function facts(level: LevelData): string[] {
-  const booths = level.booths, named = booths.filter((b) => b.name), halls = hallCards(level);
-  const companies = tally(named.map((b) => b.name)), sectors = tally(booths.flatMap((b) => (b.sector ? [b.sector] : [])));
-  const biggest = [...halls].sort((a, b) => b.booths - a.booths)[0]!, multi = companies.filter(([, n]) => n > 1);
+  const booths = level.booths, halls = hallCards(level), places = level.areas.map((a) => a.name);
+  const biggest = [...halls].sort((a, b) => b.booths - a.booths)[0]!, smallest = [...halls].sort((a, b) => a.booths - b.booths)[0]!;
   const out = [
-    `MIHAS 2026 fills three levels of MITEC: ${booths.length.toLocaleString()} booths in ${halls.length} halls.`,
-    `${companies.length} exhibitors are on the official list so far.`,
-    `Hall ${biggest.hall}, on Level ${biggest.level}, is the biggest: ${biggest.booths} booths.`,
-    `Level 2 is where you came in: Halls 6, 7 and 8. Level 1 has Halls 2, 3 and 4; Level 3 has Halls 9, 10 and 11.`,
+    `This game covers Halls ${halls.map((h) => h.hall).sort((a, b) => a - b).join(', ').replace(/, (\d+)$/, ' and $1')} of MITEC: ${booths.length.toLocaleString()} booths.`,
+    `Hall ${biggest.hall} is the biggest: ${biggest.booths} booths. Hall ${smallest.hall} has ${smallest.booths}.`,
+    `Every booth shows its number. Once its exhibitor registers in the game, their company goes up next to it.`,
+    `Lean X Digital is at Booth ${level.hero.id}, in Hall ${level.hero.id.match(/^\d+/)?.[0] ?? ''}. Your mission starts there.`,
   ];
-  if (sectors[0]) out.push(`The biggest category on the floor is ${sectors[0][0]}: ${sectors[0][1]} booths.`);
-  if (multi[0]) out.push(`${multi.length} exhibitors took more than one booth. The largest stand is ${multi[0][0]}, with ${multi[0][1]}.`);
-  for (const [sector] of sectors.slice(1, 4)) {
-    const where = tally(booths.filter((b) => b.sector === sector).map((b) => b.hall))[0];
-    if (where) out.push(`Looking for ${sector}? Most of it is in Hall ${where[0]}.`);
-  }
+  if (places.length) out.push(`Besides the booths there are ${places.length} places to visit, including ${places.slice(0, 3).join(', ')}.`);
+  out.push(`Tap a booth to see who runs it, or open the map to search by booth number or company.`);
   return out;
 }

@@ -24,12 +24,9 @@ test('the plan is read at the standard 3 m module, and level 2 is drawn at true 
   assert.ok(Math.abs(q.y + 80) < 1e-9, 'and outside it');
 });
 
-test('stands: cells of one exhibitor join, partitions go where a neighbour is, fronts open to the aisle', () => {
+test('stands: every booth is its own stand (no names in the plan to join them), partitions go where a neighbour is, fronts open to the aisle', () => {
   const stands = planStands(level);
-  const byName = new Map(stands.map((s) => [`${s.deck}|${s.name}`, s]));
-  const yapiem = byName.get('2|Yapiem')!;
-  assert.ok(yapiem && yapiem.cells.length === 8, 'Yapiem booked eight cells on level 2');
-  assert.ok(yapiem.cells.every((c) => c.inner.size >= 1), 'no cell of a block stands alone');
+  assert.ok(stands.every((s) => s.cells.length === 1), 'booths carry no company names, so none are merged into blocks');
   const hero = stands.find((s) => s.cells.some((c) => c.b.id === level.hero.id))!;
   assert.equal(hero.cells.length, 1);
   assert.deepEqual([...hero.cells[0]!.open].sort(), ['S', 'W'], 'booth 8H18A is a corner: open to the west aisle and the south one, as the plan draws it');
@@ -37,7 +34,7 @@ test('stands: cells of one exhibitor join, partitions go where a neighbour is, f
   assert.equal(hero.front, 'W');
   const kinds = new Map<string, number>();
   for (const s of stands) kinds.set(s.kind, (kinds.get(s.kind) ?? 0) + 1);
-  assert.ok((kinds.get('shell') ?? 0) > 150 && (kinds.get('corner') ?? 0) > 100 && (kinds.get('block') ?? 0) >= 5, JSON.stringify([...kinds]));
+  assert.ok((kinds.get('shell') ?? 0) > 150 && (kinds.get('corner') ?? 0) > 100, JSON.stringify([...kinds]));
   const cells = stands.reduce((n, s) => n + s.cells.length, 0);
   assert.equal(cells, level.booths.length, 'every cell belongs to exactly one stand');
 });

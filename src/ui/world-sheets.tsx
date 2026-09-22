@@ -63,7 +63,7 @@ export function MapSheet({ engine }: Eng) {
       <label>Booth number or exhibitor<input value={q} placeholder="e.g. 7C17, Mamee, UOB" onInput={(e) => setQ((e.target as HTMLInputElement).value)} /></label>
       {hits ? (
         <div class="results">
-          {hits.map((b) => <button key={b.id} class="result" onClick={() => go(b.x, b.y, name(b))}><strong>{name(b)}</strong><small>Booth {b.id} · Hall {b.hall} · Level {b.deck}{b.sector ? ` · ${b.sector}` : ''}{sm.has(b.id) ? ' · online' : ''}{stamped.has(b.id) ? ' · stamped' : ''}</small></button>)}
+          {hits.map((b) => <button key={b.id} class="result" onClick={() => go(b.x, b.y, name(b))}><strong>{name(b)}</strong><small>Booth {b.id} · Hall {b.hall}{sm.has(b.id) ? ' · online' : ''}{stamped.has(b.id) ? ' · stamped' : ''}</small></button>)}
           {hits.length === 0 && <p class="fine">No booth or exhibitor matches on any of the three levels.</p>}
         </div>
       ) : (

@@ -2,8 +2,7 @@
 // deck on everything, so a level could come back without touching the client.
 // Level 2 source: tools/data/level2-source.json (vector-derived from Floor Plan V226, page 2).
 // Units: metres, origin = source PDF lower-left, +y = north.
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { shortName } from './names.mjs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -28,22 +27,9 @@ const areas = [
   { id: 'merch', name: 'MIHAS Merchandise', x0: 8.8, y0: 35.7, x1: 20.7, y1: 38.8, h: 1.4, kind: 'pad' },
 ];
 
-// Exhibitor names we can stand behind: floor plan V226 labels + official exhibitor list (mihas.com.my), matched by booth number.
-const names = {
-  '8H19': 'Dr Parveen', '8H15': 'JK Agri', '8H17B': 'UOB', '8E14': 'Bioalpha', '8C14': 'Biotropics',
-  '7C17': 'Mamee Double Decker', '7C18': 'Mamee Double Decker', '7B14': 'F&N', '7B15': 'F&N', '6H14': 'F&N', '6H15': 'F&N',
-  '7B12': 'JETRO', '6H12': 'JETRO', '7B13': 'Afyaa', '6H13': 'Afyaa', '6G29': 'USDA', '6G30': 'USDA',
-  '6A17': 'Bank Simpanan Nasional', '6A18': 'Bank Simpanan Nasional', '7E23': 'Nexus Coffee', '7G18': 'Infopages',
-  '7J09': 'BIG Caring Group', '7J10': 'BIG Caring Group', '8B09': 'BIG Caring Group', '8B10': 'BIG Caring Group',
-  '6B14': 'Public Mutual', '6B10': 'ShokranPay', '7J14': 'Indonesia Eximbank', '6G09': 'California Milk',
-  '8D26': 'T360', '8D11': 'GHB', '8D25': 'MRCA', '8D12': 'Sure Expo', '8C13': 'BBC',
-};
-for (const id of ['8G15', '8G16', '8G17A', '8G17B', '8G18A', '8G18B', '8G19', '8G20']) names[id] = 'Yapiem';
-names[HERO_ID] = 'Lean X Digital · nexova';
-
-// The organiser's public exhibitor list (tools/fetch-exhibitors.mjs) beats labels read off the drawing.
-const officialFile = resolve(here, 'data/exhibitors.json');
-const official = existsSync(officialFile) ? JSON.parse(readFileSync(officialFile, 'utf8')).booths : {};
+// Booths carry only their number: the company on each booth comes from the exhibitor who registers it in the game, never
+// from a list (the organiser's list and the spreadsheet named the wrong companies). Our own booth is the one exception.
+const HERO_NAME = 'Lean X Digital · nexova';
 const raw = JSON.parse(readFileSync(SRC, 'utf8'));
 const inside = (o, a) => o.x_m > a.x0 && o.x_m < a.x1 && o.y_m > a.y0 && o.y_m < a.y1;
 
@@ -58,8 +44,7 @@ const booths = raw.booths
     hall: Number(/^(\d{1,2})/.exec(o.booth_id)?.[1] ?? 0),
     x: +o.x_m.toFixed(2),
     y: +o.y_m.toFixed(2),
-    name: o.booth_id === HERO_ID ? names[HERO_ID] : official[o.booth_id] ? shortName(official[o.booth_id].name) : names[o.booth_id] ?? '',
-    sector: official[o.booth_id]?.sector ?? '',
+    name: o.booth_id === HERO_ID ? HERO_NAME : '',
     deck: 2,
   }))
   .sort((a, b) => a.id.localeCompare(b.id, 'en', { numeric: true }));
@@ -103,5 +88,4 @@ const out = {
 
 mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(OUT, JSON.stringify(out));
-console.log(`  ${booths.filter((b) => official[b.id]).length} names from the official list, ${booths.filter((b) => b.name && !official[b.id]).length} from plan labels`);
-console.log(`floor.json: Level 2, ${booths.length} booths (${raw.booths.length - booths.length} phantoms removed), ${out.halls.length} halls, ${booths.filter((b) => b.name).length} named, hero ${HERO_ID} @ ${hero.x},${hero.y}`);
+console.log(`floor.json: Level 2, ${booths.length} booths (${raw.booths.length - booths.length} phantoms removed), ${out.halls.length} halls, hero ${HERO_ID} @ ${hero.x},${hero.y}`);

@@ -7,7 +7,6 @@ import * as THREE from 'three';
 import type { Booth, LevelData, StationView } from '../../shared/types';
 import { type Place, type Tone } from '../game/places';
 import { BoothSet } from './booths';
-import { directory } from '../exhibitors';
 import { FAIR } from './palette';
 import { css } from '../theme';
 import { DECK_MARGIN, GLASS_H, toWorld, type FairLevel } from './level';
@@ -217,7 +216,6 @@ export class FairWorld {
   private stands(fair: FairLevel) {
     this.level.booths.forEach((b, i) => this.boothIndex.set(b.id, i));
     this.booths = new BoothSet(this.level, fair.stands, this.lean); this.scene.add(this.booths.group);
-    void directory().then((list) => this.booths?.setDirectory(list)); // Lean X's exhibitor list names the booths the plan left blank
     this.pins = new THREE.InstancedMesh(new THREE.OctahedronGeometry(0.55), this.flat(FAIR.orange), 256);
     this.pins.count = 0; this.pins.frustumCulled = false; this.scene.add(this.pins);
   }

@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { effect } from '@preact/signals';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { Booth, Hologram, LevelData, Lift } from '../../shared/types';
-import { STAMP_RADIUS_M, type Pose } from '../../shared/rules';
+import { STAMP_RADIUS_M, boothLabel, type Pose } from '../../shared/rules';
 import { classByKey } from '../../content';
 import { api, ApiError } from '../net/api';
 import { sfx } from '../sfx';
@@ -456,7 +456,7 @@ export class FairEngine implements EngineApi {
     this.boothEls.forEach((slot, i) => {
       const b = named[i]?.b ?? null; if (slot.booth === b) return;
       slot.booth = b;
-      if (b) { slot.el.textContent = sm.get(b.id)?.company || b.name; slot.el.classList.toggle('online', sm.has(b.id)); const w = toWorld(b.x, b.y, this.level.booth.h + 2.7); slot.pos.set(w.x, w.y, w.z); }
+      if (b) { slot.el.textContent = boothLabel(b.id, sm.get(b.id)?.company); slot.el.classList.toggle('online', sm.has(b.id)); const w = toWorld(b.x, b.y, this.level.booth.h + 2.7); slot.pos.set(w.x, w.y, w.z); }
     });
 
     const hall = this.level.halls.find((h) => pos.x >= h.x0 && pos.x <= h.x1 && pos.y >= h.y0 && pos.y <= h.y1)?.id ?? null;

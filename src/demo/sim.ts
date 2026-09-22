@@ -70,9 +70,8 @@ export class DemoSim {
     at(t);
 
     // --- who: exhibitors with booths online, visitors on the floor, visitors at home, one player to review
-    const hero = this.level.hero, d2 = (this.byDeck.get(2) ?? []).filter((b) => b.name).sort((a, b) => Math.hypot(a.x - hero.x, a.y - hero.y) - Math.hypot(b.x - hero.x, b.y - hero.y));
-    const uniqueName = <T extends { name: string }>(list: T[]) => [...new Map(list.map((b) => [b.name.toLowerCase(), b])).values()]; // some exhibitors have two booths
-    const hostBooths = uniqueName([1, 3, 7, 12, 18, 28, 40, 55, 75, 95, 115, 140, 160].map((i) => d2[Math.min(i, d2.length - 1)]!)).slice(0, 12); // three by the Launch Pad, the rest across Level 2
+    const hero = this.level.hero, d2 = (this.byDeck.get(2) ?? []).sort((a, b) => Math.hypot(a.x - hero.x, a.y - hero.y) - Math.hypot(b.x - hero.x, b.y - hero.y));
+    const hostBooths = [...new Set([1, 3, 7, 12, 18, 28, 40, 55, 75, 95, 115, 140, 160].map((i) => d2[Math.min(i, d2.length - 1)]!))].slice(0, 12); // three by the Launch Pad, the rest across Halls 6–8
     const plan: { kind: Kind; deck: number; booth?: Booth }[] = [
       ...hostBooths.map((b) => ({ kind: 'host' as const, deck: b.deck, booth: b })),
       ...Array.from({ length: 10 }, () => ({ kind: 'onsite' as const, deck: 2 })),
@@ -83,7 +82,7 @@ export class DemoSim {
     for (const [i, p] of plan.entries()) {
       const id = await game.createGuest(), passport = p.kind !== 'remote' || r() < 0.75;
       await game.start(id, p.kind === 'host' ? 'exhibitor' : 'visitor');
-      const company = p.booth ? p.booth.name : `${COMPANIES[i % COMPANIES.length]} (demo)`;
+      const company = `${COMPANIES[i % COMPANIES.length]} (demo)`; // demo exhibitors register a made-up company, as real ones type theirs
       if (passport) await game.issuePassport(id, { name: PEOPLE[i % PEOPLE.length]!, company, role: pickOf(ROLES), phone: `+60110000${String(1000 + i)}`, email: `visitor${i + 1}@example.com`, showContact: true, consentMarketing: r() < 0.6, consentNotice: true });
       roster.push({ id, kind: p.kind, deck: p.deck, station: p.booth?.id, hosting: p.booth ? i % 3 !== 2 : undefined, passport });
       at(t + 20_000);
@@ -94,7 +93,7 @@ export class DemoSim {
     const hosts = roster.filter((b) => b.kind === 'host'), pendingAt = Math.min(7, hosts.length - 1); // the far end of Level 2
     for (const [i, h] of hosts.entries()) {
       const b = game.stations.get(h.station!)!;
-      await stations.claim(h.id, { stationId: b.id, company: b.name, offer: OFFERS[i % OFFERS.length]!, link: '', color: COLORS[i % COLORS.length]! });
+      await stations.claim(h.id, { stationId: b.id, company: `${COMPANIES[i % COMPANIES.length]} (demo)`, offer: OFFERS[i % OFFERS.length]!, link: '', color: COLORS[i % COLORS.length]! });
       if (i !== pendingAt) await stations.crewSetStatus(b.id, 'approved');
       at(t + 30_000);
     }

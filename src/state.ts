@@ -63,7 +63,6 @@ export function setReferral(code: string) {
 export const teamInvite = signal<string | null>(null);
 
 /** An exhibitor registering: what they picked from the exhibitor list, or `manual` when they key it in themselves. */
-export const claimDraft = signal<{ company: string; booths: string[]; manual: boolean } | null>(null);
 
 /** A card-swap code that arrived in the URL (scanned with the phone's own camera). */
 export const pendingLink = signal<string | null>(null);

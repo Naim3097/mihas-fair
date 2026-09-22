@@ -98,6 +98,9 @@ export const DEFAULT_SHARE: ShareField[] = ['name', 'company', 'role'];
 /** With a card, a player appears as "Aisyah R." above their astronaut and on the board; without one, as "Visitor 4821". */
 export const NAME_ON_BOARD = true;
 
+/** What a booth is called everywhere: its number, and the company that registered it once someone has. */
+export const boothLabel = (id: string, company?: string | null) => (company ? `${id} · ${company}` : id);
+
 /** A scan at a real booth counts as "at MIHAS" for this long (quests, trust, Ground Control). */
 export const ONSITE_TTL_MS = 30 * 60_000;
 

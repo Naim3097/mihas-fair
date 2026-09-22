@@ -5,7 +5,6 @@
   "type": "module",
   "scripts": {
     "data": "node tools/build-floor.mjs",
-    "data:all": "node tools/fetch-exhibitors.mjs && node tools/build-decks.mjs && node tools/build-floor.mjs",
     "dev": "concurrently -k -n api,web -c cyan,yellow \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "node --env-file-if-exists=.env --watch --import tsx server/node.ts",
     "dev:web": "vite",
