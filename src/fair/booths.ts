@@ -6,7 +6,7 @@
 // own, is dressed by hand from the company's booth design: the back-wall graphic, the roll-ups, the screen, the
 // counter with the logo, the A-frame at the aisle.
 import * as THREE from 'three';
-import type { Booth, LevelData } from '../../shared/types';
+import type { Booth, LevelData, Rect } from '../../shared/types';
 import { css } from '../theme';
 import { WALL_H, WALL_T, rectBox, toWorld, wallKey, wallRect } from './level';
 import { FAIR } from './palette';
@@ -53,6 +53,8 @@ export class BoothSet {
   private online = new Set<string>();
   private screen: THREE.MeshBasicMaterial | null = null;
   private unit = new THREE.BoxGeometry(1, 1, 1);
+  /** every partition's plan rectangle, to find the face a photo hangs on */
+  private wallRects: Rect[] = [];
 
   /** lean: the phone tier, which skips the small parts (rails, spotlights, chairs, bins) and keeps the booths. */
   constructor(private level: LevelData, private stands: StandInfo[], private lean = false) {
@@ -76,7 +78,7 @@ export class BoothSet {
         if (st.kind === 'island') continue; // an island is open all round: a platform, a tower, plinths, no shell scheme
         for (const s of c.walled) {
           const k = wallKey(b, s); if (seenWall.has(k)) continue; seenWall.add(k);
-          const r = rectBox(wallRect(b, s, st.w, st.d), 0, WALL_H);
+          const wr = wallRect(b, s, st.w, st.d), r = rectBox(wr, 0, WALL_H); this.wallRects.push(wr);
           wall.box(r.min.x, 0, r.min.z, r.max.x, WALL_H, r.max.z);
           if (!this.lean) rail.box(r.min.x - 0.01, WALL_H, r.min.z - 0.01, r.max.x + 0.01, WALL_H + 0.06, r.max.z + 0.01);
         }
@@ -280,10 +282,26 @@ export class BoothSet {
         dress((maxW, maxH) => { const w = Math.min(maxW, maxH * aspect), h = w / aspect; return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.02 })); });
       }, undefined, () => { /* an image that will not load leaves the booth as it was */ });
       if (s.logo) load(s.logo, (art) => dressWithLogo(st, group, art));
-      if (s.photo) load(s.photo, (art) => dressWithPhoto(st, group, art));
+      if (s.photo) load(s.photo, (art) => dressWithPhoto(st, group, art, this.backFace(st)));
     }
   }
   private logos = new Map<string, { url: string; group: THREE.Group }>();
+
+  /** Where the inside face of a stand's back wall is, on the plan axis across it. Cells are drawn a little wider than
+   *  the plan spaces them, so the booth behind can put its own partition a few centimetres inside this one: the face
+   *  is the innermost of the walls along the back edge, not the edge itself. */
+  private backFace(st: StandInfo): number {
+    const b = BACK[st.front], vertical = b === 'E' || b === 'W';
+    const edge = b === 'E' ? st.rect.x1 : b === 'W' ? st.rect.x0 : b === 'N' ? st.rect.y1 : st.rect.y0;
+    const at = vertical ? st.label.y : st.label.x, inward = b === 'E' || b === 'N' ? -1 : 1;
+    let face = edge + inward * (WALL_T / 2);
+    for (const r of this.wallRects) {
+      const [lo, hi, a0, a1] = vertical ? [r.x0, r.x1, r.y0, r.y1] : [r.y0, r.y1, r.x0, r.x1];
+      if (hi - lo > 0.3 || at < a0 || at > a1 || hi < edge - 0.3 || lo > edge + 0.3) continue; // only partitions along this edge
+      face = inward < 0 ? Math.min(face, lo) : Math.max(face, hi);
+    }
+    return face;
+  }
 
   /** Stamped cells: a gold band along the top of their fascia. */
   setStamped(ids: Iterable<string>) {
@@ -354,12 +372,12 @@ const BACK: Record<Side, Side> = { N: 'S', S: 'N', E: 'W', W: 'E' };
 
 /** A photo of the real booth: on the back wall, facing the aisle, the way Lean X's booth carries its graphic.
  *  An island has no back wall, so its photo goes nowhere (its logo is on the tower). */
-function dressWithPhoto(st: StandInfo, g: THREE.Group, art: Art) {
+function dressWithPhoto(st: StandInfo, g: THREE.Group, art: Art, face: number) {
   if (st.kind === 'island') return;
   const f = st.front, b = BACK[f], along = f === 'N' || f === 'S';
-  const x = b === 'E' ? st.rect.x1 : b === 'W' ? st.rect.x0 : st.label.x, y = b === 'N' ? st.rect.y1 : b === 'S' ? st.rect.y0 : st.label.y;
+  const x = b === 'E' || b === 'W' ? face : st.label.x, y = b === 'N' || b === 'S' ? face : st.label.y;
   const span = along ? st.rect.x1 - st.rect.x0 : st.rect.y1 - st.rect.y0, [dx, dy] = DIR[f];
-  const m = art(Math.min(span - 0.4, Math.max(1.6, st.label.len - 0.4), 3.2), 1.9), p = toWorld(x + dx * 0.07, y + dy * 0.07, 1.3);
+  const m = art(Math.min(span - 0.4, Math.max(1.6, st.label.len - 0.4), 3.2), 1.9), p = toWorld(x + dx * 0.03, y + dy * 0.03, 1.3);
   m.position.set(p.x, p.y, p.z); m.rotation.y = FACE_ROT[f]; g.add(m);
 }
 
