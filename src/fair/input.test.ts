@@ -82,3 +82,13 @@ test('keys: WASD steers at a jog, Shift sprints, letting go stops', () => {
   key('Space'); it = input.poll(); assert.ok(it.jump); it = input.poll(); assert.ok(!it.jump, 'a tap is read once');
   input.dispose();
 });
+
+test('the input follows the sink it is handed, not the one it was built with: idle at first, then the world that is on', () => {
+  const el = new FakeEl(), keys: string[] = [];
+  const input = new FairInput(el as unknown as HTMLElement, { onTap() {}, onOrbit() {}, onZoom() {}, onKey() {}, enabled: () => false });
+  key('KeyW'); assert.equal(input.poll().move.y, 0, 'no world on: the keys go nowhere'); key('KeyW', 'keyup');
+  input.setSink({ onTap() {}, onOrbit() {}, onZoom() {}, onKey: (a) => keys.push(a), enabled: () => true });
+  key('KeyW'); assert.equal(input.poll().move.y, 1, 'a world on: the keys steer'); key('KeyW', 'keyup');
+  key('KeyE'); assert.deepEqual(keys, ['interact'], 'and E reaches that world');
+  input.dispose();
+});

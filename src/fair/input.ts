@@ -46,19 +46,20 @@ export class FairInput {
     on(el, 'pointermove', (e: PointerEvent) => this.moveEv(e));
     on(el, 'pointerup', (e: PointerEvent) => this.up(e));
     on(el, 'pointercancel', (e: PointerEvent) => this.up(e, true));
-    on(el, 'pointerleave', (e: PointerEvent) => { if (e.pointerType === 'mouse') sink.onHover?.(null); });
-    on(el, 'wheel', (e: WheelEvent) => { e.preventDefault(); sink.onZoom(Math.exp(e.deltaY * 0.0012)); }, { passive: false });
+    // every handler asks this.sink, never the one given here: the stage hands the input to whichever world is on
+    on(el, 'pointerleave', (e: PointerEvent) => { if (e.pointerType === 'mouse') this.sink.onHover?.(null); });
+    on(el, 'wheel', (e: WheelEvent) => { e.preventDefault(); this.sink.onZoom(Math.exp(e.deltaY * 0.0012)); }, { passive: false });
     on(el, 'contextmenu', (e: Event) => e.preventDefault());
     on(window, 'keydown', (e: KeyboardEvent) => {
-      if (typing(e.target) || !sink.enabled()) return;
+      if (typing(e.target) || !this.sink.enabled()) return;
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
       if (e.repeat) return;
       this.keys.add(e.code); this.fromKeys();
       if (e.code === 'Space') this.edges.jump = true;
       else if (e.code === 'KeyC' || e.code === 'ControlLeft' || e.code === 'ControlRight') this.edges.dodge = true;
-      else if (e.code === 'KeyE') sink.onKey('interact');
-      else if (e.code === 'Digit1') sink.onKey('wave'); else if (e.code === 'Digit2') sink.onKey('cheer'); else if (e.code === 'Digit3') sink.onKey('dance');
-      else if (e.code === 'KeyM') sink.onKey('map');
+      else if (e.code === 'KeyE') this.sink.onKey('interact');
+      else if (e.code === 'Digit1') this.sink.onKey('wave'); else if (e.code === 'Digit2') this.sink.onKey('cheer'); else if (e.code === 'Digit3') this.sink.onKey('dance');
+      else if (e.code === 'KeyM') this.sink.onKey('map');
     });
     on(window, 'keyup', (e: KeyboardEvent) => { this.keys.delete(e.code); this.fromKeys(); });
     on(window, 'blur', () => this.release());

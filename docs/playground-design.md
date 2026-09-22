@@ -463,3 +463,9 @@ otherwise; a hidden tab sends the run so far as a partial post.
 - Done, all five phases. What remains is not code: the real-phone protocol (`docs/phone-test.md`, rows 17–22) on a
   mid-range Android and an iPhone, the crew's word on the daily bridge, and the three fair-rules items that were never
   the Playground's.
+
+**Fix, 23 Sep, after Phase 5.** The keyboard did nothing in either world since Phase 0: the shared input's key
+handler asked the sink it was built with (the stage's idle one) whether keys were allowed, while the pointer handlers
+asked the live sink; taps jumped, W A S D and E went nowhere. Every handler now asks the live sink, and a test hands
+the input from an idle sink to a world's and steers. The browser checks of Phases 1–5 drove movement through the
+input's internals, which is why it went unseen: controls are verified with real key and pointer events from now on.
