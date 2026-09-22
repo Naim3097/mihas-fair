@@ -34,7 +34,7 @@ import type { PlaygroundStore } from '../playground/store';
 import { Ribbon } from '../playground/ribbon';
 export { pickQuality, type Quality } from './stage';
 import { CX, CY, buildFairLevel, fixY, toPlan, toWorld, type FairLevel } from './level';
-import { NexoActor, loadNexo, loadNexoLibrary, loadNexoLod, type NexoRole } from './nexo';
+import { NexoActor, loadKit, loadNexo, loadNexoLibrary, loadNexoLod, type NexoRole } from './nexo';
 import { FAIR_MOVEMENT } from './movement';
 import { Reach } from './reach';
 import { RouteFollower } from './route';
@@ -172,6 +172,7 @@ export class FairEngine implements EngineApi, Scene {
    *  the server's word on what is owned). */
   useKits(store: PlaygroundStore) {
     this.kits = store; this.setKit(store.get().gear);
+    for (const g of store.get().unlocks) if (g !== 'boots') void loadKit(g); // a kit owned is a kit ready to wear
     this.stops.push(store.onChange(() => { const s = store.get(); if (!s.unlocks.includes(this.kit)) this.setKit('boots'); else if (s.gear !== this.kit) this.setKit(s.gear); }));
   }
   /** The next kit owned, from the chip in the dock. */
@@ -182,7 +183,7 @@ export class FairEngine implements EngineApi, Scene {
     if (this.kit === g && this.sim.movement === FAIR_KITS[g]) return;
     this.kit = g; this.sim.movement = FAIR_KITS[g];
     const p = this.sim.player; p.fuel = FAIR_KITS[g].thrust?.fuel ?? 0; p.airJumps = FAIR_KITS[g].airJumps; p.thrusting = false;
-    this.player?.setLocomotion(g === 'skates' ? 'skate' : 'walk'); this.player?.setFlight(false);
+    this.player?.setLocomotion(g === 'skates' ? 'skate' : 'walk'); this.player?.setFlight(false); this.player?.wear(g);
     for (const r of [...this.ribbons, this.exhaust]) r.clear();
     pgFuel.value = Math.round(p.fuel);
   }
@@ -195,7 +196,7 @@ export class FairEngine implements EngineApi, Scene {
     for (const o of this.holos.values()) { if (!o.actor.root.visible) continue; const p = o.actor.root.position, d = Math.hypot(p.x - x, p.z - z); if (d < bd) { bd = d; best = o; } }
     return best ? this.face.set(best.actor.root.position.x, best.actor.root.position.y + 1.3, best.actor.root.position.z) : null;
   }
-  private makeActor(role: NexoRole, mine = false): NexoActor { const a = new NexoActor(mine ? this.gltf : this.gltfOthers ?? this.gltf, this.lib, role, this.quality === 'high'); a.setBlob(!this.world.shadows); if (mine) a.setLocomotion(this.kit === 'skates' ? 'skate' : 'walk'); this.world.scene.add(a.root); return a; }
+  private makeActor(role: NexoRole, mine = false): NexoActor { const a = new NexoActor(mine ? this.gltf : this.gltfOthers ?? this.gltf, this.lib, role, this.quality === 'high'); a.setBlob(!this.world.shadows); if (mine) { a.setLocomotion(this.kit === 'skates' ? 'skate' : 'walk'); a.wear(this.kit); } this.world.scene.add(a.root); return a; }
   /** The model file arrived: every body gets it, in place. */
   private rebuildBodies() {
     if (this.player) { this.player.dispose(); this.player = this.makeActor(this.role(), true); }
@@ -266,7 +267,7 @@ export class FairEngine implements EngineApi, Scene {
       if (this.player) {
         const yawRate = angleDiff(this.lastYaw, p.yaw) / Math.max(dt, 1e-3); this.lastYaw = p.yaw;
         this.player.setLean(skating ? THREE.MathUtils.clamp(yawRate * 0.08 * Math.min(1, sp / 6), -0.35, 0.35) : 0);
-        this.player.setFlight(flying);
+        this.player.setFlight(flying); this.player.setThrust(p.thrusting ? 1 : 0);
         const lean = flying ? Math.min(1, sp / 7) * 0.35 : b.grounded ? Math.min(0.8, sp / 11) * (skating ? 0.22 : 0.16) : 0;
         this.player.place(b.pos.x, b.pos.y, b.pos.z, p.yaw, lean); this.player.attend(this.nearestFace(b.pos.x, b.pos.z, 6)); this.player.applySim(p.anim, dt, sp);
         // the kit's trails: two ribbons from the skates' ankles, the exhaust from the jetpack while it fires

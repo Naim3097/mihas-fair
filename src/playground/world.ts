@@ -4,6 +4,7 @@
 // draw calls, nothing allocated per frame.
 import * as THREE from 'three';
 import { Light } from '../fair/light';
+import { loadKit } from '../fair/nexo';
 import { FAIR } from '../fair/palette';
 import { Sky } from '../fair/sky';
 import { SLAB, type Course, type Gear, type Pickup, type PickupKind } from './course';
@@ -37,6 +38,8 @@ export class PlaygroundWorld {
   private collected: Uint8Array;
   private pops: { i: number; t: number }[] = [];
   private tmpM = new THREE.Matrix4(); private tmpQ = new THREE.Quaternion(); private tmpP = new THREE.Vector3(); private tmpS = new THREE.Vector3();
+  /** the kit itself over each stand, turning slowly */
+  private showcase: { obj: THREE.Object3D; y: number }[] = [];
   /** the gear stands' discs, and the one swelling for a purchase */
   private discs: Partial<Record<Gear, THREE.Mesh>> = {}; private pop: { mesh: THREE.Mesh; t: number } | null = null;
 
@@ -96,6 +99,7 @@ export class PlaygroundWorld {
       const disc = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 0.08, 40), flat(TINT[s.gear], s.gear === 'boots' ? 0 : 0.25)); disc.position.set(s.x, 0.04, s.z); disc.receiveShadow = true; this.scene.add(disc); this.discs[s.gear] = disc;
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.3, 0.3), flat(INK)); post.position.set(s.x, 0.65, s.z - 1.0); post.castShadow = true; this.scene.add(post);
       this.labels.push({ text: `${GEAR[s.gear].name}${GEAR[s.gear].price ? ` · ${GEAR[s.gear].price} ★` : ''}`, pos: new THREE.Vector3(s.x, 2.0, s.z - 1.0), kind: 'stand', gear: s.gear });
+      if (s.gear !== 'boots') void loadKit(s.gear, true).then((g) => { if (!g) return; const o = g.clone(), y = s.gear === 'skates' ? 1.36 : 1.68; o.position.set(s.x, y, s.z - 1.0); o.scale.setScalar(s.gear === 'skates' ? 1.8 : 1.3); this.scene.add(o); this.showcase.push({ obj: o, y }); }); // the thing itself, over its stand
     }
     const portal = new THREE.Mesh(new THREE.CylinderGeometry(c.portal.r, c.portal.r, 0.08, 40), flat(FAIR.blue, 0.2)); portal.position.set(c.portal.x, 0.04, c.portal.z); this.scene.add(portal);
     const halo = new THREE.Mesh(new THREE.TorusGeometry(c.portal.r + 0.2, 0.06, 8, 40).rotateX(-Math.PI / 2), flat(FAIR.blue)); halo.position.set(c.portal.x, 0.12, c.portal.z); this.scene.add(halo);
@@ -127,6 +131,7 @@ export class PlaygroundWorld {
   /** Spin, bob, breathe; the pops of what was just collected. */
   update(t: number, dt: number) {
     this.sky.update(t);
+    for (const s of this.showcase) { s.obj.rotation.y = t * 0.6; s.obj.position.y = s.y + Math.sin(t * 1.3) * 0.04; }
     if (this.pop) { this.pop.t += dt; const k = this.pop.t / 0.5, s = k < 1 ? 1 + Math.sin(k * Math.PI) * 0.3 : 1; this.pop.mesh.scale.set(s, 1, s); if (k >= 1) this.pop = null; }
     const K = this.course.pickups, M = this.tmpM, Q = this.tmpQ, P = this.tmpP, S = this.tmpS;
     for (let i = 0; i < K.length; i++) {
@@ -171,6 +176,7 @@ export class PlaygroundWorld {
   hideMarker() { this.marker.visible = false; }
 
   dispose() {
+    for (const s of this.showcase) s.obj.removeFromParent(); // shared with every body that wears the kit
     this.sky.dispose(); for (const r of this.ribbons) r.dispose(); this.exhaust.dispose();
     this.scene.traverse((o) => { const m = o as THREE.Mesh; if (!m.isMesh) return; m.geometry?.dispose(); for (const mat of Array.isArray(m.material) ? m.material : [m.material]) { (mat as THREE.MeshBasicMaterial).map?.dispose(); mat.dispose(); } });
   }

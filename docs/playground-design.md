@@ -480,6 +480,21 @@ the kit: the tuning, the glide pose and its ribbons, the flight pose and its exh
 skates, the thrust's sound, the fuel to the Fly button, a seat given up for thrust as for a jump. The kit chosen is
 kept on the server (`POST /api/playground/gear`, only what is owned). `docs/phone-test.md` gains row 23.
 
+**Phase 7 — done (23 Sep): the kits as things on the body.** The skates and the jetpack are models now, made the way
+the body was (Tripo H3.1 multiview from the reference sheets, the pick judged in the turnaround viewer, a matte web
+export with the cyan lights on an emissive map; `assets-src/kits/README.md` has the jobs, the commands and the
+numbers). `NexoActor.wear(kit)` in `src/fair/nexo.ts` hangs them on the rig by measurement: a skate *frame* (the
+whole skate cut at the sole with `tools/rig/clip-item.mjs`, because a mascot boot 50 cm long cannot fit inside a
+skate boot) under each foot joint, scale 1.3, the body lifted by the frame's height, the trail ribbons now starting
+at the wheels; the jetpack on the chest joint over the suit's own pack, scale 1.35, with two additive cone flames
+under its tanks that follow the thrust (eased, flickering) and the exhaust trail starting at its bottom. Both
+engines call `wear` where they set the gear, `setThrust` from the sim's thrusting flag, and preload the kits owned;
+the Playground's stands show the whole skate and the jetpack turning slowly over their posts. The kits are clones
+of one loaded scene and leave the body before `dispose()`. `src/fair/kit-models.test.ts` pins the files' budgets,
+sizes, anchors, materials and the rig's rest pose; `tools/rig/inspect-rig.mjs` prints what the offsets were
+measured from. The turnaround viewer moved into the repo (`tools/rig/viewer/`, launch config "viewer").
+`docs/phone-test.md` gains row 24.
+
 **Fix, 23 Sep, after Phase 5.** The keyboard did nothing in either world since Phase 0: the shared input's key
 handler asked the sink it was built with (the stage's idle one) whether keys were allowed, while the pointer handlers
 asked the live sink; taps jumped, W A S D and E went nowhere. Every handler now asks the live sink, and a test hands

@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>GLB turnaround</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; background: #e9ecf1; font: 12px/1.35 system-ui, sans-serif; color: #1b2130; overflow-x: hidden; }
+  #wrap { padding: 4px; }
+  canvas { display: block; background: #f4f6f9; border-radius: 6px; }
+  #stats { white-space: pre-wrap; margin: 4px 0 0; font-family: ui-monospace, Consolas, monospace; font-size: 11px; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <pre id="stats">loading…</pre>
+</div>
+<script type="module">
+// One GLB from several angles in one look, in a grid sized to the viewport:
+//   ?glb=<url>  ?look=fair|flat|nmap|tex|rough|normal|wire|raw  ?views=front,q,left,back,bq,right,top,custom  ?cols=2  ?cell=<px>
+//   ?h=<height m, 1.6>  ?front=+z|-z|+x|-x  ?fov=<deg, 28>  ?target=<0..1 of height, 0.5>  ?dist=<x height, 2.1>
+//   ?yaw=<deg> ?pitch=<deg>  (the custom view)   ?sun=x,y,z (sun position, default 3,6,4; "cam" puts it behind the camera)
+//   ?tint=<hex> applies the fair's role tint shader (src/fair/nexo.ts): light unsaturated texels take the tint
+// fair: the fair's matte look (hemisphere + sun, metalness 0, roughness >= 0.55, no env map, normal + roughness maps kept)
+// flat: fair without normal and roughness maps · nmap: white base + normal map · tex: colour map unlit · rough: roughness map unlit
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+
+const q = new URLSearchParams(location.search);
+const url = q.get('glb') || '/models/candidate.glb';
+const H = parseFloat(q.get('h') || '1.6');
+const FRONT = q.get('front') || '+z';
+const LOOK = q.get('look') || 'fair';
+const FOV = parseFloat(q.get('fov') || '28');
+const TARGET = parseFloat(q.get('target') || '0.5');
+const DIST = parseFloat(q.get('dist') || '2.1');
+const COLS = parseInt(q.get('cols') || '2', 10);
+const VIEWS = (q.get('views') || 'front,q,left,back,bq,right').split(',');
+const CELL = parseInt(q.get('cell') || String(Math.floor((window.innerWidth - 12) / COLS)), 10);
+const ROWS = Math.ceil(VIEWS.length / COLS);
+const SUN = q.get('sun') || '3,6,4';
+const TINT = q.get('tint');
+const POSE = q.get('pose');
+const ANGLES = { front: [0, 0], q: [Math.PI / 4, 0.12], left: [Math.PI / 2, 0], back: [Math.PI, 0], bq: [-3 * Math.PI / 4, 0.12], right: [-Math.PI / 2, 0], top: [0, 1.2], fq: [-Math.PI / 4, 0.12], bl: [3 * Math.PI / 4, 0.12], custom: [(parseFloat(q.get('yaw') || '180') * Math.PI) / 180, (parseFloat(q.get('pitch') || '0') * Math.PI) / 180] };
+
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.setSize(CELL * COLS, CELL * ROWS, true);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.NoToneMapping;
+renderer.setScissorTest(true);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf4f6f9);
+scene.add(new THREE.HemisphereLight(0xffffff, 0xb9c2d0, 1.2));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(3, 6, 4); scene.add(sun);
+if (SUN !== 'cam') { const [sx, sy, sz] = SUN.split(',').map(Number); sun.position.set(sx, sy, sz); }
+const fill = new THREE.DirectionalLight(0xffffff, 0.35); fill.position.set(-4, 2, -3); scene.add(fill);
+const floor = new THREE.Mesh(new THREE.CircleGeometry(1.2, 48).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xdfe4ec }));
+floor.position.y = -0.001; scene.add(floor);
+
+const stats = document.getElementById('stats');
+const loader = new GLTFLoader(); loader.setMeshoptDecoder(MeshoptDecoder);
+
+function box(model) { model.updateMatrixWorld(true); const b = new THREE.Box3(); model.traverse((o) => { if (o.isMesh) { if (o.isSkinnedMesh) { o.skeleton.update(); o.computeBoundingBox(); b.union(o.boundingBox.clone().applyMatrix4(o.matrixWorld)); } else { o.geometry.computeBoundingBox(); b.union(o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld)); } } }); return b; }
+
+// the fair's role tint, verbatim from src/fair/nexo.ts
+function tintSuit(mat, tint) {
+  const u = { value: tint };
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTint = u;
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform vec3 uTint;')
+      .replace('#include <map_fragment>', `#include <map_fragment>
+  { float lum = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
+    float sat = max(diffuseColor.r, max(diffuseColor.g, diffuseColor.b)) - min(diffuseColor.r, min(diffuseColor.g, diffuseColor.b));
+    float k = smoothstep(0.45, 0.8, lum) * (1.0 - smoothstep(0.12, 0.35, sat));
+    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * uTint, k); }`);
+  };
+  mat.customProgramCacheKey = () => 'nexo-tint';
+}
+
+loader.load(url, (g) => {
+  const model = g.scene;
+  const rot = { '+z': 0, '-z': Math.PI, '+x': Math.PI / 2, '-x': -Math.PI / 2 }[FRONT] ?? 0;
+  const pivot = new THREE.Group(); pivot.add(model); pivot.rotation.y = rot;
+  let b = box(pivot); const size = b.getSize(new THREE.Vector3());
+  pivot.scale.setScalar(H / Math.max(size.y, 1e-6));
+  b = box(pivot); const c = b.getCenter(new THREE.Vector3());
+  pivot.position.set(-c.x, -b.min.y, -c.z);
+  scene.add(pivot);
+
+  let tris = 0, verts = 0, meshes = 0, skinned = 0; const mats = new Set(), texs = new Set();
+  model.traverse((o) => { if (o.isMesh) { meshes++; if (o.isSkinnedMesh) skinned++; const g2 = o.geometry; const n = g2.index ? g2.index.count : g2.attributes.position.count; tris += n / 3; verts += g2.attributes.position.count; for (const m of Array.isArray(o.material) ? o.material : [o.material]) { mats.add(m); for (const k of ['map', 'normalMap', 'metalnessMap', 'roughnessMap', 'emissiveMap', 'aoMap']) if (m[k]) texs.add(k + ':' + (m[k].image?.width || '?') + 'x' + (m[k].image?.height || '?')); } } });
+  const joints = g.scene.getObjectByProperty('isSkinnedMesh', true)?.skeleton?.bones?.length ?? 0;
+  const raw = box(model), rs = raw.getSize(new THREE.Vector3());
+  stats.textContent = [
+    `file: ${url} · look ${LOOK} · views ${VIEWS.join(',')} · cell ${CELL}px · sun ${SUN}${TINT ? ' · tint #' + TINT : ''}${POSE ? ' · pose ' + POSE : ''}`,
+    `meshes ${meshes} (skinned ${skinned}, joints ${joints}) · triangles ${Math.round(tris)} · vertices ${verts} · materials ${mats.size}`,
+    `textures: ${[...texs].join(', ') || 'none'}`,
+    `raw size x ${rs.x.toFixed(3)} y ${rs.y.toFixed(3)} z ${rs.z.toFixed(3)} · raw min y ${raw.min.y.toFixed(3)} · raw centre x ${((raw.min.x + raw.max.x) / 2).toFixed(3)} z ${((raw.min.z + raw.max.z) / 2).toFixed(3)}`,
+    `materials: ${[...mats].map((m) => `${m.name || '(unnamed)'} metal ${m.metalness?.toFixed(2)} rough ${m.roughness?.toFixed(2)} emissive ${m.emissive?.getHexString?.()} ${m.emissiveMap ? '+emissiveMap' : ''} ${m.side === THREE.DoubleSide ? 'double' : 'single'}-sided`).join(' | ')}`,
+    `animations: ${g.animations.map((a) => a.name + ' ' + a.duration.toFixed(2) + 's').join(', ') || 'none'}`,
+  ].join('\n');
+
+  const normalMat = new THREE.MeshNormalMaterial(), wireMat = new THREE.MeshBasicMaterial({ color: 0x1b2130, wireframe: true });
+  const tintColor = TINT ? new THREE.Color('#' + TINT) : null;
+  const fairify = (m) => { const s2 = m.clone(); if (s2.isMeshStandardMaterial) { if (s2.emissiveMap) s2.emissive.set(0xffffff); else s2.emissive.set(0); s2.metalnessMap = null; s2.metalness = 0; s2.roughness = Math.max(0.55, s2.roughness); s2.envMapIntensity = 0; if (tintColor) tintSuit(s2, tintColor); } return s2; };
+  model.traverse((o) => {
+    if (!o.isMesh) return; o.frustumCulled = false;
+    const src = Array.isArray(o.material) ? o.material : [o.material];
+    let out;
+    if (LOOK === 'normal') out = src.map(() => normalMat);
+    else if (LOOK === 'wire') out = src.map(() => wireMat);
+    else if (LOOK === 'fair') out = src.map(fairify);
+    else if (LOOK === 'flat') out = src.map((m) => { const s2 = fairify(m); s2.normalMap = null; s2.roughnessMap = null; return s2; });
+    else if (LOOK === 'nmap') out = src.map((m) => { const s2 = fairify(m); s2.map = null; s2.color.set(0xffffff); s2.roughnessMap = null; return s2; });
+    else if (LOOK === 'tex') out = src.map((m) => new THREE.MeshBasicMaterial({ map: m.map }));
+    else if (LOOK === 'rough') out = src.map((m) => new THREE.MeshBasicMaterial({ map: m.roughnessMap || null, color: m.roughnessMap ? 0xffffff : 0xff00ff }));
+    else if (LOOK === 'emit') out = src.map((m) => new THREE.MeshBasicMaterial({ map: m.emissiveMap || null, color: m.emissiveMap ? 0xffffff : 0x000000 }));
+    else out = src;
+    o.material = Array.isArray(o.material) ? out : out[0];
+  });
+  if (POSE) {
+    const bone = (n) => model.getObjectByName(n);
+    const set = (n, ax, a) => { const b = bone(n); if (b) b.rotation[ax] += a; };
+    if (POSE === 'look' || POSE === 'walk') { set('Head', 'y', 0.9); set('Head', 'x', -0.2); }
+    if (POSE === 'arms' || POSE === 'walk') { set('LeftArm', 'x', 0.7); set('RightArm', 'x', -0.7); set('LeftForeArm', 'x', 0.3); set('Spine01', 'x', 0.08); set('Hips', 'z', 0.05); }
+    if (POSE === 'walk') { set('LeftUpLeg', 'x', 0.6); set('RightUpLeg', 'x', -0.6); set('LeftLeg', 'x', 0.4); set('RightFoot', 'x', 0.3); }
+    model.updateMatrixWorld(true);
+  }
+  const cam = new THREE.PerspectiveCamera(FOV, 1, 0.05, 50);
+  const target = new THREE.Vector3(0, H * TARGET, 0), dist = H * DIST;
+  VIEWS.forEach((name, i) => {
+    const [yaw, pitch] = ANGLES[name] || ANGLES.front;
+    cam.position.set(Math.sin(yaw) * Math.cos(pitch) * dist, target.y + Math.sin(pitch) * dist, Math.cos(yaw) * Math.cos(pitch) * dist);
+    cam.lookAt(target); cam.updateProjectionMatrix();
+    if (SUN === 'cam') sun.position.copy(cam.position).multiplyScalar(2).add(new THREE.Vector3(0.6, 2.5, 0)); // the sun over the camera's shoulder
+    const x = (i % COLS) * CELL, y = CELL * ROWS - (Math.floor(i / COLS) + 1) * CELL;
+    renderer.setViewport(x, y, CELL, CELL); renderer.setScissor(x, y, CELL, CELL);
+    renderer.render(scene, cam);
+  });
+  document.title = 'GLB turnaround · done';
+  window.__done = true;
+}, undefined, (e) => { stats.textContent = 'load error: ' + (e?.message || e); window.__done = true; });
+</script>
+</body>
+</html>

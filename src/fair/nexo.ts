@@ -33,6 +33,40 @@ function loadModel(url: string): Promise<GLTF | null> {
   return p;
 }
 export const loadNexo = (): Promise<GLTF | null> => loadModel(NEXO_URL);
+
+/** The kits, built like the body (Tripo H3.1 from the reference sheets, tools/rig/export-item.mjs): a left skate with its
+ *  origin under the wheels and its toe along +z, worn as its frame alone (tools/rig/clip-item.mjs: the boot part sits
+ *  inside Nexo's own boot and is never seen), and the jetpack centred on its origin, its straps toward +z. */
+export type Kit = 'boots' | 'skates' | 'jetpack';
+const KIT_URL = { skates: '/fair/skate-frame.glb', jetpack: '/fair/jetpack.glb' } as const;
+const KIT_SHOW_URL = { skates: '/fair/skate.glb', jetpack: '/fair/jetpack.glb' } as const;
+const kits = new Map<string, Promise<THREE.Object3D | null>>();
+/** A kit's model, loaded once and made matte like the suit with its lights kept; every body that wears it, and every
+ *  stand that shows it, gets a clone. show: the whole item, for a stand; otherwise the part that is worn. */
+export function loadKit(kit: 'skates' | 'jetpack', show = false): Promise<THREE.Object3D | null> {
+  const url = (show ? KIT_SHOW_URL : KIT_URL)[kit];
+  let p = kits.get(url);
+  if (!p) {
+    p = loadModel(url).then((g) => {
+      if (!g) return null;
+      g.scene.traverse((o) => {
+        const m = o as THREE.Mesh; if (!m.isMesh) return;
+        m.castShadow = true; m.receiveShadow = false;
+        for (const mat of Array.isArray(m.material) ? m.material : [m.material]) { const s = mat as THREE.MeshStandardMaterial; if (s.isMeshStandardMaterial) { s.metalness = 0; s.roughness = Math.max(0.55, s.roughness); s.envMapIntensity = 0; } }
+      });
+      return g.scene;
+    });
+    kits.set(url, p);
+  }
+  return p;
+}
+/** Where a kit sits on the rig, in metres along the body's own axes (the rig's joints rest unrotated, so a joint's
+ *  frame is the body's, moved to the joint). The skate frame: its top under the sole, the body riding up by the frame's
+ *  height, centred under the boot, which is longer than the frame. The jetpack: over the suit's own pack (its back at
+ *  z −0.38), a hair embedded so no gap opens when the chest breathes; the flames under its two tanks. */
+const SKATE = { scale: 1.3, ankle: 0.17, forward: 0.05, lift: 0.117 }, JET = { scale: 1.35, up: 0.1, back: -0.48, nozzle: 0.13, flameY: -0.2 };
+const FLAME_GEO = new THREE.ConeGeometry(0.045, 0.24, 12, 1, true).rotateX(Math.PI).translate(0, -0.12, 0);
+const FLAME_MAT = new THREE.MeshBasicMaterial({ color: 0x9be9ff, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
 export const loadNexoLod = (): Promise<GLTF | null> => loadModel(NEXO_LOD_URL);
 export const loadNexoLibrary = (): Promise<Library | null> => loadLibrary();
 
@@ -98,6 +132,9 @@ export class NexoActor {
   /** How the body moves over the ground: on its feet, or on skates (a held glide over a still clip, in by speed). */
   private loco: 'walk' | 'skate' = 'walk';
   private glide = 0; private speed = 0; private lean = 0; private leanWant = 0;
+  /** The kit worn: skate frames on the feet, or the jetpack on the back with its flames; on skates the body rides up by the frames. */
+  private worn: Kit = 'boots'; private attachments: THREE.Object3D[] = []; private jetpack: THREE.Object3D | null = null; private flames: THREE.Mesh[] = [];
+  private wearLift = 0; private thrust = 0; private flameK = 0;
   private model: THREE.Object3D | null = null; private modelY = 0;
   /** Airborne on a jetpack: the jump clip's apex held, the body tilted by the engine's lean. */
   private flight = false;
@@ -160,18 +197,45 @@ export class NexoActor {
 
   /** Skates or feet: on skates the walk and run clips give way to a still one under a held glide. */
   setLocomotion(m: 'walk' | 'skate'): void { this.loco = m; }
+  /** Put the kit on the body: a skate frame under each boot (the right one the left mirrored), or the jetpack on the
+   *  back with its two flames; Boots take everything off. The model arrives when it arrives; a kit changed meanwhile wins. */
+  wear(kit: Kit): void {
+    if (this.worn === kit) return;
+    this.worn = kit; this.undress();
+    if (kit === 'boots') return;
+    void loadKit(kit).then((g) => { if (!g || this.worn !== kit || !this.model) return; this.dress(kit, g); });
+  }
+  private dress(kit: Kit, g: THREE.Object3D): void {
+    const { lFoot, rFoot, spine } = this.bones;
+    if (kit === 'skates' && lFoot && rFoot) {
+      for (const [bone, right] of [[lFoot, false], [rFoot, true]] as const) {
+        const ws = bone.getWorldScale(this.tmpV).x || 1, k = SKATE.scale / ws, s = g.clone();
+        s.position.set(0, -(SKATE.ankle + SKATE.lift) / ws, SKATE.forward / ws); s.scale.set(right ? -k : k, k, k); bone.add(s); this.attachments.push(s);
+      }
+      this.wearLift = SKATE.lift;
+    } else if (kit === 'jetpack' && spine) {
+      const ws = spine.getWorldScale(this.tmpV).x || 1, k = JET.scale / ws, j = g.clone();
+      j.position.set(0, JET.up / ws, JET.back / ws); j.scale.setScalar(k); spine.add(j); this.attachments.push(j); this.jetpack = j;
+      for (const x of [-JET.nozzle, JET.nozzle]) { const f = new THREE.Mesh(FLAME_GEO, FLAME_MAT); f.position.set(x, JET.flameY, 0); f.scale.set(1, 0.001, 1); f.visible = false; j.add(f); this.flames.push(f); }
+    }
+  }
+  private undress(): void { for (const a of this.attachments) a.removeFromParent(); this.attachments = []; this.flames = []; this.jetpack = null; this.wearLift = 0; this.flameK = 0; }
+  /** How hard the jetpack fires, 0..1: the flames under its tanks follow, eased and flickering. */
+  setThrust(k: number): void { this.thrust = k; }
   /** How far the torso leans into a turn (radians, signed, left positive); the engine sets it from the yaw rate. */
   setLean(z: number): void { this.leanWant = z; }
   /** In the air on a jetpack, or not: on, the jump clip's apex is held until the feet touch. */
   setFlight(on: boolean): void { this.flight = on; }
   /** Where a backpack sits: behind the chest, in the world. False without a rigged body. */
   back(out: THREE.Vector3): boolean {
+    if (this.jetpack) { this.jetpack.updateWorldMatrix(true, false); out.set(0, JET.flameY - 0.03, 0).applyMatrix4(this.jetpack.matrixWorld); return true; }
     const { spine } = this.bones; if (!spine) return false;
     spine.updateWorldMatrix(true, false); spine.getWorldPosition(out);
     const yaw = this.root.rotation.y; out.x -= Math.sin(yaw) * 0.28; out.z -= Math.cos(yaw) * 0.28; return true;
   }
   /** Where the ankles are in the world, for a trail. False without a rigged body. */
   feet(out: [THREE.Vector3, THREE.Vector3]): boolean {
+    if (this.worn === 'skates' && this.attachments.length === 2) { for (let k = 0; k < 2; k++) { const a = this.attachments[k]!; a.updateWorldMatrix(true, false); a.getWorldPosition(out[k]!); } return true; } // the wheels
     const { lFoot, rFoot } = this.bones; if (!lFoot || !rFoot) return false;
     lFoot.updateWorldMatrix(true, false); rFoot.updateWorldMatrix(true, false);
     lFoot.getWorldPosition(out[0]); rFoot.getWorldPosition(out[1]); return true;
@@ -227,7 +291,8 @@ export class NexoActor {
     // hips a hair lower so the feet stay on the floor; in by speed, out for a jump or a stop
     const g = (this.glide = THREE.MathUtils.damp(this.glide, this.loco === 'skate' && loop ? THREE.MathUtils.clamp((this.speed - 0.6) / 2, 0, 1) : 0, 6, dt));
     this.lean = THREE.MathUtils.damp(this.lean, this.leanWant, 6, dt);
-    if (this.model) this.model.position.y = this.modelY - 0.04 * g;
+    if (this.model) this.model.position.y = this.modelY - 0.04 * g + this.wearLift;
+    if (this.flames.length) { this.flameK = THREE.MathUtils.damp(this.flameK, this.thrust, 12, dt); const on = this.flameK > 0.02, s = this.flameK * (0.85 + 0.25 * Math.sin(this.breath * 41)); for (const f of this.flames) { f.visible = on; f.scale.set(1, Math.max(0.001, s), 1); } }
     if (g > 0.001) {
       const { lUp, lLow, lFoot, rUp, rLow, rFoot } = this.bones, bend = (o: THREE.Object3D | undefined, a: number) => { if (o) o.quaternion.multiply(this.tmpQ.setFromAxisAngle(X_AXIS, a * g)); };
       bend(lUp, -0.45); bend(lLow, 0.55); bend(lFoot, -0.1); bend(rUp, -0.1); bend(rLow, 0.55); bend(rFoot, -0.45);
@@ -259,6 +324,7 @@ export class NexoActor {
   }
 
   dispose(): void {
+    this.undress(); this.worn = 'boots'; // the kits' meshes are shared: they leave before the body's own are thrown away
     this.anims?.dispose();
     this.root.traverse((o) => { const m = o as THREE.Mesh; if (!m.isMesh) return; m.geometry?.dispose(); for (const mat of Array.isArray(m.material) ? m.material : [m.material]) mat.dispose(); });
     this.root.removeFromParent();

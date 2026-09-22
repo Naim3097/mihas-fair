@@ -14,7 +14,7 @@ import { Sim, STEP } from '../ceritera/game/sim';
 import { angleDiff, damp, lenXZ, v3 } from '../ceritera/game/v3';
 import type { Library } from '../ceritera/game/anim';
 import type { FairSink } from '../fair/input';
-import { NexoActor, loadNexo, loadNexoLibrary } from '../fair/nexo';
+import { NexoActor, loadKit, loadNexo, loadNexoLibrary } from '../fair/nexo';
 import type { Quality, Scene, Stage } from '../fair/stage';
 import { modal, toast } from '../state';
 import { api } from '../net/api';
@@ -98,12 +98,12 @@ export class PlaygroundEngine implements Scene {
     if (import.meta.env.DEV) (window as unknown as { __pg?: unknown }).__pg = this;
   }
 
-  private makeActor(): NexoActor { const a = new NexoActor(this.gltf, this.lib, 'visitor', this.quality === 'high'); a.setBlob(!this.world.light.shadows); a.setLocomotion(this.gear === 'skates' ? 'skate' : 'walk'); this.world.scene.add(a.root); return a; }
+  private makeActor(): NexoActor { const a = new NexoActor(this.gltf, this.lib, 'visitor', this.quality === 'high'); a.setBlob(!this.world.light.shadows); a.setLocomotion(this.gear === 'skates' ? 'skate' : 'walk'); a.wear(this.gear); this.world.scene.add(a.root); return a; }
   private publishStore() { const s = this.store.get(); pgBalance.value = s.stars; pgUnlocks.value = s.unlocks; pgBest.value = s.best?.score ?? null; pgGear.value = this.gear; }
   /** The stands of the gear this player owns read as theirs: no price on the label, the disc lit; the one just
    *  bought swells under the feet. */
   private markOwned(bought: Gear | null = null) {
-    for (const g of this.store.get().unlocks) { const l = this.labelEls.find((x) => x.gear === g); if (l) l.el.textContent = GEAR[g].name; this.world.own(g, g === bought); }
+    for (const g of this.store.get().unlocks) { const l = this.labelEls.find((x) => x.gear === g); if (l) l.el.textContent = GEAR[g].name; this.world.own(g, g === bought); if (g !== 'boots') void loadKit(g); } // a kit owned is a kit ready to wear
   }
 
   /* ---------------- entering, leaving, the pad ---------------- */
@@ -135,7 +135,7 @@ export class PlaygroundEngine implements Scene {
     this.gear = g; this.store.choose(g); pgGear.value = g;
     this.sim.movement = GEAR[g].movement; // the controller reads the tuning every step
     this.sim.player.fuel = GEAR[g].movement.thrust?.fuel ?? 0;
-    this.actor?.setLocomotion(g === 'skates' ? 'skate' : 'walk');
+    this.actor?.setLocomotion(g === 'skates' ? 'skate' : 'walk'); this.actor?.wear(g);
     for (const r of this.world.ribbons) r.clear();
   }
   /** The summary's Again: back on the pad, straight over the line. */
@@ -162,7 +162,7 @@ export class PlaygroundEngine implements Scene {
     if (this.actor) {
       const yawRate = angleDiff(this.lastYaw, p.yaw) / Math.max(dt, 1e-3); this.lastYaw = p.yaw;
       this.actor.setLean(skating ? THREE.MathUtils.clamp(yawRate * 0.08 * Math.min(1, sp / 6), -0.35, 0.35) : 0);
-      this.actor.setFlight(flying);
+      this.actor.setFlight(flying); this.actor.setThrust(p.thrusting ? 1 : 0);
       // the run's forward lean on the floor; in flight the body tilts into its travel
       const lean = flying ? Math.min(1, sp / 7) * 0.35 : b.grounded ? Math.min(0.8, sp / 11) * (skating ? 0.22 : 0.16) : 0;
       this.actor.place(b.pos.x, b.pos.y, b.pos.z, p.yaw, lean); this.actor.attend(null); this.actor.applySim(p.anim, dt, sp);

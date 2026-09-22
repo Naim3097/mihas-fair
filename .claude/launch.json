@@ -19,6 +19,14 @@
         "tools/live.mjs"
       ],
       "port": 8787
+    },
+    {
+      "name": "viewer",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "tools/rig/viewer/server.mjs"
+      ],
+      "port": 5175
     }
   ]
 }
