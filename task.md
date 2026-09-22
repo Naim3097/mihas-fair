@@ -1,7 +1,7 @@
 # Mission X — MIHAS 2026 to-do
 
 Last updated 22 September 2026. `[x]` = done tonight; the commit is in brackets.
-Status: everything up to `998ea53` is live. `17c6c0a` is committed on this machine but **not pushed yet**.
+Status: everything below is pushed to GitHub `main` and live.
 
 ## Done tonight
 
@@ -10,13 +10,13 @@ Status: everything up to `998ea53` is live. `17c6c0a` is committed on this machi
   - [ ] *Bila berjalan dekat booth user boleh nampak detail company* — partly done: walking up shows the company name in the chip, but the details (offer line, website) only show after you tap into the booth.
 - [x] Update privacy page — `139ff39`, `67074ff`
   - Operator Leanis Solution Sdn Bhd (Lean X Digital), no location use, hosting in Tokyo, 12 months retention, contact sales@nexovadigital.com. English and Bahasa Malaysia.
-- [x] Kod dan layout betul tapi nama booth salah, scrap detail nama booth dari database, akan match nama company dengan kod booth masa onboarding — `17c6c0a` (not pushed)
+- [x] Kod dan layout betul tapi nama booth salah, scrap detail nama booth dari database, akan match nama company dengan kod booth masa onboarding — `17c6c0a`
   - The spreadsheet and organiser list are no longer used. Registration: pick your booth number, then type your company.
 - [x] Buang GPS — `dbc4dbc`
   - Everyone plays in one virtual hall and sees every other visitor and exhibitor. A booth QR scores in full everywhere.
 - [x] User join game terus boleh buat card, tak perlu ke Lean X booth — `dbc4dbc`
   - The card form comes before entering the world. Chapters: Your card → Find Lean X Digital → Checkpoints.
-- [x] Skrg booth yang dah ada register nama company tak keluar kod booth, jadikan dua2 keluar — `17c6c0a` (not pushed)
+- [x] Skrg booth yang dah ada register nama company tak keluar kod booth, jadikan dua2 keluar — `17c6c0a`
   - A registered booth shows "7C17 · Company"; an unregistered one shows "7C17".
 
 ## Also done tonight (not on the list)
