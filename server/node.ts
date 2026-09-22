@@ -26,7 +26,7 @@ const level = JSON.parse(readFileSync(resolve(root, 'public/data/floor.json'), '
 const pg = process.env.DATABASE_URL ? openPostgres(process.env.DATABASE_URL) : null;
 if (pg) await pg.migrate();
 const db = pg ?? openNodeDb(process.env.DB_FILE ?? resolve(root, 'data/mission-x.db'), SCHEMA);
-const app = createApp({ ...buildServices({ db, secret, level, publicOrigin: PUBLIC_ORIGIN }), crewPin, publicOrigin: PUBLIC_ORIGIN, secureCookies: prod });
+const app = createApp({ ...buildServices({ db, secret, level, publicOrigin: PUBLIC_ORIGIN, playgroundDaily: process.env.PLAYGROUND_DAILY === '1' }), crewPin, publicOrigin: PUBLIC_ORIGIN, secureCookies: prod });
 
 if (existsSync(resolve(root, 'dist/index.html'))) {
   app.get('/fair', (c) => c.redirect('/')); // the fair is the root page; the old address still works

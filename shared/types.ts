@@ -189,3 +189,14 @@ export interface ScreenView {
   totals: { players: number; passports: number; docked: number; stamps: number; links: number; stations: number };
   board: BoardRow[]; /** most visited booths */ booths: BoardRow[]; sectors: SectorsView; storm: StormView | null; drop: DailyDrop | null; joinUrl: string;
 }
+
+/* ---------------- the Playground ---------------- */
+
+export type PlaygroundGear = 'boots' | 'skates' | 'jetpack';
+export interface PlaygroundBest { score: number; gear: PlaygroundGear; at: number }
+/** What outlasts a run on the server: the balance, the gear bought, the gear last used, the best finished run. */
+export interface PlaygroundMe { stars: number; unlocks: PlaygroundGear[]; gear: PlaygroundGear; best: PlaygroundBest | null; runsToday: number }
+/** A run against its token; `partial` is the part a tab going away sends, which leaves the token open for the rest. */
+export interface PlaygroundRunInput { token: string; gear: PlaygroundGear; score: number; stars: number; comboMax: number; seconds: number; finished: boolean; partial?: boolean }
+export interface PlaygroundRunResult extends PlaygroundMe { newBest: boolean }
+export interface PlaygroundBoardRow { rank: number; name: string; gear: PlaygroundGear; score: number; at: number; you?: boolean }

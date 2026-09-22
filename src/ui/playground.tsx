@@ -69,6 +69,7 @@ function Summary() {
         <div><span>Time</span><strong>{s.seconds}s</strong></div>
       </div>
       {s.bonus > 0 && <p class="fine">Air left paid {s.bonus} of that.</p>}
+      {pgStore.value?.local && <p class="fine">Saved on this phone.</p>}
       {next ? (
         <div class="box"><strong>{GEAR[next].name} at {GEAR[next].price} stars</strong><p class="fine">{toNext === 0 ? 'Yours to take: step on the stand.' : `${toNext} more. You have ${s.balance}.`}</p><div class="dots"><i class="on" style={{ flex: `${Math.min(s.balance, GEAR[next].price)} 0 0` }} /><i style={{ flex: `${toNext} 0 0` }} /></div></div>
       ) : <p class="fine">Every gear is yours. Chase the best run.</p>}

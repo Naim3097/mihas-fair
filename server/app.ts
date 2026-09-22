@@ -30,7 +30,7 @@ function toCsv(cols: string[], rows: Record<string, unknown>[]): string {
 }
 const csvHeaders = (name: string) => ({ 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="${name}"` });
 
-export function createApp({ game, stations, social, crews, venue, director, gc, ops, signer, ceritera, checkpoints, referrals, team, crewPin, publicOrigin, secureCookies, cookies: cookieIO }: AppDeps) {
+export function createApp({ game, stations, social, crews, venue, director, gc, ops, signer, ceritera, checkpoints, referrals, team, playground, crewPin, publicOrigin, secureCookies, cookies: cookieIO }: AppDeps) {
   const app = new Hono<Vars>();
   const cookieOpts = { httpOnly: true, sameSite: 'Lax' as const, secure: secureCookies, path: '/' };
   const cookies: CookieIO = cookieIO ?? { get: (c, name) => getCookie(c, name), set: (c, name, value, maxAge) => setCookie(c, name, value, { ...cookieOpts, maxAge }) };
@@ -89,6 +89,13 @@ export function createApp({ game, stations, social, crews, venue, director, gc, 
   player.post('/team/join', async (c) => ok(c, await ops.joinTeam(pid(c), (await body(c)).code), [], false));
   player.post('/team/leave', async (c) => { await ops.leaveTeam(pid(c)); return ok(c, null, [], false); });
   player.post('/event', async (c) => { const b = await body(c); await game.track(pid(c), String(b.name), b.props); return ok(c, null, [], false); });
+
+  /* the Playground beside the X: a token per run, the run, the gear bought with stars, the boards */
+  player.get('/playground/me', async (c) => ok(c, await playground.me(pid(c)), [], false));
+  player.post('/playground/start', async (c) => ok(c, await playground.start(pid(c)), [], false));
+  player.post('/playground/run', async (c) => { const r = await playground.run(pid(c), (await body(c)) as never); return ok(c, r.result, r.events, r.events.length > 0); });
+  player.post('/playground/unlock', async (c) => ok(c, await playground.unlock(pid(c), String((await body(c)).gear)), [], false));
+  player.get('/playground/board', async (c) => ok(c, await playground.board(c.req.query('range') === 'all' ? 'all' : 'today', pid(c)), [], false));
 
   /* stations: claim, host, share */
   player.get('/stations', async (c) => ok(c, await stations.list(), [], false));

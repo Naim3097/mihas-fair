@@ -50,6 +50,8 @@ export class Run {
   gate() { if (this.ended) return; this.end('gate', Math.round(this.o2 * GATE_BONUS_PER_S)); }
   /** Back to the fair from the menu: the run ends as if the air had run out. */
   leave() { if (!this.ended) this.end('left', 0); }
+  /** The run so far, for a tab going away in the middle of it. */
+  snapshot(): RunSummary { return { score: this.score, stars: this.stars, comboMax: this.comboMax, seconds: Math.round(this.time), reason: 'left', bonus: 0 }; }
 
   private end(reason: EndReason, bonus: number) {
     this.score += bonus; this.combo = 1; this.comboLeft = 0;

@@ -1,5 +1,6 @@
 import type { BoothTeamPeek } from '../../shared/types';
 import type { ApiResult, Contact, Hologram, HostCode, HostLead, HostStation, LinkCode, LinkPeek, PassportInput, PresencePing, StampRequest, StationClaimInput, StationView, TodayView } from '../../shared/types';
+import type { PlaygroundBoardRow, PlaygroundMe, PlaygroundRunInput, PlaygroundRunResult } from '../../shared/types';
 import type { Role } from '../../shared/rules';
 import type { ShareField } from '../../shared/rules';
 import { me, offline, showEvents } from '../state';
@@ -43,6 +44,14 @@ export const api = {
   card: (p: PassportInput) => call<null>('POST', '/api/passport', p),
   today: () => call<TodayView>('GET', '/api/today'),
   track: (name: string, props?: unknown) => { void call('POST', '/api/event', { name, props }, true).catch(() => {}); },
+
+  /* the Playground beside the X */
+  pgMe: () => call<PlaygroundMe>('GET', '/api/playground/me', undefined, true),
+  pgStart: () => call<{ token: string }>('POST', '/api/playground/start', {}, true),
+  /** not quiet: with the daily bridge on, the fair's points come back as an event */
+  pgRun: (r: PlaygroundRunInput) => call<PlaygroundRunResult>('POST', '/api/playground/run', r),
+  pgUnlock: (gear: string) => call<PlaygroundMe>('POST', '/api/playground/unlock', { gear }, true),
+  pgBoard: (range: 'today' | 'all') => call<PlaygroundBoardRow[]>('GET', `/api/playground/board?range=${range}`, undefined, true),
 
   /* booths that are online, and the exhibitor's side of them */
   stations: () => call<StationView[]>('GET', '/api/stations'),

@@ -1,6 +1,8 @@
 // What outlasts a run: the star balance, the gear bought, the best run, and the finished runs behind the boards. On
 // this device for now (localStorage); the server when the backend has the endpoints, behind the same interface, so
 // the engine and the sheets do not change when the switch is made.
+import type { PlaygroundMe, PlaygroundRunInput } from '../../shared/types';
+import { ApiError, api } from '../net/api';
 import type { Gear } from './course';
 import type { RunSummary } from './run';
 
@@ -25,6 +27,12 @@ export interface PlaygroundStore {
   record(s: RunSummary, gear: Gear): boolean;
   /** The top ten, best first; `name` is what this device's own runs are listed as. */
   boards(range: BoardRange, name: string): Promise<BoardRow[]>;
+  /** A run is starting: the server's store asks for its token. */
+  beginRun(): void;
+  /** The tab is going away mid-run: the server's store sends what there is so far. */
+  flush(s: RunSummary, gear: Gear): void;
+  /** The server corrected what the store holds: the engine republishes. */
+  onChange: (() => void) | null;
 }
 
 const KEY = 'mx_playground', HISTORY = 50, TOP = 10;
@@ -42,6 +50,7 @@ export function rankRuns(runs: BoardRun[], name: string, since = 0): BoardRow[] 
 
 export class LocalStore implements PlaygroundStore {
   readonly local = true;
+  onChange: (() => void) | null = null;
   private state: PlaygroundState;
   constructor() { this.state = this.load(); }
   private load(): PlaygroundState {
@@ -70,4 +79,64 @@ export class LocalStore implements PlaygroundStore {
     this.save(); return best;
   }
   boards(range: BoardRange, name: string): Promise<BoardRow[]> { return Promise.resolve(rankRuns(this.state.history, name, range === 'today' ? dayStart(Date.now()) : 0)); }
+  beginRun() { /* nothing to ask for */ }
+  flush() { /* the stars are banked already */ }
+  /** What the server says, taken over what this device had. */
+  adopt(p: Partial<PlaygroundState>) { this.state = { ...this.state, ...p, unlocks: p.unlocks ? [...p.unlocks] : this.state.unlocks }; this.save(); }
+}
+
+/** The store on the server, with the local one as its cache: reads are instant from the cache, writes go out and the
+ *  server's answer corrects the cache; a run posts against its token at its end, or in part from a tab going away, and
+ *  what could not be posted waits for the next chance. The balance the server holds is the one that counts. */
+export class ApiStore implements PlaygroundStore {
+  readonly local = false;
+  onChange: (() => void) | null = null;
+  private cache = new LocalStore();
+  private current: { token: string | null; asking: boolean } | null = null;
+  private waiting: { run: { token: string | null; asking: boolean }; input: Omit<PlaygroundRunInput, 'token'> }[] = [];
+  private posting = false;
+  constructor() { void this.sync(); }
+
+  async sync(): Promise<void> { try { this.adopt(await api.pgMe()); } catch { /* offline, or no backend yet: the cache stands until it answers */ } }
+  private adopt(m: PlaygroundMe) {
+    this.cache.adopt({ stars: m.stars, unlocks: m.unlocks, gear: m.gear, best: m.best ? { score: m.best.score, gear: m.best.gear, at: m.best.at, stars: 0, comboMax: 1, seconds: 0, reason: 'gate', bonus: 0 } : null });
+    this.onChange?.();
+  }
+  get(): PlaygroundState { return this.cache.get(); }
+  addStars(n: number) { this.cache.addStars(n); }
+  spend(gear: Gear, price: number): boolean {
+    if (!this.cache.spend(gear, price)) return false;
+    void api.pgUnlock(gear).then((m) => this.adopt(m)).catch(() => this.sync()); // refused (short, by the server's count): the cache takes the server's word
+    return true;
+  }
+  choose(gear: Gear) { this.cache.choose(gear); }
+  beginRun() {
+    const run = { token: null as string | null, asking: false }; this.current = run; this.ask(run);
+  }
+  private ask(run: { token: string | null; asking: boolean }) {
+    if (run.token || run.asking) return; run.asking = true;
+    api.pgStart().then((t) => { run.token = t.token; run.asking = false; this.post(); }).catch(() => { run.asking = false; setTimeout(() => this.post(), 5000); });
+  }
+  record(s: RunSummary, gear: Gear): boolean {
+    const best = this.cache.record(s, gear), run = this.current ?? { token: null, asking: false }; this.current = null;
+    this.waiting.push({ run, input: { gear, score: s.score, stars: s.stars, comboMax: s.comboMax, seconds: s.seconds, finished: s.reason === 'gate' } });
+    this.post(); return best;
+  }
+  flush(s: RunSummary, gear: Gear) {
+    const token = this.current?.token; if (!token || typeof navigator === 'undefined' || !navigator.sendBeacon) return;
+    const body: PlaygroundRunInput = { token, gear, score: s.score, stars: s.stars, comboMax: s.comboMax, seconds: s.seconds, finished: false, partial: true };
+    try { navigator.sendBeacon('/api/playground/run', new Blob([JSON.stringify(body)], { type: 'application/json' })); } catch { /* not this browser */ }
+  }
+  /** The oldest waiting run goes out once it has a token; a refusal that is not the network drops it, the network keeps it. */
+  private post() {
+    if (this.posting || !this.waiting.length) return;
+    const head = this.waiting[0]!; if (!head.run.token) { this.ask(head.run); return; }
+    this.posting = true;
+    api.pgRun({ ...head.input, token: head.run.token }).then((m) => { this.waiting.shift(); this.adopt(m); })
+      .catch((e: unknown) => { if (!(e instanceof ApiError) || e.code !== 'offline') this.waiting.shift(); })
+      .finally(() => { this.posting = false; if (this.waiting.length) setTimeout(() => this.post(), 3000); });
+  }
+  boards(range: BoardRange): Promise<BoardRow[]> {
+    return api.pgBoard(range).then((rows) => { const best = this.cache.get().best?.score ?? -1; return rows.map((r) => ({ rank: r.rank, name: r.name, gear: r.gear, score: r.score, at: r.at, you: r.you === true, best: r.you === true && r.score === best })); });
+  }
 }

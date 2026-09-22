@@ -366,4 +366,38 @@ CREATE TABLE IF NOT EXISTS station_photos (
   data        TEXT NOT NULL,
   updated_at  INTEGER NOT NULL
 );
+
+-- ---------------------------------------------------------------- Playground
+-- The second world beside the X. A token opens a run (used once, not two within a few seconds); the run is recorded
+-- against it and believed only within what the course can pay; what it picked up is credited once, even when a tab
+-- going away sends the run in two parts; the balance, the gear bought and the gear last used outlast the runs; the
+-- boards read the finished runs. The fair's ledger is touched only by the daily bridge, a switch off by default.
+CREATE TABLE IF NOT EXISTS playground_tokens (
+  token       TEXT PRIMARY KEY,
+  player_id   TEXT NOT NULL REFERENCES players(id),
+  created_at  INTEGER NOT NULL,
+  used_at     INTEGER,
+  credited    INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS playground_tokens_player ON playground_tokens(player_id, created_at);
+CREATE TABLE IF NOT EXISTS playground_runs (
+  token       TEXT PRIMARY KEY REFERENCES playground_tokens(token),
+  player_id   TEXT NOT NULL REFERENCES players(id),
+  gear        TEXT NOT NULL,
+  score       INTEGER NOT NULL,
+  stars       INTEGER NOT NULL,
+  combo_max   INTEGER NOT NULL,
+  seconds     INTEGER NOT NULL,
+  finished    INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS playground_runs_player ON playground_runs(player_id, created_at);
+CREATE INDEX IF NOT EXISTS playground_runs_board ON playground_runs(finished, created_at, score);
+CREATE TABLE IF NOT EXISTS playground_state (
+  player_id   TEXT PRIMARY KEY REFERENCES players(id),
+  stars       INTEGER NOT NULL DEFAULT 0,
+  unlocks     TEXT NOT NULL DEFAULT 'boots',
+  gear        TEXT NOT NULL DEFAULT 'boots',
+  updated_at  INTEGER NOT NULL
+);
 `;

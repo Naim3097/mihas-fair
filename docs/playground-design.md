@@ -282,20 +282,33 @@ to `sheet` and `play`), so the phone's Back button leaves for the fair and never
 **Analytics from day one.** Every run end posts `playground_run` to `/api/event` (gear, score, stars, seconds,
 finished), which exists today, so the first fair days teach the tuning before the endpoints below exist.
 
-### Server contract (for the backend owner; the client runs without it until then)
+### Server contract (built in Phase 5; the client ran on its own store until then)
 
-- `POST /api/playground/start` → `{ token }`: a single-use run token, one per 45 s per player.
-- `POST /api/playground/run` `{ token, gear, score, stars, comboMax, seconds, finished }` → `{ balance, best, unlocks,
-  events }`. Sent at the end of a run, or with `sendBeacon` when the tab is hidden mid-run. Checks: the token unused
-  and under 10 minutes old; `stars` ≤ the course's 145; `score` ≤ what those stars can pay at ×4 plus the diamond
-  and the bonus; `seconds` ≥ 20 for a finished run. Fails refused, not trimmed. If the daily bridge is on, the first
-  finished run of the day appends `playground_daily` (50) to the fair's ledger.
-- `POST /api/playground/unlock` `{ gear }`: spends stars, refuses if short. `GET /api/playground/me`: balance, best,
-  unlocks, runs today. `GET /api/playground/board?range=today|all`: top ten, cached like the fair's boards.
-- Tables: `playground_runs` (player, gear, score, stars, seconds, finished, at), `playground_state` (player, stars,
-  unlocks).
-- Until then the client keeps balance and unlocks in `localStorage` (`mx_playground`), says so on the summary, and
-  the store's interface does not change when the switch is made.
+- `POST /api/playground/start` → `{ token }`: a run token, used once; not two within 15 s of each other (the draft
+  said 45 s; Again after a short run must still work), and none believed after ten minutes.
+- `POST /api/playground/run` `{ token, gear, score, stars, comboMax, seconds, finished, partial? }` → `{ stars,
+  unlocks, gear, best, runsToday, newBest }` and, with the bridge on, the fair's points as an event. Sent at the end
+  of a run, or with `sendBeacon` when the tab is hidden mid-run as `partial: true`, which credits what was picked up
+  so far and leaves the token open for the rest; the final post credits only the difference. Checks: the token the
+  player's, unused and under ten minutes old; the gear owned; `stars` at most the course's count (every star on every
+  line plus the diamonds' 25 each, read from the course data); `score` at most what those stars pay at ×4 plus every
+  diamond plus a full tank of air at the gate; `seconds` at least 20 for a finished run and under an hour; whole
+  numbers, none negative. Fails refused, not trimmed (`token`, `gear`, `bad_run`). The gear sent becomes the gear
+  last used. With the daily bridge on (`PLAYGROUND_DAILY=1` on the server), the first finished run of the day
+  appends `playground_daily` (50) to the fair's ledger and the answer carries the event.
+- `POST /api/playground/unlock` `{ gear }`: spends stars, refuses if short (`short`), keeps a gear bought once.
+  `GET /api/playground/me`: balance, unlocks, the gear last used, the best finished run, runs today.
+  `GET /api/playground/board?range=today|all`: ten lines, one per player (their best finished run), the viewer
+  marked, cached 15 s like the fair's boards, banned players left out. Today is from midnight, Malaysian time.
+- Tables: `playground_tokens` (token, player, issued, used, stars credited), `playground_runs` (one per token: gear,
+  score, stars, combo, seconds, finished, at), `playground_state` (player, stars, unlocks, gear). Appended to the one
+  schema script; the Postgres adapter rewrites them like the rest.
+- The client: `ApiStore` behind the same `PlaygroundStore` interface, with the local store as its cache: reads are
+  instant, the server's answer corrects the cache (and the engine steps off a gear the server says is not owned); a
+  run's token is asked for as the run starts; a run that could not be posted waits for its next chance; a refusal that
+  is not the network drops it. Stars picked up on a device before the switch are not carried over: the server starts
+  everyone at zero, since a balance in `localStorage` cannot be trusted. The local store stays for a device the
+  backend never answers, and the summary and the boards say "saved on this phone" then.
 
 ## Stability, in a list
 
@@ -434,5 +447,19 @@ six Playground rows (17–22). The daily bridge stays off; its switch lives on t
 - Verified in the browser: the ceremony on the Skates stand (the swell caught at 1.2, the glow, "Skates unlocked ·
   hold the rim to tuck", the toast); a scripted Skates run at phone size through the gate (2,503, a new best); the
   summary and the Boards sheet listing it; landscape; q4; no console errors. Tests: the store (2), 138 in all.
-- Not yet: the server (Phase 5). The three cells and the sky line's stars raise the course's star count past the 145
-  the server contract names; Phase 5 takes the number from the course data.
+**Phase 5 — done (23 Sep): the server.** `server/playground.ts` behind the routes in `server/app.ts`, wired like the
+other services, the three tables appended to the schema, the daily bridge as `PLAYGROUND_DAILY=1` in the deployment's
+environment (off otherwise, listed in `.env.example`). The contract above is what was built; the star cap and the
+score cap come from the course data and the run's own constants, so a new line changes them without a server edit.
+Tests (`server/playground.test.ts`): a run needs its token and is believed within the caps, credited once even in two
+parts, used once, stale after ten minutes, another player's refused; gear bought on the server; the boards per player,
+today and all-time, the viewer marked, the cache standing 15 s; the bridge paying once a day into the ledger. The
+client's `ApiStore` is chosen when the backend has answered who this is (it always has by then), the local store
+otherwise; a hidden tab sends the run so far as a partial post.
+- Verified in the browser against the dev server: the store switches over (the device's old balance gone, the server's
+  zero shown), a token asked as the run starts, a scripted Boots run down the return lane through the gate posted and
+  answered (2,800 points, 67 stars credited, the best set), the Boards sheet reading the server's board with the run
+  on it and no "saved on this phone" line.
+- Done, all five phases. What remains is not code: the real-phone protocol (`docs/phone-test.md`, rows 17–22) on a
+  mid-range Android and an iPhone, the crew's word on the daily bridge, and the three fair-rules items that were never
+  the Playground's.

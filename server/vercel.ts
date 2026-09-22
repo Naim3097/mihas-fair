@@ -32,7 +32,7 @@ async function init(): Promise<Hono<never>> {
   const level = JSON.parse(readFileSync(join(process.cwd(), 'public/data/floor.json'), 'utf8')) as LevelData;
   const origin = publicOrigin();
   const services = buildServices({
-    db, secret: env('MX_SECRET')!, level, publicOrigin: origin, presence: new DbPresence(db),
+    db, secret: env('MX_SECRET')!, level, publicOrigin: origin, presence: new DbPresence(db), playgroundDaily: env('PLAYGROUND_DAILY') === '1',
   });
   return createApp({ ...services, crewPin: env('CREW_PIN')!, publicOrigin: origin, secureCookies: true }) as unknown as Hono<never>;
 }
