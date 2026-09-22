@@ -161,7 +161,6 @@ export class Stations {
     const st = await this.g.db.get<StationRow>('SELECT * FROM stations WHERE station_id = ?', [stationId]);
     if (!st || st.status === 'revoked') throw new GameError('not_hosted', 'This booth is not online yet');
     if (st.owner_id === (await this.team.ownerFor(id))) throw new GameError('own_station', 'This is your own booth');
-    if (!(await this.g.db.get('SELECT 1 AS x FROM stamps WHERE player_id = ? AND station_id = ?', [id, stationId]))) throw new GameError('need_stamp', 'Stamp the booth first');
     const fields = cleanFields(fieldsIn).join(','), t = this.g.now();
     const prior = await this.g.db.get<{ id: number }>('SELECT id FROM card_shares WHERE from_player = ? AND to_station = ?', [id, stationId]);
     if (prior) { // changing the fields, or sharing again after revoking: no second reward

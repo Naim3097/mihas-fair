@@ -79,8 +79,8 @@ test('station: claim, rotating host code, verified contact, consented lead, revo
   list = (await visitor.get('/api/stations')).json.data;
   assert.equal(list[0]!.hosted, true);
 
-  // sharing needs a stamp first; wrong / own / expired codes are refused
-  assert.equal((await visitor.post('/api/station/share', { stationId: '7C17', fields: ['name'] })).json.code, 'need_stamp');
+  // a card goes only to a booth someone runs; wrong / own / expired codes are refused
+  assert.equal((await visitor.post('/api/station/share', { stationId: '7C18', fields: ['name'] })).json.code, 'not_hosted');
   assert.equal((await visitor.post('/api/stamp', { stationId: '7C17', proof: 'host', code: '000000' === code.digits ? '111111' : '000000' })).json.code, 'bad_code');
   assert.equal((await host.post('/api/stamp', { stationId: '7C17', proof: 'host', code: code.digits })).json.code, 'own_station');
   assert.equal((await visitor.post('/api/stamp', { stationId: '7C18', proof: 'host', code: code.digits })).json.code, 'not_hosted');
@@ -228,4 +228,15 @@ test('crews: influence decides the sector at the tick; active members of the hol
   v = (await closer.get('/api/sectors')).json.data;
   assert.equal(hall8().holder, 'visitor', 'ties and silence leave the previous holder in place');
   assert.equal((await closer.me()).xp, closerXp);
+});
+
+test('swap card: a visitor can leave their card at any booth an exhibitor runs, without stamping it first', async () => {
+  const { user } = await rig();
+  const host = await user().join('exhibitor', 'Hana Host'), visitor = await user().join('visitor', 'Vik Visitor');
+  assert.equal((await host.post('/api/station/claim', { stationId: '7C17', company: 'Mamee', offer: '', link: '', color: 0 })).status, 200);
+  const r = await visitor.post('/api/station/share', { stationId: '7C17', fields: ['name', 'email'] });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.deepEqual(r.json.events.map((e: { action: string }) => e.action), ['share_station']);
+  assert.equal((await visitor.post('/api/station/share', { stationId: '7C17', fields: ['name'] })).json.events.length, 0, 'changing the fields pays nothing twice');
+  assert.equal((await visitor.post('/api/station/share', { stationId: '6A17', fields: ['name'] })).json.code, 'not_hosted', 'an empty booth has nobody to swap with');
 });

@@ -3,7 +3,7 @@ import type { EngineApi as Engine } from '../game/engine-api';
 import { api, ApiError } from '../net/api';
 import { POINTS, ROLE_INFO, chapters, type Role } from '../../shared/rules';
 import type { BoothTeamPeek, PassportInput } from '../../shared/types';
-import { afterCard, referral, teamInvite, atLaunchPad, bootError, bootNote, distToGoal, goalVia, guideOn, guideTarget, herePlace, journey, level, me, modal, moveHint, nearLift, nearStation, online, panelStation, phase, seated, stampedSet, stationMap, toast, toasts } from '../state';
+import { afterCard, boothAction, referral, teamInvite, atLaunchPad, bootError, bootNote, distToGoal, goalVia, guideOn, guideTarget, herePlace, journey, level, me, modal, moveHint, nearLift, nearStation, online, panelStation, phase, seated, stampedSet, stationMap, toast, toasts } from '../state';
 import { facts } from '../game/facts';
 import { MapSheet, PhotoSheet } from './world-sheets';
 import { DemoChip, TourSheet } from '../demo/Tour';
@@ -138,6 +138,7 @@ function Hud({ engine }: Eng) {
     modal.value = 'complete'; api.track('mission_complete');
   }, [j.now, modal.value]);
 
+  const act = boothAction(st);
   const doStamp = async () => { if (!st) return; setStamping(true); await engine()?.stamp(st); setStamping(false); };
   const cps = m.mission.checkpoints, left = cps.filter((c) => !c.done);
   const toNext = () => { // the nearest checkpoint not yet scanned
@@ -214,8 +215,9 @@ function Hud({ engine }: Eng) {
         {!sitting && (st || place?.verb) && (
           <div class="chiprow">
             {place?.verb === 'photo' && <button class="chip act" onClick={() => void eng?.photo()}>Take a photo<kbd>E</kbd></button>}
-            {(place?.verb === 'sit' || place?.verb === 'watch') && !(st && !has) && <button class="chip act" onClick={() => eng?.sit()}>{place.verb === 'watch' ? 'Sit and watch' : 'Sit down'}<kbd>E</kbd></button>}
-            {!atLaunchPad.value && st && !has && <button class="chip act" disabled={stamping} onClick={doStamp}>{stamping ? 'Stamping…' : `Stamp +${POINTS.stamp}`}{!stamping && <kbd>E</kbd>}</button>}
+            {(place?.verb === 'sit' || place?.verb === 'watch') && !act && <button class="chip act" onClick={() => eng?.sit()}>{place.verb === 'watch' ? 'Sit and watch' : 'Sit down'}<kbd>E</kbd></button>}
+            {!atLaunchPad.value && act === 'stamp' && <button class="chip act" disabled={stamping} onClick={doStamp}>{stamping ? 'Stamping…' : `Stamp +${POINTS.stamp}`}{!stamping && <kbd>E</kbd>}</button>}
+            {!atLaunchPad.value && act === 'swap' && <button class="chip act" onClick={() => { panelStation.value = st; modal.value = 'booth'; }}>{m.shared.includes(st!.id) ? 'Card swapped ✓' : `Swap card · +${POINTS.leaveCard}`}<kbd>E</kbd></button>}
             {!atLaunchPad.value && st && <button class={'chip' + (has ? ' on' : '')} onClick={() => { panelStation.value = st; modal.value = 'booth'; }}>{stName}{view ? (view.hosted ? ' · at the counter' : ' · online') : ''} ›</button>}
           </div>
         )}

@@ -108,6 +108,14 @@ export function showEvents(events: XpEvent[] | undefined) {
 export const stampedSet = computed(() => new Set(me.value?.stamps ?? []));
 export const stationMap = computed(() => new Map(stations.value.map((s) => [s.id, s])));
 
+/** The one thing to do at a booth: stamp it if it is one of my checkpoints; swap cards if an exhibitor runs it;
+ *  otherwise nothing (an empty booth, the X, or my own). */
+export function boothAction(b: Booth | null): 'stamp' | 'swap' | null {
+  const m = me.value; if (!b || !m || b.id === level.value?.hero.id || m.hosting.includes(b.id)) return null;
+  if (m.mission.checkpoints.some((c) => c.stationId === b.id)) return stampedSet.value.has(b.id) ? null : 'stamp';
+  return stationMap.value.has(b.id) ? 'swap' : null;
+}
+
 /** The journey. Visitors: five chapters. Exhibitors: three steps on their own booth. `now` is the one thing to do next. */
 export interface Journey { kind: 'visitor' | 'exhibitor'; steps: Chapter[]; now: Chapter | null; done: number }
 export const journey = computed<Journey | null>(() => {

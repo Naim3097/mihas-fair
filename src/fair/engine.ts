@@ -17,7 +17,7 @@ import { NavGrid, pathLength, pointAlong, type P2 } from '../game/nav';
 import { BoothPicker } from '../game/pick';
 import { placeAt, type Seat } from '../game/places';
 import { RemoteTrack } from '../game/remote';
-import { atLaunchPad, currentDeck, distToGoal, goalVia, guideOn, guideTarget, herePlace, markSeen, me, modal, moveHint, myBooths, nearLift, nearStation, online, panelStation, photoShot, seated, seen, stampedSet, stationMap, stations, toast } from '../state';
+import { atLaunchPad, boothAction, currentDeck, distToGoal, goalVia, guideOn, guideTarget, herePlace, markSeen, me, modal, moveHint, myBooths, nearLift, nearStation, online, panelStation, photoShot, seated, seen, stampedSet, stationMap, stations, toast } from '../state';
 import type { Library } from '../ceritera/game/anim';
 import { CameraRig } from '../ceritera/game/camera';
 import type { Intent } from '../ceritera/game/controller';
@@ -326,7 +326,9 @@ export class FairEngine implements EngineApi {
     const pl = herePlace.value, st = nearStation.value;
     if (pl?.verb === 'photo') return void (await this.photo());
     if (pl?.verb) return this.sit();
-    if (st && !stampedSet.value.has(st.id)) await this.stamp(st);
+    const act = boothAction(st);
+    if (act === 'stamp') await this.stamp(st!);
+    else if (act === 'swap') { panelStation.value = st; modal.value = 'booth'; }
   }
 
   /** A portrait of Nexo, waving, with whatever is behind: rendered off to the side at a fixed size, framed, and handed to the photo sheet. */

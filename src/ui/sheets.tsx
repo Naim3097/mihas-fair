@@ -9,7 +9,7 @@ import { Camera, FieldPicker, Qr, Sheet, useCountdown } from './common';
 import { POINTS, ROLE_INFO, type ShareField } from '../../shared/rules';
 import type { Booth, Contact, LinkCode, LinkPeek } from '../../shared/types';
 import { LinkDemoHint, StationDemoHint } from '../demo/Tour';
-import { claimDraft, referral, setReferral, drop, guideOn, guideTarget, journey, level, me, modal, myBooths, nearStation, online, panelStation, pendingLink, stampedSet, stationMap, stations, toast } from '../state';
+import { boothAction, claimDraft, referral, setReferral, drop, guideOn, guideTarget, journey, level, me, modal, myBooths, nearStation, online, panelStation, pendingLink, stampedSet, stationMap, stations, toast } from '../state';
 
 type Eng = { engine: () => Engine | null };
 const fail = (e: unknown, fallback: string) => toast(e instanceof ApiError ? e.message : fallback, undefined, 'warn', 4500);
@@ -41,7 +41,7 @@ export function BoothSheet({ engine }: Eng) {
         <div class="stack"><button class="btn primary big" onClick={() => (modal.value = 'mybooth')}>Open my booth</button><button class="btn big" onClick={() => (modal.value = 'claim')}>Edit booth profile</button></div>
       ) : (
         <div class="stack">
-          {!stamped && near && <button class="btn primary big" disabled={busy} onClick={() => run(() => engine()!.stamp(b), 'Could not stamp')}>Stamp this booth · +{POINTS.stamp}</button>}
+          {boothAction(b) === 'stamp' && near && <button class="btn primary big" disabled={busy} onClick={() => run(() => engine()!.stamp(b), 'Could not stamp')}>Stamp this booth · +{POINTS.stamp}</button>}
           {!near && <button class="btn big" onClick={() => guideTo(b, title)}>Guide me here</button>}
 
           {!met && (
@@ -57,18 +57,17 @@ export function BoothSheet({ engine }: Eng) {
             </div>
           )}
 
-          {st && stamped && m.passport && (
+          {st && m.passport && (
             <div class="box">
-              <strong>{left ? 'You left your card here' : `Leave your card with ${st.company}?`}</strong>
+              <strong>{left ? `You swapped cards with ${st.company}` : `Swap cards with ${st.company}?`}</strong>
               <p class="fine">They receive only what you tick. You can take it back any time from My contacts.</p>
               <FieldPicker value={fields} onChange={setFields} />
               <div class="stack">
-                <button class="btn primary big" disabled={busy} onClick={() => run(() => api.leaveCard(b.id, fields), 'Could not leave your card')}>{left ? 'Update what they see' : `Leave my card · +${POINTS.leaveCard}`}</button>
+                <button class="btn primary big" disabled={busy} onClick={() => run(() => api.leaveCard(b.id, fields), 'Could not leave your card')}>{left ? 'Update what they see' : `Swap card · +${POINTS.leaveCard}`}</button>
                 {left && <button class="btn big" disabled={busy} onClick={() => run(() => api.takeBackCard(b.id), 'Could not undo')}>Take it back</button>}
               </div>
             </div>
           )}
-          {st && stamped && !m.passport && <p class="fine">Get your free card at the X — Booth 8H18A — and you can leave it with exhibitors.</p>}
           <StationDemoHint stationId={b.id} onDigits={setDigits} />
 
           {!st && <button class="btn big" onClick={() => (modal.value = m.passport ? 'claim' : 'card')}>Exhibiting here? Bring this booth online</button>}
