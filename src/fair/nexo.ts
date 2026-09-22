@@ -115,7 +115,8 @@ export class NexoActor {
           const s = (mat as THREE.MeshStandardMaterial).clone();
           if (s.isMeshStandardMaterial) {
             // a matte plastic suit: the generator's metalness map would only reflect a sky the fair does not light with
-            s.emissiveMap = null; s.emissive.set(0x000000); s.metalnessMap = null; s.metalness = 0; s.roughness = Math.max(0.55, s.roughness); s.envMapIntensity = 0;
+            // the web copy's only emissive map is the LED strip, which glows through the visor
+            if (s.emissiveMap) s.emissive.set(0xffffff); else s.emissive.set(0x000000); s.metalnessMap = null; s.metalness = 0; s.roughness = Math.max(0.55, s.roughness); s.envMapIntensity = 0;
             tintSuit(s, this.tint); this.mats.push(s);
           }
           return s;
