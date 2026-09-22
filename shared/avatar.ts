@@ -48,8 +48,6 @@ export const CATALOG = {
   trail: [{ label: 'None' }, { label: 'Spark', unlock: { rank: 2 } }, { label: 'Comet', unlock: { rank: 3 } }, { label: 'X-dust', unlock: { rank: 4 } }] as Option[],
 } satisfies Record<Slot, Option[]>;
 
-export const SLOT_LABEL: Record<Slot, string> = { helmet: 'Helmet', visor: 'Visor', smile: 'LED smile', ear: 'Ear ring', top: 'Top', bottom: 'Bottoms', shoes: 'Shoes', carry: 'Carry', trail: 'Trail' };
-
 /** One astronaut, one suit. Who they are is said by the jacket colour alone (ROLE_INFO), which the renderer applies. */
 export function defaultAvatar(_role: Role | null): AvatarSpec {
   return { helmet: 0, visor: 0, smile: 0, ear: 5, top: 0, bottom: 0, shoes: 0, carry: 0, trail: 0 };
@@ -57,7 +55,6 @@ export function defaultAvatar(_role: Role | null): AvatarSpec {
 
 /** Options with an unlock were rewards of systems that are switched off; they stay locked. */
 export const isUnlocked = (o: Option): boolean => !o.unlock;
-export const unlockHint = (o: Option): string => (o.unlock ? 'Not available' : '');
 
 /** Returns a clean spec, or null if any value is out of range or locked. */
 export function validateAvatar(input: unknown): AvatarSpec | null {
@@ -82,5 +79,3 @@ export function decodeAvatar(code: string | null | undefined): AvatarSpec | null
   SLOTS.forEach((s, i) => { a[s] = (CATALOG[s] as Option[])[n[i]!] ? n[i]! : 0; });
   return a;
 }
-
-export const COMBINATIONS = SLOTS.filter((s) => s !== 'trail').reduce((n, s) => n * (s === 'carry' ? CATALOG.carry.length - 1 : CATALOG[s].length), 1);

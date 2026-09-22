@@ -47,7 +47,7 @@ test('a company works its booth as a team: colleagues join with a link, each on 
   assert.equal((await ali.call('POST', '/api/booth-team/join', { code })).json.code, 'card');
   await ali.card('Ali');
   assert.equal((await ali.call('POST', '/api/booth-team/join', { code })).status, 200);
-  let me = await ali.me();
+  const me = await ali.me();
   assert.deepEqual([me.cls, me.hosting], ['exhibitor', ['7C17']], 'the booth is theirs to work now');
 
   // the whole dashboard: QR, visitors, booth list — and the logo, photo and profile

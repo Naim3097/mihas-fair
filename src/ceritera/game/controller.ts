@@ -62,15 +62,6 @@ export function newPlayer(cls: ClassKey, stats: Stats, pos: V3, yaw: number, M: 
   };
 }
 
-/** After a level-up: the maxima grow and the bars keep their fraction. */
-export function refit(p: Player, stats: Stats): void {
-  const v = vitals(stats);
-  p.health = Math.round((p.health / p.maxHealth) * v.health); p.maxHealth = v.health;
-  p.stamina = (p.stamina / p.vit.stamina) * v.stamina;
-  p.spirit = (p.spirit / p.vit.spirit) * v.spirit;
-  p.vit = v;
-}
-
 const DEG = Math.PI / 180;
 const strikeTotal = (s: StrikeDef) => s.windup + s.active + s.recovery;
 

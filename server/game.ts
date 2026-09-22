@@ -47,6 +47,7 @@ const digits = (n: number) => String(Math.floor(Math.random() * 10 ** n)).padSta
 const MYT_OFFSET_MS = 8 * 3600 * 1000;
 export const dayOf = (t: number) => Math.floor((t + MYT_OFFSET_MS) / 86_400_000);
 export const dayStart = (t: number) => dayOf(t) * 86_400_000 - MYT_OFFSET_MS;
+// eslint-disable-next-line no-control-regex -- control characters are exactly what is stripped
 export const cleanText = (s: unknown, max: number) => String(s ?? '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, max);
 export const cleanFields = (input: unknown): ShareField[] => {
   const set = new Set<ShareField>(['name']);

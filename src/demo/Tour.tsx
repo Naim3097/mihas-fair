@@ -55,31 +55,7 @@ export function LinkDemoHint({ mode, onCode }: { mode: 'show' | 'scan'; onCode: 
   );
 }
 
-/** My booth: footfall on demand. (Simulated visitors also walk over by themselves while the QR is open.) */
-export function HostDemoHint({ onLead }: { onLead: () => void }) {
-  const [busy, setBusy] = useState(false);
-  if (!demo.value) return null;
-  return (
-    <div class="box demobox left">
-      <strong><DemoTag /> Visitors</strong>
-      <p class="fine">While this screen is open, simulated visitors walk to your booth, scan the QR and may leave their card. Or skip the wait:</p>
-      <button class="btn" disabled={busy} onClick={async () => { setBusy(true); try { const r = await demoApi.visitor(); if (r) { toast(`${r.name} scanned your QR`, 'Met in person · left their card', 'xp'); onLead(); } else toast('Everyone in the demo has already visited', undefined, 'info'); } catch (e) { warn(e); } setBusy(false); }}>Send a visitor now</button>
-    </div>
-  );
-}
 
-/** Prize code: our booth crew. */
-export function TicketDemoHint() {
-  const [busy, setBusy] = useState(false), pin = demoState.value?.crewPin ?? '';
-  if (!demo.value) return null;
-  return (
-    <div class="box demobox left">
-      <strong><DemoTag /> Our crew at 8H18A</strong>
-      <p class="fine">Be the crew yourself: open the <a class="link" href="/crew.html" target="_blank" rel="noopener">crew console</a> in a new tab (PIN <b class="mono">{pin}</b>), type the 6 characters above and confirm. This screen notices within a few seconds.</p>
-      <button class="btn" disabled={busy} onClick={async () => { setBusy(true); try { await demoApi.dock(); await api.me(); if (me.value?.docked) modal.value = 'claimed'; } catch (e) { warn(e); } setBusy(false); }}>…or simulate the crew's scan</button>
-    </div>
-  );
-}
 
 /* ------------------------------------------------------------------ the guide */
 

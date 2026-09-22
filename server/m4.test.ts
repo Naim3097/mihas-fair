@@ -110,7 +110,7 @@ test('teams, kill switches, the Daily Drop, and what the big screen is allowed t
   const joined = (await mate.post('/api/team/join', { code: team.code })).json.data as TeamView;
   assert.deepEqual([joined.owner, joined.code, joined.members.length, joined.score], [false, null, 2, 400]);
   assert.equal((await mate.post('/api/team/create', {})).json.code, 'in_team');
-  let co = (await guest.get('/api/boards?board=companies')).json.data as BoardRow[];
+  const co = (await guest.get('/api/boards?board=companies')).json.data as BoardRow[];
   assert.deepEqual([co[0]!.title, co[0]!.value, co[0]!.trusted], ['Bea Boss Co', 400, false]);
   await boss.post('/api/team/leave');
   assert.equal((await mate.get('/api/team')).json.data, null, 'the founder leaving dissolves the team');

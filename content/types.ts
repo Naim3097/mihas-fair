@@ -1,6 +1,6 @@
 // The game as data. Everything a runtime needs to know about Ceritera's classes, stats, world, quests, dialogue and
-// items is described by these shapes and authored in the sibling files. Both runtimes read them: the web tier
-// imports the modules directly; the Unreal project imports the JSON that tools/export-content.mjs writes from them.
+// items is described by these shapes and authored in the sibling files. The web tier imports the modules directly;
+// nothing else reads them today (the JSON export for another runtime was never written).
 // Rules of the house: copy is always bilingual (BM first), keys are kebab-case and never change once shipped, and
 // anything marked `draft` is a placeholder the writer or designer still has to sign off.
 

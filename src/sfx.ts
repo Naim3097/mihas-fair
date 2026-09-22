@@ -29,7 +29,8 @@ const BANK: Record<Exclude<Sfx, 'shutter'>, Note[]> = {
   liftDown: [{ f: G5, to: G5 / 2, d: 0.55, g: 0.06 }, { f: C5, at: 0.5, d: 0.3, g: 0.07, type: 'triangle' }],
 };
 
-let ctx: AudioContext | null = null, master: GainNode | null = null, lastAt = new Map<Sfx, number>();
+let ctx: AudioContext | null = null, master: GainNode | null = null;
+const lastAt = new Map<Sfx, number>();
 
 /** Called from the first touch or key press: from then on sounds may play. Safe to call again. */
 export function unlock() {

@@ -140,7 +140,7 @@ function Hud({ engine }: Eng) {
   const trail = guideOn.value && distToGoal.value != null && (goal || (!m.mission.started && j.kind === 'visitor')); // until the mission starts, the trail leads to Lean X
   const word = j.kind === 'visitor' ? 'Chapter' : 'Step';
 
-  // the ending is shown once, the moment the fifth chapter closes and nothing else is on screen
+  // the ending is shown once, the moment the last chapter closes and nothing else is on screen
   useEffect(() => {
     if (j.kind !== 'visitor' || j.now || modal.value) return;
     try { if (localStorage.getItem('mx_complete')) return; localStorage.setItem('mx_complete', '1'); } catch { /* private mode: show it */ }
@@ -289,7 +289,7 @@ function CardForm() {
 }
 
 
-/** Two moments, one screen: the crew's scan at the booth, and the fifth chapter closing. When both are true this is the ending. */
+/** Two moments, one screen: the crew's scan at the booth, and the last chapter closing. When both are true this is the ending. */
 function Finish() {
   const j = journey.value, left = j?.kind === 'visitor' ? j.steps.filter((s) => !s.done) : [];
   const complete = j?.kind === 'visitor' && left.length === 0;

@@ -51,7 +51,7 @@ test('presence engine: a printed booth QR is a real-booth scan and anchors; ever
   const p = await user().join('visitor'), watcher = await user().join('exhibitor');
 
   // no location check: the booth's own QR, scanned, is a real-booth scan and marks the player as at MIHAS
-  let r = await p.post('/api/stamp', { stationId: '7C18', proof: 'beacon', beacon: await beacon('7C18') });
+  const r = await p.post('/api/stamp', { stationId: '7C18', proof: 'beacon', beacon: await beacon('7C18') });
   assert.deepEqual([r.json.events[0].action, r.json.events[0].xp], ['scan', 50]);
   assert.equal(r.json.events[0].note, undefined, 'no "allow location" nudge');
   assert.equal(r.json.me.onsite, true);

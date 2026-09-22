@@ -12,7 +12,7 @@ The first screen has two buttons and nothing else to decide.
 
 | | **I'm visiting** | **I'm exhibiting** |
 |---|---|---|
-| What it is | One mission, five chapters, about five minutes | Three steps on your own booth, about two minutes |
+| What it is | One mission, three chapters, about five minutes | Three steps on your own booth, about two minutes |
 | Wears | the astronaut, blue jacket | the astronaut, green jacket |
 | Shown as | "Visitor 4821" until they have a card, then "Aisyah R." | the same |
 
@@ -20,20 +20,18 @@ Anyone can switch doors from the menu. Whoever brings a booth online becomes an 
 
 ## The visitor's mission
 
-One instruction on screen at a time, and five dots that fill in.
+One instruction on screen at a time, and three dots that fill in. The whole game is on Level 2 (Halls 6–8); there
+is no location check, everyone plays in the one hall and sees everyone else.
 
-1. **Arrive** — land at the Hall 8 entrance and walk.
-2. **Find the X** — follow the trail to Booth 8H18A. Reward: your free digital business card (its own link, QR and
+1. **Your card** — the form comes first, before the world: your free digital business card (its own link, QR and
    contact file). This is the only form in the game.
-3. **Collect** — walk up to any five booths and stamp them.
-4. **Connect** — swap cards with one person, or leave your card at one booth that is online.
-5. **Make it real** — show your prize code at the real Booth 8H18A. Our crew scans it; you get your gift.
+2. **Find Lean X Digital** — follow the trail to Booth 8H18A and scan the Lean X Digital QR there to start.
+3. **Checkpoints** — the game names exhibitor booths for you (five today, `CHECKPOINTS` in `shared/rules.ts`);
+   find each and scan the QR on its counter. The trail leads to the nearest one left; "Take me there" walks you.
 
-Chapters 3 and 4 can be done in either order, and someone standing at the booth can do 5 early.
-Someone playing from home before the show finishes 1–4 and sees chapter 5 waiting: *that* is the invitation to MIHAS.
-When the fifth closes, the ending says what they just did — a customer journey — and who builds those.
-
-After the mission it is free play: the same actions keep scoring.
+When the last closes, the ending says what they just did — a customer journey — and who builds those.
+After the mission it is free play: stamping, swapping cards and leaving them keep scoring. Booths that are not your
+checkpoints offer **Swap card** when an exhibitor runs them.
 
 ## Points — fixed, and shown in the game ("How to play")
 
@@ -103,8 +101,8 @@ Our crew confirms each booth ("verified exhibitor") and removes one that is not 
 
 - The server decides everything; the app only asks. Every point is a row in a history that the crew can void and restore.
 - One stamp every five seconds at most; travel faster than a run is refused and remembered.
-- A printed booth QR can be photographed, so it scores 50 only when the phone is at MIHAS (one location reading, asked
-  in that moment, only the yes/no kept) and 10 anywhere else. An exhibitor's live QR changes every 30 seconds and needs no GPS.
+- A booth QR scores in full wherever it is scanned (the location check was removed on 22 September 2026). A printed
+  booth QR is a fixed code; an exhibitor's live QR changes every 30 seconds.
 - Before a prize is announced the crew reviews the top of the board: who was at MIHAS, who scanned a live QR, who came
   to our booth, who jumped impossibly. Nothing in the game is decided by chance.
 - Cards are shared field by field, by choice, and can be taken back.

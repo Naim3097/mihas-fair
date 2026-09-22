@@ -20,8 +20,6 @@ const FIX = { y0: 20, y1: 117, s: 3 / 3.25 } as const;
 const FIX_C = (FIX.y0 + FIX.y1) / 2;
 export const fixY = (y: number): number => (y > FIX.y0 && y < FIX.y1 ? FIX_C + (y - FIX_C) * FIX.s : y);
 export const unfixY = (y: number): number => (y > FIX_C + (FIX.y0 - FIX_C) * FIX.s && y < FIX_C + (FIX.y1 - FIX_C) * FIX.s ? FIX_C + (y - FIX_C) / FIX.s : y);
-/** How many world metres one plan metre of y is, at this plan y. */
-export const yScaleAt = (y: number): number => (y > FIX.y0 && y < FIX.y1 ? FIX.s : 1);
 
 export const toWorld = (x: number, y: number, h = 0): V3 => v3(x - CX, h, -(fixY(y) - CY));
 export const toPlan = (p: { x: number; z: number }): { x: number; y: number } => ({ x: p.x + CX, y: unfixY(CY - p.z) });

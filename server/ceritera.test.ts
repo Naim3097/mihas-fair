@@ -56,6 +56,7 @@ test('xp: the ledger is the truth, level and stats follow the content curve', as
   const id = await playerId();
   await assert.rejects(services.ceritera.grant('nobody', 'read', 10), /avatar/);
 
+  // eslint-disable-next-line prefer-const -- character is reassigned below, events is not
   let { character, events } = await services.ceritera.grant(id, 'read', 450, 'kitab-nusantara');
   assert.deepEqual(events, [{ action: 'read', xp: 450 }]);
   assert.equal(character.level, 2); assert.equal(character.xpIntoLevel, 150); assert.equal(character.xpToNext, 600);

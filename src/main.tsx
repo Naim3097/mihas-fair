@@ -4,7 +4,7 @@ import { render } from 'preact';
 import './ui.css';
 import './fair/fair.css';
 import { App } from './ui/App';
-import { FairEngine, pickQuality } from './fair/engine';
+import type { FairEngine } from './fair/engine';
 import { fairLevelData } from './fair/level';
 import { api, ApiError } from './net/api';
 import { handleScan } from './scan';
@@ -41,10 +41,12 @@ function poll() {
 async function boot() {
   try {
     await ensureBackend((text) => (bootNote.value = text));
-    const [lv] = await Promise.all([
+    // the renderer and the engine arrive while the plan and the player load, after the splash has painted
+    const [lv, , , { FairEngine, pickQuality }] = await Promise.all([
       fetch('/data/floor.json').then((r) => { if (!r.ok) throw new Error('level'); return r.json() as Promise<LevelData>; }),
       api.me(),
       document.fonts.load('800 32px Urbanist').catch(() => {}),
+      import('./fair/engine'),
     ]);
     level.value = lv;
     try { engine = new FairEngine(document.getElementById('stage')!, fairLevelData(lv), pickQuality()); }

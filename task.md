@@ -32,9 +32,11 @@ Status: everything below is pushed to GitHub `main` and live.
 
 ## Still to do
 
-- [ ] "Take me there" to checkpoint ada bug: tak bawa ke checkpoint seterusnya, hanya bawa ke Lean X booth
+- [x] "Take me there" to checkpoint ada bug: tak bawa ke checkpoint seterusnya, hanya bawa ke Lean X booth — `8e5da45`
+  - The trail has an explicit target now and leads to the X only until the mission starts. The folded card gets a **Next** button (nearest checkpoint left, and walk). Arrival is standing at the booth, not 6 m of path.
 - [ ] User boleh pilih nak start game dari gate mana
-- [ ] Movement "take me there" terlalu laju, takut user tak boleh catch up; ada pause button
+- [x] Movement "take me there" terlalu laju, takut user tak boleh catch up; ada pause button — `8e5da45`
+  - A jog (2.7 m/s), never a sprint, the last step at a walk; **Stop** on the card while it walks; the camera comes round to follow the trail.
 - [ ] Mission dari 5 checkpoint turun ke 3
 - [ ] Booth upload gambar tak perlu approval Lean X
 - [ ] 2 flow onboarding: 1 exhibitor sign up sendiri, 1 lagi kita sign up-kan (dashboard dekat /crew.html untuk daftarkan user)

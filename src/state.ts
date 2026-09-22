@@ -119,7 +119,7 @@ export function boothAction(b: Booth | null): 'stamp' | 'swap' | null {
   return stationMap.value.has(b.id) ? 'swap' : null;
 }
 
-/** The journey. Visitors: five chapters. Exhibitors: three steps on their own booth. `now` is the one thing to do next. */
+/** The journey. Visitors: three chapters. Exhibitors: three steps on their own booth. `now` is the one thing to do next. */
 export interface Journey { kind: 'visitor' | 'exhibitor'; steps: Chapter[]; now: Chapter | null; done: number }
 export const journey = computed<Journey | null>(() => {
   const m = me.value;

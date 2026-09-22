@@ -40,7 +40,7 @@ export type StampProof = 'virtual' | 'beacon' | 'host';
 export type Presence = 'remote' | 'onsite';
 export const stampPoints = (presence: Presence) => (presence === 'onsite' ? POINTS.scan : POINTS.stamp);
 
-/* ---------------- the mission: one journey, five chapters ---------------- */
+/* ---------------- the mission: one journey, three chapters ---------------- */
 
 export const MISSION_STAMPS = 5;
 /** Exhibitor booths each visitor is sent to. Fewer while fewer exhibitors are approved; topped up as more join. */
@@ -146,8 +146,6 @@ export const INFLUENCE_PRESENCE: Record<Presence, number> = { remote: 0.25, onsi
 
 /** On deck (physically there) the avatar follows the person: walking pace, not the 12 m/s of a joystick avatar. */
 export const DECK_MAX_SPEED_MPS = 2.8;
-export const DECK_STALE_MS = 10 * 60_000;
-export const DECK_STALE_SIGMA_M = 12;
 export const WALK_XP_PER_M = 0.1;
 export const WALK_XP_DAILY_CAP = 300;
 

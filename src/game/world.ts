@@ -10,9 +10,7 @@ import { buildStands, type Stand } from './stands';
 // Floor-plan metres → world. +x east, +y north ⇒ world +x east, −z north.
 export const CX = 95, CY = 72;
 export const toWorld = (x: number, y: number, h = 0, out = new THREE.Vector3()) => out.set(x - CX, h, -(y - CY));
-export const toPlan = (v: THREE.Vector3) => ({ x: v.x + CX, y: CY - v.z });
 
-export type Quality = 'high' | 'low';
 export interface Label { text: string; pos: THREE.Vector3; kind: 'area' | 'gate' | 'hero' | 'lift' }
 const TONE: Record<Tone, number> = { white: 0xffffff, soft: 0xe9e6df, mid: THEME.inkSoft, ink: THEME.ink, area: THEME.area };
 

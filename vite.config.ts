@@ -54,6 +54,9 @@ export default defineConfig({
   server: { port: 5173, strictPort: true, host: true, proxy: { '/api': api, '^/p/': api } },
   build: {
     target: 'es2020',
-    rollupOptions: { input: { main: resolve(__dirname, 'index.html'), crew: resolve(__dirname, 'crew.html'), booth: resolve(__dirname, 'booth.html'), screen: resolve(__dirname, 'screen.html') } },
+    rollupOptions: {
+      input: { main: resolve(__dirname, 'index.html'), crew: resolve(__dirname, 'crew.html'), booth: resolve(__dirname, 'booth.html'), screen: resolve(__dirname, 'screen.html') },
+      output: { manualChunks: { three: ['three'] } }, // the renderer in a chunk of its own: cached across deploys, named for what it is
+    },
   },
 });
