@@ -296,6 +296,7 @@ export function MenuSheet() {
         {world.value === 'playground'
           ? <button class="wide" onClick={() => { pgControls.value?.leave(); world.value = 'fair'; modal.value = null; }}><strong>Back to the fair</strong><small>A run under way ends here</small></button>
           : <button onClick={() => { world.value = 'playground'; modal.value = null; }}><strong>Playground</strong><small>Jump for stars, earn the gear · beside the X</small></button>}
+        {world.value === 'playground' && <button onClick={go('pgboards')}><strong>Boards</strong><small>Today's best runs, and all-time</small></button>}
         {world.value !== 'playground' && <button onClick={go('map')}><strong>Map</strong><small>Halls 6–8 · search · places to go</small></button>}
         <button onClick={go('rules')}><strong>How to play</strong><small>The mission and the points, on one page</small></button>
         <button aria-pressed={soundOn.value} onClick={() => setSound(!soundOn.value)}><strong>Sound · {soundOn.value ? 'on' : 'off'}</strong><small>{soundOn.value ? 'Quiet chimes, and a buzz on phones that can' : 'Silent, no vibration'}</small></button>

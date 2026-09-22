@@ -8,7 +8,7 @@ export type Phase = 'boot' | 'start' | 'play' | 'error';
 /** Which world has the stage: the fair, or the Playground beside it. */
 export type World = 'fair' | 'playground';
 export const world = signal<World>('fair');
-export type Modal = null | 'card' | 'prize' | 'claimed' | 'complete' | 'booth' | 'claim' | 'mybooth' | 'swap' | 'contacts' | 'map' | 'photo' | 'menu' | 'rules' | 'tour' | 'scan' | 'jointeam';
+export type Modal = null | 'card' | 'prize' | 'claimed' | 'complete' | 'booth' | 'claim' | 'mybooth' | 'swap' | 'contacts' | 'map' | 'photo' | 'menu' | 'rules' | 'tour' | 'scan' | 'jointeam' | 'pgboards';
 
 export const phase = signal<Phase>('boot');
 export const level = signal<LevelData | null>(null);

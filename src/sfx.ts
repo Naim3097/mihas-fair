@@ -7,7 +7,7 @@
 //   · a sound marks something that happened — never decoration, never a loop, never music
 import { signal } from '@preact/signals';
 
-export type Sfx = 'tap' | 'go' | 'stamp' | 'big' | 'warn' | 'jump' | 'sit' | 'shutter' | 'liftUp' | 'liftDown';
+export type Sfx = 'tap' | 'go' | 'stamp' | 'big' | 'warn' | 'jump' | 'sit' | 'shutter' | 'liftUp' | 'liftDown' | 'chime1' | 'chime2' | 'chime3' | 'chime4';
 
 const KEY = 'mx_sound';
 const stored = (): boolean => { try { return localStorage.getItem(KEY) !== 'off'; } catch { return true; } };
@@ -27,6 +27,11 @@ const BANK: Record<Exclude<Sfx, 'shutter'>, Note[]> = {
   sit: [{ f: 196, to: 150, d: 0.12, g: 0.1 }],
   liftUp: [{ f: G5 / 2, to: G5, d: 0.55, g: 0.06 }, { f: D5, at: 0.5, d: 0.3, g: 0.07, type: 'triangle' }],
   liftDown: [{ f: G5, to: G5 / 2, d: 0.55, g: 0.06 }, { f: C5, at: 0.5, d: 0.3, g: 0.07, type: 'triangle' }],
+  // the Playground's stars: one note a step higher for each combo level, up the same scale
+  chime1: [{ f: E5, d: 0.2, g: 0.1, type: 'triangle' }],
+  chime2: [{ f: G5, d: 0.2, g: 0.1, type: 'triangle' }],
+  chime3: [{ f: A5, d: 0.22, g: 0.1, type: 'triangle' }],
+  chime4: [{ f: C6, d: 0.26, g: 0.1, type: 'triangle' }, { f: E5, at: 0.02, d: 0.14, g: 0.04 }],
 };
 
 let ctx: AudioContext | null = null, master: GainNode | null = null;

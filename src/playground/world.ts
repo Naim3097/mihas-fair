@@ -13,7 +13,7 @@ import { Ribbon } from './ribbon';
 const INK = 0x1b2130, WHITE = 0xffffff;
 const TINT: Record<Gear, number> = { boots: 0xffffff, skates: FAIR.accent, jetpack: FAIR.orange };
 /** Where the eye can read a label over a stand or the portal. */
-export interface WorldLabel { text: string; pos: THREE.Vector3; kind: 'stand' | 'portal' }
+export interface WorldLabel { text: string; pos: THREE.Vector3; kind: 'stand' | 'portal'; gear?: Gear }
 
 const flat = (color: number, emissive = 0) => new THREE.MeshLambertMaterial({ color, emissive: color, emissiveIntensity: emissive });
 const decal = (o: THREE.MeshBasicMaterialParameters) => new THREE.MeshBasicMaterial({ ...o, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
@@ -37,6 +37,8 @@ export class PlaygroundWorld {
   private collected: Uint8Array;
   private pops: { i: number; t: number }[] = [];
   private tmpM = new THREE.Matrix4(); private tmpQ = new THREE.Quaternion(); private tmpP = new THREE.Vector3(); private tmpS = new THREE.Vector3();
+  /** the gear stands' discs, and the one swelling for a purchase */
+  private discs: Partial<Record<Gear, THREE.Mesh>> = {}; private pop: { mesh: THREE.Mesh; t: number } | null = null;
 
   constructor(private course: Course, lean: boolean, shadows: boolean) {
     this.scene.background = new THREE.Color(FAIR.space);
@@ -91,9 +93,9 @@ export class PlaygroundWorld {
       }
     }
     for (const s of c.stands) {
-      const disc = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 0.08, 40), flat(TINT[s.gear], s.gear === 'boots' ? 0 : 0.25)); disc.position.set(s.x, 0.04, s.z); disc.receiveShadow = true; this.scene.add(disc);
+      const disc = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 0.08, 40), flat(TINT[s.gear], s.gear === 'boots' ? 0 : 0.25)); disc.position.set(s.x, 0.04, s.z); disc.receiveShadow = true; this.scene.add(disc); this.discs[s.gear] = disc;
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.3, 0.3), flat(INK)); post.position.set(s.x, 0.65, s.z - 1.0); post.castShadow = true; this.scene.add(post);
-      this.labels.push({ text: `${GEAR[s.gear].name}${GEAR[s.gear].price ? ` · ${GEAR[s.gear].price} ★` : ''}`, pos: new THREE.Vector3(s.x, 2.0, s.z - 1.0), kind: 'stand' });
+      this.labels.push({ text: `${GEAR[s.gear].name}${GEAR[s.gear].price ? ` · ${GEAR[s.gear].price} ★` : ''}`, pos: new THREE.Vector3(s.x, 2.0, s.z - 1.0), kind: 'stand', gear: s.gear });
     }
     const portal = new THREE.Mesh(new THREE.CylinderGeometry(c.portal.r, c.portal.r, 0.08, 40), flat(FAIR.blue, 0.2)); portal.position.set(c.portal.x, 0.04, c.portal.z); this.scene.add(portal);
     const halo = new THREE.Mesh(new THREE.TorusGeometry(c.portal.r + 0.2, 0.06, 8, 40).rotateX(-Math.PI / 2), flat(FAIR.blue)); halo.position.set(c.portal.x, 0.12, c.portal.z); this.scene.add(halo);
@@ -125,6 +127,7 @@ export class PlaygroundWorld {
   /** Spin, bob, breathe; the pops of what was just collected. */
   update(t: number, dt: number) {
     this.sky.update(t);
+    if (this.pop) { this.pop.t += dt; const k = this.pop.t / 0.5, s = k < 1 ? 1 + Math.sin(k * Math.PI) * 0.3 : 1; this.pop.mesh.scale.set(s, 1, s); if (k >= 1) this.pop = null; }
     const K = this.course.pickups, M = this.tmpM, Q = this.tmpQ, P = this.tmpP, S = this.tmpS;
     for (let i = 0; i < K.length; i++) {
       const p = K[i]!, mesh = this.meshes[p.kind];
@@ -140,6 +143,13 @@ export class PlaygroundWorld {
       if (pop.t > 0.16) { M.makeScale(0, 0, 0); mesh.setMatrixAt(this.slot[pop.i]!, M); this.pops.splice(k, 1); }
     }
     for (const m of Object.values(this.meshes)) m.instanceMatrix.needsUpdate = true;
+  }
+
+  /** A gear that is yours: its stand glows from now on, and swells once as it is bought under the body's feet. */
+  own(gear: Gear, ceremony = false) {
+    const d = this.discs[gear]; if (!d) return;
+    (d.material as THREE.MeshLambertMaterial).emissiveIntensity = 0.5;
+    if (ceremony) this.pop = { mesh: d, t: 0 };
   }
 
   /** A pickup taken: it pops and is gone for the run, its tinted ring with it. */

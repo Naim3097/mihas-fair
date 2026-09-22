@@ -420,6 +420,19 @@ the next edge) takes every star, the diamond and both cells with the tank never 
   in order (release at the crests around y 15, 12 and 9; the tank 100 → 76 on a hill, back to 100 on the floor, 97
   after a cell), 2,440 points and 80 stars by the fifth hill at ×4, the sky hoop counted as a ring, no console
   errors; the flight pose, the tilt and the exhaust from behind and from the side; the fuel bar; the camera's tip.
-- Not yet: the boards, the chimes per combo level, the unlock ceremony and the phone pass (Phase 4), the server
-  (Phase 5). The three cells and the sky line's stars raise the course's star count past the 145 the server contract
-  names; Phase 5 takes the number from the course data.
+**Phase 4 — done (23 Sep): polish and phones.** The star's chime is a note a step higher for each combo level on
+the game's own scale (`chime1`–`chime4` in `src/sfx.ts`), a combo step plays the rise, and the air's warning sounds
+once a run at eight seconds. A gear bought is a ceremony on the stand: the disc lights and swells under the feet, the
+label drops its price, the chime, the buzz, the toast, and the note says how the gear is driven. The boards: a store
+interface (`PlaygroundStore` in `src/playground/store.ts`) with the finished runs behind it (fifty kept) and
+`rankRuns` (today from midnight, or all-time; best first; ten; the best marked), a Boards sheet from the summary and
+the menu with Today and All-time tabs, "saved on this phone" while the store is local. Every run end posts
+`playground_run` (gear, score, stars, combo, seconds, finished) and an unlock posts `playground_unlock` to
+`/api/event`. The phone pass at 375 × 812 and 812 × 375: the run card, the fuel bar, the Jump button, the summary
+and the boards fit; the ladder at q4 (no shadows, the blob) draws the course in 32 calls. `docs/phone-test.md` gains
+six Playground rows (17–22). The daily bridge stays off; its switch lives on the server, in Phase 5.
+- Verified in the browser: the ceremony on the Skates stand (the swell caught at 1.2, the glow, "Skates unlocked ·
+  hold the rim to tuck", the toast); a scripted Skates run at phone size through the gate (2,503, a new best); the
+  summary and the Boards sheet listing it; landscape; q4; no console errors. Tests: the store (2), 138 in all.
+- Not yet: the server (Phase 5). The three cells and the sky line's stars raise the course's star count past the 145
+  the server contract names; Phase 5 takes the number from the course data.

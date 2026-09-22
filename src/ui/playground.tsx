@@ -2,9 +2,10 @@
 // first-run hint, the portal chip, the fade of a fall. Everything reads the engine's signals; nothing is per frame.
 import { useEffect, useState } from 'preact/hooks';
 import { GEAR } from '../playground/gear';
-import { pgBalance, pgBest, pgCombo, pgControls, pgFade, pgFuel, pgGear, pgHint, pgMode, pgNearPortal, pgO2, pgRunStars, pgScore, pgStandNote, pgSummary, pgUnlocks } from '../playground/state';
+import { pgBalance, pgBest, pgCombo, pgControls, pgFade, pgFuel, pgGear, pgHint, pgMode, pgNearPortal, pgO2, pgRunStars, pgScore, pgStandNote, pgStore, pgSummary, pgUnlocks } from '../playground/state';
 import { O2_CAP } from '../playground/run';
-import { modal, world } from '../state';
+import type { BoardRange, BoardRow } from '../playground/store';
+import { me, modal, world } from '../state';
 import { Sheet } from './common';
 
 const FINE_POINTER = typeof matchMedia === 'function' && matchMedia('(hover:hover) and (pointer:fine)').matches;
@@ -73,8 +74,25 @@ function Summary() {
       ) : <p class="fine">Every gear is yours. Chase the best run.</p>}
       <div class="stack">
         <button class="btn primary big" onClick={() => c?.again()}>Again</button>
-        <button class="btn big" onClick={() => { c?.leave(); world.value = 'fair'; }}>Back to the fair</button>
+        <div class="row2"><button class="btn big" onClick={() => (modal.value = 'pgboards')}>Boards</button><button class="btn big" onClick={() => { c?.leave(); world.value = 'fair'; }}>Back to the fair</button></div>
       </div>
+    </Sheet>
+  );
+}
+
+/** Today's best runs and all-time: ten lines, best first, the viewer's own marked. On this device until the backend
+ *  keeps them, and the sheet says so. */
+export function BoardsSheet() {
+  const [range, setRange] = useState<BoardRange>('today'), [rows, setRows] = useState<BoardRow[] | null>(null);
+  const store = pgStore.value, name = me.value?.callsign ?? 'You';
+  useEffect(() => { let on = true; setRows(null); void store?.boards(range, name).then((r) => { if (on) setRows(r); }).catch(() => { if (on) setRows([]); }); return () => { on = false; }; }, [range, store, name]);
+  return (
+    <Sheet k="Playground" title="Boards">
+      <div class="pgtabs" role="tablist"><button role="tab" aria-selected={range === 'today'} class={range === 'today' ? 'on' : ''} onClick={() => setRange('today')}>Today</button><button role="tab" aria-selected={range === 'all'} class={range === 'all' ? 'on' : ''} onClick={() => setRange('all')}>All-time</button></div>
+      {rows === null ? <p class="fine">Loading…</p> : rows.length === 0 ? <p class="fine">No finished run {range === 'today' ? 'today' : 'yet'}. Through the gate, and you are on the board.</p> : (
+        <ol class="board">{rows.map((r) => <li key={r.rank} class={r.you && !store?.local ? 'you' : ''}><span class="rank">{r.rank}</span><span class="who">{r.name}<small>{GEAR[r.gear].name}{r.best ? ' · your best' : ''}</small></span><strong>{r.score.toLocaleString()}</strong></li>)}</ol>
+      )}
+      {store?.local && <p class="fine">Saved on this phone for now: the fair's board takes these once the backend is connected.</p>}
     </Sheet>
   );
 }

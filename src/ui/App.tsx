@@ -4,7 +4,7 @@ import { api, ApiError } from '../net/api';
 import { POINTS, ROLE_INFO, chapters, type Role } from '../../shared/rules';
 import type { BoothTeamPeek, PassportInput } from '../../shared/types';
 import { afterCard, boothAction, referral, teamInvite, atLaunchPad, bootError, bootNote, distToGoal, goalVia, guideOn, guideTarget, herePlace, journey, level, me, modal, moveHint, nearLift, nearStation, offline, online, panelStation, phase, routing, seated, stampedSet, stationMap, toast, toasts, world } from '../state';
-import { PlaygroundHud } from './playground';
+import { BoardsSheet, PlaygroundHud } from './playground';
 import { facts } from '../game/facts';
 import { MapSheet, PhotoSheet } from './world-sheets';
 import { DemoChip, TourSheet } from '../demo/Tour';
@@ -33,6 +33,7 @@ export function App({ engine }: Eng) {
       {m === 'map' && <MapSheet engine={engine} />}
       {m === 'photo' && <PhotoSheet />}
       {m === 'menu' && <MenuSheet />}
+      {m === 'pgboards' && <BoardsSheet />}
       {m === 'tour' && <TourSheet />}
       {m === 'scan' && <ScanSheet />}
       {m === 'jointeam' && <JoinTeamSheet engine={engine} />}

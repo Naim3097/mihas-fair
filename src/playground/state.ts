@@ -3,6 +3,7 @@
 import { signal } from '@preact/signals';
 import type { Gear } from './course';
 import type { RunSummary } from './run';
+import type { PlaygroundStore } from './store';
 
 export type PgMode = 'pad' | 'run' | 'summary';
 export const pgMode = signal<PgMode>('pad');
@@ -24,6 +25,8 @@ export const pgHint = signal(false);
 export const pgStandNote = signal<string | null>(null);
 /** Standing on the portal: the chip that leaves for the fair. */
 export const pgNearPortal = signal(false);
+/** The store behind the boards and the balance, once the engine has one. */
+export const pgStore = signal<PlaygroundStore | null>(null);
 /** What the interface can ask the engine for. */
 export interface PgControls { jump(): void; hold(on: boolean): void; again(): void; leave(): void }
 export const pgControls = signal<PgControls | null>(null);

@@ -17,15 +17,20 @@ import type { FairSink } from '../fair/input';
 import { NexoActor, loadNexo, loadNexoLibrary } from '../fair/nexo';
 import type { Quality, Scene, Stage } from '../fair/stage';
 import { modal, toast } from '../state';
-import { buzz, sfx } from '../sfx';
+import { api } from '../net/api';
+import { buzz, sfx, type Sfx as SfxName } from '../sfx';
 import { FALL_Y, JUMP_PAD, PickupIndex, buildCourse, courseBoxes, crossed, platformUnder, sectionAt, type Course, type Gear, type Section } from './course';
 import { GEAR, GEAR_READY, boostBody } from './gear';
 import { Run, type RunEvent } from './run';
-import { pgBalance, pgBest, pgCombo, pgControls, pgFade, pgFuel, pgGear, pgHint, pgMode, pgNearPortal, pgO2, pgRunStars, pgScore, pgStandNote, pgSummary, pgUnlocks } from './state';
+import { pgBalance, pgBest, pgCombo, pgControls, pgFade, pgFuel, pgGear, pgHint, pgMode, pgNearPortal, pgO2, pgRunStars, pgScore, pgStandNote, pgStore, pgSummary, pgUnlocks } from './state';
 import { LocalStore } from './store';
 import { PlaygroundWorld } from './world';
 
 const ORBIT_HOLD_MS = 1500, CAM = { min: 2.6, max: 9 };
+/** The star's chime, a step higher for each combo level. */
+const CHIME: SfxName[] = ['chime1', 'chime2', 'chime3', 'chime4'];
+/** The air's warning, once a run, at this many seconds left. */
+const O2_WARN = 8;
 
 /** A number that floats up from the body and fades: "+30 ×3". */
 interface Float { el: HTMLDivElement; pos: THREE.Vector3; t: number; on: boolean }
@@ -48,10 +53,10 @@ export class PlaygroundEngine implements Scene {
   private acc = 0; private near: number[] = new Array(64).fill(0);
   private prev = v3(); private section: Section | null = null;
   private orbitAt = 0; private returnAt = 0; private padOn: string | null = null; private standOn: string | null = null;
-  private labelEls: { el: HTMLDivElement; pos: THREE.Vector3 }[] = [];
+  private labelEls: { el: HTMLDivElement; pos: THREE.Vector3; gear?: Gear }[] = [];
   private floats: Float[] = [];
   private lv = new THREE.Vector3();
-  private hudAt = 0; private jumped = false; private disposed = false;
+  private hudAt = 0; private jumped = false; private disposed = false; private warned = false;
   private feet: [THREE.Vector3, THREE.Vector3] = [new THREE.Vector3(), new THREE.Vector3()]; private lastYaw = 0;
   /** the pinch's scale on the gear's camera distance */
   private zoom = 1;
@@ -74,20 +79,25 @@ export class PlaygroundEngine implements Scene {
       enabled: () => !modal.value,
     };
     this.overlay = Object.assign(document.createElement('div'), { className: 'lbls' }); this.overlay.style.display = 'none'; stage.host.appendChild(this.overlay);
-    for (const l of this.world.labels) { const el = Object.assign(document.createElement('div'), { className: `lbl ${l.kind}`, textContent: l.text }); this.overlay.appendChild(el); this.labelEls.push({ el, pos: l.pos }); }
+    for (const l of this.world.labels) { const el = Object.assign(document.createElement('div'), { className: `lbl ${l.kind}`, textContent: l.text }); this.overlay.appendChild(el); this.labelEls.push({ el, pos: l.pos, gear: l.gear }); }
     for (let i = 0; i < 6; i++) { const el = Object.assign(document.createElement('div'), { className: 'lbl score' }); this.overlay.appendChild(el); this.floats.push({ el, pos: new THREE.Vector3(), t: 0, on: false }); }
     const wake = () => { this.world.sky.play(); this.steps.unlock(); };
     window.addEventListener('pointerdown', wake, { capture: true }); window.addEventListener('keydown', wake, { capture: true });
     this.stops.push(() => { window.removeEventListener('pointerdown', wake, { capture: true }); window.removeEventListener('keydown', wake, { capture: true }); });
     void Promise.all([loadNexo(), loadNexoLibrary()]).then(([g, lib]) => { if (this.disposed) return; this.gltf = g; this.lib = lib; this.actor?.dispose(); this.actor = this.makeActor(); });
     this.actor = this.makeActor();
-    const s = this.store.get(); this.gear = s.gear; this.publishStore();
+    const s = this.store.get(); this.gear = s.gear; this.publishStore(); pgStore.value = this.store; this.markOwned();
     pgControls.value = { jump: () => this.jump(), hold: (on) => this.stage.input.hold(on), again: () => this.again(), leave: () => this.leaveRequested() };
     if (import.meta.env.DEV) (window as unknown as { __pg?: unknown }).__pg = this;
   }
 
   private makeActor(): NexoActor { const a = new NexoActor(this.gltf, this.lib, 'visitor', this.quality === 'high'); a.setBlob(!this.world.light.shadows); a.setLocomotion(this.gear === 'skates' ? 'skate' : 'walk'); this.world.scene.add(a.root); return a; }
   private publishStore() { const s = this.store.get(); pgBalance.value = s.stars; pgUnlocks.value = s.unlocks; pgBest.value = s.best?.score ?? null; pgGear.value = this.gear; }
+  /** The stands of the gear this player owns read as theirs: no price on the label, the disc lit; the one just
+   *  bought swells under the feet. */
+  private markOwned(bought: Gear | null = null) {
+    for (const g of this.store.get().unlocks) { const l = this.labelEls.find((x) => x.gear === g); if (l) l.el.textContent = GEAR[g].name; this.world.own(g, g === bought); }
+  }
 
   /* ---------------- entering, leaving, the pad ---------------- */
 
@@ -184,6 +194,7 @@ export class PlaygroundEngine implements Scene {
     if (pgMode.value === 'pad') { if (pos.y < FALL_Y) this.backToPad(); else if (crossed(this.course.start, this.prev, pos)) this.startRun(); return; }
     const run = this.run; if (!run || run.ended) return;
     run.tick(STEP);
+    if (!this.warned && run.o2 <= O2_WARN && !run.ended) { this.warned = true; sfx('warn'); buzz([20, 30, 20]); } // the air's warning, once
     // pickups against the chest, every step
     const g = GEAR[this.gear], n = this.index.near(pos.x, pos.y + 0.9, pos.z, g.magnet + 0.36, this.near);
     for (let k = 0; k < n; k++) {
@@ -200,7 +211,7 @@ export class PlaygroundEngine implements Scene {
   }
 
   private startRun() {
-    this.run = new Run(); this.world.reset(); pgMode.value = 'run'; pgCombo.value = 1; pgRunStars.value = 0; pgScore.value = 0; pgO2.value = this.run.o2;
+    this.run = new Run(); this.world.reset(); this.warned = false; pgMode.value = 'run'; pgCombo.value = 1; pgRunStars.value = 0; pgScore.value = 0; pgO2.value = this.run.o2;
     sfx('go');
   }
   /** Off the pad's edge before a run: back on it, after the same dark moment. */
@@ -218,20 +229,21 @@ export class PlaygroundEngine implements Scene {
     pgSummary.value = { ...s, gear: this.gear, newBest, balance: this.store.get().stars };
     pgMode.value = 'summary'; this.publishRun();
     this.returnAt = performance.now() + 900;
+    api.track('playground_run', { gear: this.gear, score: s.score, stars: s.stars, comboMax: s.comboMax, seconds: s.seconds, finished: s.reason === 'gate' });
     if (s.reason === 'gate') { sfx('big'); buzz([18, 40, 18]); } else if (s.reason === 'o2') sfx('warn');
   }
   private onStand(gear: Gear) {
     const g = GEAR[gear], s = this.store.get(), tip = gear === 'skates' ? ' · hold the rim to tuck' : gear === 'jetpack' ? ' · hold Jump to fly' : '';
     if (s.unlocks.includes(gear)) { this.setGear(gear); pgStandNote.value = `${g.name} on${tip}`; sfx('tap'); return; }
     if (!GEAR_READY[gear]) { pgStandNote.value = `${g.name}: coming soon`; return; }
-    if (this.store.spend(gear, g.price)) { this.publishStore(); this.setGear(gear); pgStandNote.value = `${g.name} unlocked${tip}`; sfx('big'); buzz([18, 40, 18]); toast(`${g.name} are yours`, `${g.price} stars well spent`, 'xp'); }
+    if (this.store.spend(gear, g.price)) { this.publishStore(); this.setGear(gear); this.markOwned(gear); pgStandNote.value = `${g.name} unlocked${tip}`; sfx('big'); buzz([18, 40, 18]); toast(`${g.name} are yours`, `${g.price} stars well spent`, 'xp'); api.track('playground_unlock', { gear }); }
     else pgStandNote.value = `${g.name}: ${g.price - s.stars} more stars`;
   }
 
   private onEvent(e: RunEvent, pos: { x: number; y: number; z: number }) {
     switch (e.kind) {
-      case 'star': this.store.addStars(1); pgBalance.value = this.store.get().stars; pgRunStars.value = this.run!.stars; pgCombo.value = e.combo; this.float(`+${e.score}${e.combo > 1 ? ` ×${e.combo}` : ''}`, pos); sfx('stamp'); buzz(8); break;
-      case 'combo': pgCombo.value = e.combo; if (e.combo > 1) sfx('go'); break;
+      case 'star': this.store.addStars(1); pgBalance.value = this.store.get().stars; pgRunStars.value = this.run!.stars; pgCombo.value = e.combo; this.float(`+${e.score}${e.combo > 1 ? ` ×${e.combo}` : ''}`, pos); sfx(CHIME[e.combo - 1] ?? 'chime4'); buzz(8); break;
+      case 'combo': pgCombo.value = e.combo; if (e.combo > 1) sfx('big'); break; // a combo step plays the rise
       case 'bubble': this.float('+6 s', pos); sfx('go'); break;
       case 'diamond': this.store.addStars(25); pgBalance.value = this.store.get().stars; pgRunStars.value = this.run!.stars; this.float('+300 ◆', pos); sfx('big'); buzz([18, 40, 18]); break;
       case 'ring': sfx('tap'); break;

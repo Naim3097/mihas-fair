@@ -29,6 +29,12 @@ and the link opened from inside WhatsApp or Instagram (their built-in browsers b
 | 14 | Lock the phone for a minute, unlock | The game carries on; nobody kept walking; the `?perf` fps is back to where it was | — |
 | 15 | Share the link to yourself on WhatsApp | The preview shows the "Find the X." card | needs `SITE_URL` or the Vercel domain at build time |
 | 16 | Add to Home Screen | The X icon on a dark tile, the name "Mission X" | — |
+| 17 | Menu → Playground | The pad in space: three stands, the blue portal disc, the start line; "Cross the line to start"; a round Jump button bottom-right; the `?perf` box says `playground · pad` and stays at `q0`, 50–60 fps | the line |
+| 18 | Cross the line; jump the Boardwalk's gaps and take the stars in the arcs | The air bar counting down from 40 s; a chime a step higher as the combo climbs to ×4, "+40 ×4" over the helmet; a bubble adds 6 s; the boost pad pushes; the landing ring under the body in the air | which of those was missing |
+| 19 | Jump short into a gap | A short dark blink, back at the last ring, the combo gone, 4 s of air gone | where it put you |
+| 20 | Through the gate (or let the air run out) | The summary drops in: score, stars, best combo, time, "New best!" the first time; Again, Boards, Back to the fair; Boards lists the run | — |
+| 21 | Step on the Skates stand with 100 stars; later the Jetpack stand with 250 | The stand lights and swells, the chime, the buzz, "Skates unlocked · hold the rim to tuck"; on skates the body glides with two cyan ribbons; the Jetpack: hold Jump to climb, the blue fuel bar under the air bar, the exhaust | — |
+| 22 | Press Back in the Playground with nothing open; lock the phone mid-run for a minute | Back leaves for the fair (a run under way ends there); unlocked, the air is where it was: the clock stops with the game | it left the site, or the air kept draining |
 
 ## Numbers that would worry me
 
