@@ -133,6 +133,7 @@ export class FairWorld {
     });
     const dome = new THREE.Mesh(new THREE.SphereGeometry(1200, 48, 32), this.skyMat);
     dome.frustumCulled = false; dome.renderOrder = 100; this.scene.add(dome); // last of the opaque: only the sky that shows is shaded
+    if (this.lean) return; // the phone tier keeps the still: no decode and no texture upload every frame
     const video = document.createElement('video');
     video.src = '/fair/space.mp4'; video.muted = true; video.loop = true; video.playsInline = true; video.preload = 'auto'; video.crossOrigin = 'anonymous';
     const tex = new THREE.VideoTexture(video);
@@ -262,6 +263,7 @@ export class FairWorld {
   private stands(fair: FairLevel) {
     this.level.booths.forEach((b, i) => this.boothIndex.set(b.id, i));
     this.booths = new BoothSet(this.level, fair.stands, this.lean); this.scene.add(this.booths.group);
+    if (this.lean && this.still) this.booths.setScreen(this.still); // the hero screen shows the sky still where there is no video
     this.pins = new THREE.InstancedMesh(new THREE.OctahedronGeometry(0.55), this.flat(FAIR.orange), 256);
     this.pins.count = 0; this.pins.frustumCulled = false; this.pins.castShadow = true; this.scene.add(this.pins);
   }

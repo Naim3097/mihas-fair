@@ -21,6 +21,10 @@ const [IN = 'assets-src/characters/nexo/nexo-raw.glb', CONFIG = 'assets-src/char
 const MAX_INF = 4;
 /** The web copy's triangle budget: the fair draws up to 25 bodies at once on phones. The raw keeps every triangle. */
 const WEB_TRIS = Number(process.env.WEB_TRIS ?? 55000);
+/** The simplifier's error bound (a fraction of the body's size), whether the visor glass keeps every triangle, and
+ * the colour map's largest side: the hero copy keeps the defaults; a lighter copy for other people's bodies passes
+ * WEB_TRIS=14000 WEB_ERR=0.03 LOCK_GLASS=0 COLOR_MAX=1024. */
+const WEB_ERR = Number(process.env.WEB_ERR ?? 0.003), LOCK_GLASS = process.env.LOCK_GLASS !== '0', COLOR_MAX = Number(process.env.COLOR_MAX ?? 0);
 const R = (v) => Math.round(v * 1000) / 1000;
 const log = (...a) => console.log(...a);
 
@@ -194,9 +198,9 @@ if (tris > WEB_TRIS * 1.15) {
   for (const mesh of root.listMeshes()) for (const p of mesh.listPrimitives()) {
     const pos = p.getAttribute('POSITION').getArray(), nrm = p.getAttribute('NORMAL')?.getArray(), uv = p.getAttribute('TEXCOORD_0')?.getArray(), ix = p.getIndices().getArray(), nV = pos.length / 3;
     const lock = new Uint8Array(nV); let locked = 0;
-    if (glassTex && uv) for (let i = 0; i < nV; i++) { const x = Math.min(glassTex.w - 1, Math.max(0, Math.floor(uv[i * 2] * glassTex.w))), y = Math.min(glassTex.h - 1, Math.max(0, Math.floor(uv[i * 2 + 1] * glassTex.h))); if (glassTex.d[(y * glassTex.w + x) * glassTex.c] > 200) { lock[i] = 1; locked++; } }
+    if (LOCK_GLASS && glassTex && uv) for (let i = 0; i < nV; i++) { const x = Math.min(glassTex.w - 1, Math.max(0, Math.floor(uv[i * 2] * glassTex.w))), y = Math.min(glassTex.h - 1, Math.max(0, Math.floor(uv[i * 2 + 1] * glassTex.h))); if (glassTex.d[(y * glassTex.w + x) * glassTex.c] > 200) { lock[i] = 1; locked++; } }
     const target = Math.floor((ix.length * WEB_TRIS) / tris / 3) * 3;
-    const [newIx, err] = MeshoptSimplifier.simplifyWithAttributes(Uint32Array.from(ix), Float32Array.from(pos), 3, nrm ? Float32Array.from(nrm) : new Float32Array(0), nrm ? 3 : 0, nrm ? [0.5, 0.5, 0.5] : [], lock, target, 0.003, ['LockBorder']); // the error bound is loose: the triangle budget is the limit, the normal weights decide where they go
+    const [newIx, err] = MeshoptSimplifier.simplifyWithAttributes(Uint32Array.from(ix), Float32Array.from(pos), 3, nrm ? Float32Array.from(nrm) : new Float32Array(0), nrm ? 3 : 0, nrm ? [0.5, 0.5, 0.5] : [], lock, target, WEB_ERR, ['LockBorder']); // the error bound is loose: the triangle budget is the limit, the normal weights decide where they go
     p.getIndices().setArray(newIx);
     compactPrimitive(p);
     log(`simplified to ${newIx.length / 3} triangles (${locked} glass vertices locked, error ${err.toFixed(4)})`);
@@ -255,7 +259,7 @@ for (const m of root.listMaterials()) m.setNormalTexture(null);
   mat.setMetallicRoughnessTexture(doc.createTexture('roughness').setImage(new Uint8Array(png)).setMimeType('image/png')).setMetallicFactor(0).setRoughnessFactor(1);
 }
 await doc.transform(
-  textureCompress({ encoder: sharp, targetFormat: 'webp', quality: 85, slots: /^baseColorTexture$/ }),
+  textureCompress({ encoder: sharp, targetFormat: 'webp', quality: 85, slots: /^baseColorTexture$/, ...(COLOR_MAX ? { resize: [COLOR_MAX, COLOR_MAX] } : {}) }),
   textureCompress({ encoder: sharp, targetFormat: 'webp', nearLossless: true, slots: /^emissiveTexture$/ }), // the LED line: thin, high contrast, mostly black
   textureCompress({ encoder: sharp, targetFormat: 'webp', quality: 80, resize: [1024, 1024], slots: /^(?!baseColorTexture|emissiveTexture).*$/ }),
   prune(),

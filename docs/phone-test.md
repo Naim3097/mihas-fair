@@ -2,7 +2,9 @@
 
 Everything up to here was checked on one desktop machine, at phone size in the browser. This is the part only a real
 phone can answer. Use the deployed link (Vercel), not localhost. Add `?perf` to the end of the address: a small dark
-box in the top-right corner shows the numbers asked for below (`fps · calls · tris · dpr · q` and the people count).
+box in the top-right corner shows the numbers asked for below: `fps · calls · tris · dpr · q` on the first line, our own
+CPU time per frame and the people count on the second (`?perf&gpu` adds the GPU time where the browser can say it; it
+stalls some desktop drivers, so it is off unless asked).
 
 **Phones worth trying, in order of value:** a mid-range Android that is 2–3 years old (the typical visitor), any iPhone,
 and the link opened from inside WhatsApp or Instagram (their built-in browsers behave differently from Chrome / Safari).
@@ -31,14 +33,15 @@ and the link opened from inside WhatsApp or Instagram (their built-in browsers b
 ## Numbers that would worry me
 
 - `q3` or `q4` on a phone newer than 2021, or under 30 fps at `q4` → there is more to take out of the scene
-- `calls` above 120 → something is not being batched (a hall full of people is 24 bodies at most)
+- `calls` above 120 → something is not being batched (a hall full of people is 12 bodies on a phone, 24 on a desk)
+- `cpu` above 8 ms on the second line → our own code is the problem, not the GPU; say what was on screen
 - `dpr 1` that never comes back to 2 after standing still → the ladder is not climbing back
 
 ## Results
 
 | phone · browser | date | line 2 | rows that failed | notes |
 | --- | --- | --- | --- | --- |
-| | | | | |
+| desktop Chrome as a proxy · 375 × 812 · dpr 2 · phone tier · 12 people on screen | 23 Sep 2026 | `60 fps · 32 calls · 222k tris · dpr 2 · q0` · cpu 1.1 ms (the display caps at 60; 591k tris with the hero body for everyone, `?lod=0`) | none run: a proxy, not a phone | GPU time unread |
 
 ## Not covered by a phone in the hand
 

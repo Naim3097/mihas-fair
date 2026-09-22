@@ -176,6 +176,7 @@ Poses for the fair: wave (Big_Wave_Hello 28), cheer (Victory_Cheer 59), dance (A
     node tools/rig/normalize-mascot.mjs assets-src/characters/nexo/nexo-source.glb assets-src/characters/nexo/nexo-raw.glb --yaw -90 --textures-from assets-src/characters/nexo/nexo-textures.glb --denoise 20,0.02,0.4,2 --accent 00e5ff --visor 0,1.26,0.035,0.335,0.15,0.017,0.06,1.035,0.215 --led 0.18,1.14,0.7,0.0075,0.024 --whiten-suit 165 --flatten 24 --smooth-greys 3
     PROFILE=1 node tools/rig/fit-mascot-rig.mjs assets-src/characters/nexo/nexo-raw.glb    # cross-sections, to write rig.json from (only for a new body)
     node tools/rig/fit-mascot-rig.mjs                                                         # nexo-rig2.glb, public/fair/nexo.glb, rig-report.json
+    WEB_TRIS=14000 WEB_ERR=0.03 LOCK_GLASS=0 COLOR_MAX=1024 node tools/rig/fit-mascot-rig.mjs assets-src/characters/nexo/nexo-raw.glb assets-src/characters/nexo/rig.json /tmp/nexo-rig2-lod.glb public/fair/nexo-lod.glb /tmp/rig-report-lod.json   # the light copy other people get on phones (14k triangles, 1024 colour, glass unlocked)
     npx tsx --test src/fair/nexo-rig.test.ts
 
 To remake `nexo-textures.glb` from two retexture passes:

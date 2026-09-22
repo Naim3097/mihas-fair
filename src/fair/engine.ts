@@ -27,7 +27,7 @@ import { Sim } from '../ceritera/game/sim';
 import { angleDiff, lenXZ, v3 } from '../ceritera/game/v3';
 import { FairInput } from './input';
 import { CX, CY, buildFairLevel, fixY, toPlan, toWorld, type FairLevel } from './level';
-import { NexoActor, loadNexo, loadNexoLibrary, type NexoRole } from './nexo';
+import { NexoActor, loadNexo, loadNexoLibrary, loadNexoLod, type NexoRole } from './nexo';
 import { FAIR_MOVEMENT } from './movement';
 import { Reach } from './reach';
 import { RouteFollower } from './route';
@@ -67,7 +67,11 @@ export class FairEngine implements EngineApi {
   private input: FairInput;
   private steps = new Sfx();
   private gltf: GLTF | null = null;
+  /** the body other people get: the lighter copy on the phone tier, the same file on the desktop tier */
+  private gltfOthers: GLTF | null = null;
   private lib: Library | null = null;
+  private clock = { cpu: 0, gpu: 0, t0: 0 };
+  private gpu: GpuClock | null = null;
   private player: NexoActor | null = null;
   private started = false;
   private holos = new Map<string, Holo>();
@@ -161,7 +165,9 @@ export class FairEngine implements EngineApi {
     if (new URLSearchParams(location.search).has('perf')) { this.perf = { el: Object.assign(document.createElement('div'), { className: 'perf' }), t0: performance.now(), frames: 0 }; host.appendChild(this.perf.el); }
     if (import.meta.env.DEV) (window as unknown as { __fair?: unknown }).__fair = this;
 
-    void Promise.all([loadNexo(), loadNexoLibrary()]).then(([g, lib]) => { if (!this.running) return; this.gltf = g; this.lib = lib; this.rebuildBodies(); });
+    const lod = quality === 'low' && new URLSearchParams(location.search).get('lod') !== '0';
+    void Promise.all([loadNexo(), lod ? loadNexoLod() : loadNexo(), loadNexoLibrary()]).then(([g, o, lib]) => { if (!this.running) return; this.gltf = g; this.gltfOthers = o ?? g; this.lib = lib; this.rebuildBodies(); });
+    if (this.perf && new URLSearchParams(location.search).has('gpu')) this.gpu = new GpuClock(this.renderer.getContext() as WebGL2RenderingContext); // ?perf&gpu: the queries stall some drivers, so only when asked
     this.loop(true);
   }
 
@@ -173,10 +179,10 @@ export class FairEngine implements EngineApi {
     for (const o of this.holos.values()) { if (!o.actor.root.visible) continue; const p = o.actor.root.position, d = Math.hypot(p.x - x, p.z - z); if (d < bd) { bd = d; best = o; } }
     return best ? this.face.set(best.actor.root.position.x, best.actor.root.position.y + 1.3, best.actor.root.position.z) : null;
   }
-  private makeActor(role: NexoRole): NexoActor { const a = new NexoActor(this.gltf, this.lib, role, this.quality === 'high'); a.setBlob(!this.world.shadows); this.world.scene.add(a.root); return a; }
+  private makeActor(role: NexoRole, mine = false): NexoActor { const a = new NexoActor(mine ? this.gltf : this.gltfOthers ?? this.gltf, this.lib, role, this.quality === 'high'); a.setBlob(!this.world.shadows); this.world.scene.add(a.root); return a; }
   /** The model file arrived: every body gets it, in place. */
   private rebuildBodies() {
-    if (this.player) { this.player.dispose(); this.player = this.makeActor(this.role()); }
+    if (this.player) { this.player.dispose(); this.player = this.makeActor(this.role(), true); }
     for (const o of this.holos.values()) { o.actor.dispose(); o.actor = this.makeActor(o.cls === 'exhibitor' ? 'exhibitor' : 'visitor'); }
   }
 
@@ -199,7 +205,7 @@ export class FairEngine implements EngineApi {
   start(spawn: 'short' | 'epic') {
     const s = this.level.spawns[spawn], yaw = spawn === 'short' ? Math.PI : -Math.PI / 2;
     this.teleport(s.x, s.y, yaw);
-    if (!this.player) this.player = this.makeActor(this.role());
+    if (!this.player) this.player = this.makeActor(this.role(), true);
     this.started = true;
     this.rig.dist = INTRO.dist; this.rig.pitch = INTRO.pitch; this.rig.snapBehind(yaw); this.introT = 0; this.orbitAt = 0;
     this.walked = 0; if (!seen.value.has('hint:move')) moveHint.value = true;
@@ -226,7 +232,7 @@ export class FairEngine implements EngineApi {
   }
 
   private tick(now: number, dt: number) {
-    const t = now / 1000;
+    const t = now / 1000, t0 = this.perf ? performance.now() : 0;
     this.world.update(t, dt);
     if (!this.started) {
       // behind the first screen: a slow turn around the X
@@ -257,9 +263,11 @@ export class FairEngine implements EngineApi {
       this.world.followSun(b.pos.x, b.pos.z);
     }
     this.updatePing(dt); this.updateLabels();
+    if (this.perf) { this.clock.cpu = this.clock.cpu * 0.9 + (performance.now() - t0) * 0.1; this.gpu?.begin(); }
     this.renderer.render(this.world.scene, this.camera);
+    if (this.perf) { this.gpu?.end(); if (this.gpu) this.clock.gpu = this.gpu.ms; }
     this.adaptQuality(now);
-    if (this.perf) { const pf = this.perf; pf.frames++; if (now - pf.t0 >= 1000) { const i = this.renderer.info.render; pf.el.textContent = `${Math.round((pf.frames * 1000) / (now - pf.t0))} fps · ${i.calls} calls · ${Math.round(i.triangles / 1000)}k tris · dpr ${this.fps.dpr} · q${this.fps.level}${this.world.shadows ? '' : ' no-shadow'} · people ${this.holos.size}`; pf.t0 = now; pf.frames = 0; } }
+    if (this.perf) { const pf = this.perf; pf.frames++; if (now - pf.t0 >= 1000) { const i = this.renderer.info.render; pf.el.textContent = `${Math.round((pf.frames * 1000) / (now - pf.t0))} fps · ${i.calls} calls · ${Math.round(i.triangles / 1000)}k tris · dpr ${this.fps.dpr} · q${this.fps.level}${this.world.shadows ? '' : ' no-shadow'}\ncpu ${this.clock.cpu.toFixed(1)} ms${this.gpu?.available ? ` · gpu ${this.clock.gpu.toFixed(1)} ms` : ''} · people ${this.holos.size}`; pf.t0 = now; pf.frames = 0; } }
   }
 
   /* ---------------- movement: the stick, or a route (a tap, "take me there", walking to a seat) ---------------- */
@@ -571,7 +579,8 @@ export class FairEngine implements EngineApi {
   }
 
   private applyHolos(list: Hologram[], now: number) {
-    for (const h of list.slice(0, this.quality === 'high' ? 24 : 12)) {
+    // how many other people a phone draws: twelve, six once the quality ladder has taken the shadows away
+    for (const h of list.slice(0, this.quality === 'high' ? 24 : this.fps.level >= 3 ? 6 : 12)) {
       let o = this.holos.get(h.id);
       if (o && o.cls !== h.cls) { o.actor.dispose(); o.label.remove(); this.holos.delete(h.id); o = undefined; }
       if (!o) {
@@ -677,5 +686,27 @@ export class FairEngine implements EngineApi {
     for (const o of this.holos.values()) { o.actor.dispose(); o.label.remove(); }
     this.player?.dispose(); this.steps.dispose(); this.world.dispose(); this.tip.remove();
     this.renderer.dispose(); this.renderer.domElement.remove();
+  }
+}
+
+/** GPU time of one frame, when the browser will say (EXT_disjoint_timer_query_webgl2: desktop Chrome does, phones
+ *  mostly do not). A query wraps each render; results are read a few frames later and smoothed. */
+class GpuClock {
+  private ext: { TIME_ELAPSED_EXT: number; GPU_DISJOINT_EXT: number } | null;
+  private pending: WebGLQuery[] = [];
+  private active: WebGLQuery | null = null;
+  ms = 0;
+  constructor(private gl: WebGL2RenderingContext) { this.ext = gl.getExtension('EXT_disjoint_timer_query_webgl2') as GpuClock['ext']; }
+  get available(): boolean { return !!this.ext; }
+  begin() { if (!this.ext || this.pending.length > 4) return; const q = this.gl.createQuery(); if (!q) return; this.gl.beginQuery(this.ext.TIME_ELAPSED_EXT, q); this.active = q; }
+  end() {
+    if (!this.ext || !this.active) return;
+    this.gl.endQuery(this.ext.TIME_ELAPSED_EXT); this.pending.push(this.active); this.active = null;
+    while (this.pending.length) {
+      const q = this.pending[0]!;
+      if (!this.gl.getQueryParameter(q, this.gl.QUERY_RESULT_AVAILABLE)) break;
+      if (!this.gl.getParameter(this.ext.GPU_DISJOINT_EXT)) { const ns = this.gl.getQueryParameter(q, this.gl.QUERY_RESULT) as number; this.ms = this.ms ? this.ms * 0.9 + (ns / 1e6) * 0.1 : ns / 1e6; }
+      this.gl.deleteQuery(q); this.pending.shift();
+    }
   }
 }

@@ -45,3 +45,21 @@ test('the skin follows the skeleton: spine carries the torso, boots and helmet a
   const l = Object.entries(d).filter(([n]) => n.startsWith('Left')).reduce((s, [, e]) => s + e.verts, 0), r = Object.entries(d).filter(([n]) => n.startsWith('Right')).reduce((s, [, e]) => s + e.verts, 0);
   assert.ok(Math.abs(l - r) / Math.max(l, r) < 0.08, `left ${l} vs right ${r}`);
 });
+
+/** The JSON chunk of a GLB, and how many triangles and joints it carries. */
+function glb(path: string) {
+  const b = readFileSync(path);
+  assert.equal(b.readUInt32LE(0), 0x46546c67, path + ' is a GLB');
+  const len = b.readUInt32LE(12), json = JSON.parse(b.subarray(20, 20 + len).toString('utf8')) as { meshes: { primitives: { indices: number }[] }[]; accessors: { count: number }[]; skins?: { joints: number[] }[] };
+  const tris = json.meshes.flatMap((m) => m.primitives).reduce((n, p) => n + json.accessors[p.indices]!.count / 3, 0);
+  return { tris, joints: json.skins?.[0]?.joints.length ?? 0, bytes: b.length };
+}
+
+test('the web copy and the lighter copy for other people are both Nexo: 24 joints, the triangle and byte budgets kept', () => {
+  const full = glb('public/fair/nexo.glb'), lod = glb('public/fair/nexo-lod.glb');
+  assert.equal(full.joints, 24); assert.equal(lod.joints, 24);
+  assert.ok(full.tris > 40_000 && full.tris <= 60_000, `the hero copy has ${full.tris} triangles`);
+  assert.ok(lod.tris >= 10_000 && lod.tris <= 16_000, `the light copy has ${lod.tris} triangles`);
+  assert.ok(lod.bytes < 400_000, `the light copy is ${lod.bytes} bytes`);
+  assert.ok(lod.bytes < full.bytes / 2, 'and less than half the download of the hero copy');
+});

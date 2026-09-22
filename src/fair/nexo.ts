@@ -11,6 +11,8 @@ import { AnimSet, loadLibrary, retarget, type Library } from '../ceritera/game/a
 import type { AnimState } from '../ceritera/game/entities';
 
 export const NEXO_URL = '/fair/nexo.glb';
+/** The same body at a quarter of the triangles and smaller textures: other people, on the phone tier. */
+export const NEXO_LOD_URL = '/fair/nexo-lod.glb';
 /** Nexo stands this tall in the fair: a head taller than a booth counter, a head shorter than a booth. */
 export const NEXO_HEIGHT = 1.6;
 export const ROLE_TINT = { visitor: 0xffffff, exhibitor: 0xf07a1d, crew: 0x2a2f3a } as const;
@@ -22,14 +24,14 @@ const NATURAL: Partial<Record<AnimKey, number>> = { stroll: 1.05, jog: 3.0, walk
 const SOURCE_HIPS = 0.96;
 const X_AXIS = new THREE.Vector3(1, 0, 0), Z_AXIS = new THREE.Vector3(0, 0, 1);
 
-let modelPromise: Promise<GLTF | null> | null = null;
-export function loadNexo(): Promise<GLTF | null> {
-  return (modelPromise ??= new Promise((resolve) => {
-    const loader = new GLTFLoader();
-    loader.setMeshoptDecoder(MeshoptDecoder);
-    loader.load(NEXO_URL, (g) => resolve(g), undefined, () => resolve(null));
-  }));
+const models = new Map<string, Promise<GLTF | null>>();
+function loadModel(url: string): Promise<GLTF | null> {
+  let p = models.get(url);
+  if (!p) { p = new Promise((resolve) => { const loader = new GLTFLoader(); loader.setMeshoptDecoder(MeshoptDecoder); loader.load(url, (g) => resolve(g), undefined, () => resolve(null)); }); models.set(url, p); }
+  return p;
 }
+export const loadNexo = (): Promise<GLTF | null> => loadModel(NEXO_URL);
+export const loadNexoLod = (): Promise<GLTF | null> => loadModel(NEXO_LOD_URL);
 export const loadNexoLibrary = (): Promise<Library | null> => loadLibrary();
 
 /** Tint only the light, unsaturated parts of the texture: the suit turns orange, the visor stays black, the LED stays blue. */
