@@ -8,6 +8,7 @@ import { FAIR } from '../fair/palette';
 import { Sky } from '../fair/sky';
 import { SLAB, type Course, type Gear, type Pickup, type PickupKind } from './course';
 import { GEAR } from './gear';
+import { Ribbon } from './ribbon';
 
 const INK = 0x1b2130, WHITE = 0xffffff;
 const TINT: Record<Gear, number> = { boots: 0xffffff, skates: FAIR.accent, jetpack: FAIR.orange };
@@ -23,7 +24,11 @@ export class PlaygroundWorld {
   readonly light: Light;
   readonly labels: WorldLabel[] = [];
   readonly marker: THREE.Mesh;
+  /** the two ribbons the skates leave */
+  readonly ribbons: [Ribbon, Ribbon];
   private meshes: Record<PickupKind, THREE.InstancedMesh>;
+  /** the tinted ring round each star on a gear's line: pickup index → instance */
+  private tintRings: THREE.InstancedMesh; private tintSlot: number[] = [];
   /** pickup index → its instance in its kind's mesh */
   private slot: number[] = [];
   private phase: Float32Array;
@@ -41,6 +46,18 @@ export class PlaygroundWorld {
     this.collected = new Uint8Array(course.pickups.length);
     this.marker = new THREE.Mesh(new THREE.RingGeometry(0.32, 0.5, 32).rotateX(-Math.PI / 2), decal({ color: FAIR.blue, transparent: true, opacity: 0.85 }));
     this.marker.visible = false; this.marker.renderOrder = 3; this.scene.add(this.marker);
+    this.ribbons = [new Ribbon(48, 0.06, 1.2, FAIR.accent), new Ribbon(48, 0.06, 1.2, FAIR.accent)]; for (const r of this.ribbons) this.scene.add(r.mesh);
+    this.tintRings = this.tinted();
+  }
+
+  /** A thin ring in the gear's tint round every star on that gear's line, facing along the lane: the line reads as
+   *  the gear's from the turn on. */
+  private tinted(): THREE.InstancedMesh {
+    const gated = this.course.pickups.map((p, i) => [p, i] as const).filter(([p]) => p.kind === 'star' && p.line !== 'boots');
+    const m = new THREE.InstancedMesh(new THREE.TorusGeometry(0.52, 0.035, 8, 28), new THREE.MeshBasicMaterial({ color: 0xffffff }), Math.max(1, gated.length));
+    m.count = gated.length; m.frustumCulled = false; const M = this.tmpM, C = new THREE.Color();
+    gated.forEach(([p, i], n) => { this.tintSlot[i] = n; M.makeRotationY(Math.PI / 2).setPosition(p.x, p.y, p.z); m.setMatrixAt(n, M); m.setColorAt(n, C.set(TINT[p.line])); });
+    this.scene.add(m); return m;
   }
 
   /** Every platform: an ink slab, a white top a hair smaller, so the edge reads from above and from the side. */
@@ -122,18 +139,26 @@ export class PlaygroundWorld {
     for (const m of Object.values(this.meshes)) m.instanceMatrix.needsUpdate = true;
   }
 
-  /** A pickup taken: it pops and is gone for the run. */
-  collect(i: number) { if (this.collected[i]) return; this.collected[i] = 1; this.pops.push({ i, t: 0 }); }
+  /** A pickup taken: it pops and is gone for the run, its tinted ring with it. */
+  collect(i: number) {
+    if (this.collected[i]) return; this.collected[i] = 1; this.pops.push({ i, t: 0 });
+    const n = this.tintSlot[i]; if (n != null) { this.tintRings.setMatrixAt(n, this.tmpM.makeScale(0, 0, 0)); this.tintRings.instanceMatrix.needsUpdate = true; }
+  }
   isCollected(i: number): boolean { return this.collected[i] === 1; }
   /** A new run: everything back. */
-  reset() { this.collected.fill(0); this.pops.length = 0; }
+  reset() {
+    this.collected.fill(0); this.pops.length = 0; for (const r of this.ribbons) r.clear();
+    const K = this.course.pickups, M = this.tmpM;
+    for (let i = 0; i < K.length; i++) { const n = this.tintSlot[i]; if (n != null) { const p = K[i]!; M.makeRotationY(Math.PI / 2).setPosition(p.x, p.y, p.z); this.tintRings.setMatrixAt(n, M); } }
+    this.tintRings.instanceMatrix.needsUpdate = true;
+  }
 
   /** Where the body would land: a ring on the surface straight below it, while it is in the air. */
   placeMarker(x: number, y: number, z: number) { this.marker.position.set(x, y + 0.02, z); this.marker.visible = true; }
   hideMarker() { this.marker.visible = false; }
 
   dispose() {
-    this.sky.dispose();
+    this.sky.dispose(); for (const r of this.ribbons) r.dispose();
     this.scene.traverse((o) => { const m = o as THREE.Mesh; if (!m.isMesh) return; m.geometry?.dispose(); for (const mat of Array.isArray(m.material) ? m.material : [m.material]) { (mat as THREE.MeshBasicMaterial).map?.dispose(); mat.dispose(); } });
   }
 }

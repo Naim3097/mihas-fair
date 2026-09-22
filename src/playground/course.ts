@@ -13,13 +13,14 @@ export type PickupKind = 'star' | 'bubble' | 'cell' | 'diamond';
 export interface Pickup { kind: PickupKind; x: number; y: number; z: number; line: Gear }
 /** A plane across the course at `x`, between z0..z1 and y..y+h, crossed in the course's direction (`dir` ±1 along x). */
 export interface Crossing { x: number; z0: number; z1: number; y: number; h: number; dir: 1 | -1 }
-/** A checkpoint ring: where a fall returns you (`at`), and the plane that sets it. */
-export interface Ring extends Crossing { at: { x: number; y: number; z: number; yaw: number } }
+/** A checkpoint ring: where a fall returns you (`at`), the plane that sets it, and how far along the course it is
+ *  (`order`: a fall goes back to the ring of the highest order passed, whichever lane it was on). */
+export interface Ring extends Crossing { at: { x: number; y: number; z: number; yaw: number }; order: number }
 /** A pad on a platform's top: a boost along `dir`, or a jump straight up. */
 export interface Pad { kind: 'boost' | 'jump'; x: number; z: number; y: number; w: number; d: number; dir: [number, number] }
 export interface Stand { gear: Gear; x: number; z: number }
-/** Where the camera settles while the body is in this rectangle. */
-export interface Section { name: string; x0: number; x1: number; z0: number; z1: number; yaw: number }
+/** Where the camera settles while the body is in this rectangle; `gear` limits it to one gear's line. */
+export interface Section { name: string; x0: number; x1: number; z0: number; z1: number; yaw: number; gear?: Gear }
 export interface Course {
   platforms: Platform[]; pickups: Pickup[]; rings: Ring[]; pads: Pad[]; stands: Stand[];
   portal: { x: number; z: number; r: number }; start: Crossing; gate: Crossing; sections: Section[];
@@ -50,7 +51,7 @@ export function buildCourse(): Course {
   };
   /** stars along a platform's top, every 2.5 m from its start, a little in from both ends */
   const run = (p: Platform, z: number, line: Gear = 'boots') => { for (let x = p.x0 + 1.5; x <= p.x1 - 1.2; x += 2.5) star(x, p.y + STAR_Y, z, line); };
-  const ring = (x: number, y: number, z: number, dir: 1 | -1, yaw: number) => R.push({ x, z0: z - 3.2, z1: z + 3.2, y, h: 4, dir, at: { x, y: y + 0.05, z, yaw } });
+  const ring = (x: number, y: number, z: number, dir: 1 | -1, yaw: number, order: number) => R.push({ x, z0: z - 3.2, z1: z + 3.2, y, h: 4, dir, at: { x, y: y + 0.05, z, yaw }, order });
 
   // the pad: gear stands to the north, the portal to the south-west, the start line to the east
   P.push({ x0: -8, x1: 8, z0: -8, z1: 8, y: 0 });
@@ -64,7 +65,7 @@ export function buildCourse(): Course {
   run(P[1]!, 0); run(P[3]!, 0); run(P[4]!, 0); run(P[6]!, 0);
   bubble(14, 0.8, 0); bubble(23, 0.8, -1.2); bubble(34, 0.8, 0); bubble(55, 0.8, 1.2); bubble(66, 0.8, 0);
   pads.push({ kind: 'boost', x: 41.5, z: 0, y: 0, w: 3, d: 2.4, dir: [1, 0] });
-  ring(10, 0, 0, 1, YAW_EAST); ring(50, 0, 0, 1, YAW_EAST);
+  ring(10, 0, 0, 1, YAW_EAST, 10); ring(50, 0, 0, 1, YAW_EAST, 50);
 
   // Stairs: a metre up at a time with 2.6–2.8 m gaps (the air jump clears 4.7 level, about 3.6 a metre up; half a metre
   // early, less): the air jump; a jump pad at the end of the third for the tall step; the top, and the turn north
@@ -73,12 +74,13 @@ export function buildCourse(): Course {
   for (const [x0, x1, y] of B) { const p: Platform = { x0, x1, z0: -3, z1: 3, y }; P.push(p); arc(prev.x1, x0, prev.y, y, 0); if (x1 - x0 >= 6) { star(x0 + 2, y + STAR_Y, 0); star(x1 - 2, y + STAR_Y, 0); } prev = p; }
   pads.push({ kind: 'jump', x: 101.2, z: 0, y: 3, w: 1.6, d: 2.4, dir: [0, 0] });
   bubble(88, 2.8, 0); bubble(106, 6.3, -1.2); bubble(127, 8.3, 0); bubble(117, 7.3, 1.2);
-  ring(78, 1, 0, 1, YAW_EAST); ring(105, 5.5, 0, 1, YAW_EAST); ring(137, 8.5, 0, 1, YAW_EAST);
+  ring(78, 1, 0, 1, YAW_EAST, 78); ring(105, 5.5, 0, 1, YAW_EAST, 105); ring(137, 8.5, 0, 1, YAW_EAST, 137);
   // the Boots diamond: a ledge four metres past the top's end, a double jump (or a top-speed one) out and back
   P.push({ x0: 153, x1: 156, z0: -1.5, z1: 1.5, y: 8.5 });
   K.push({ kind: 'diamond', x: 154.5, y: 9.7, z: 0, line: 'boots' });
-  // the turn: north along the top's end, then the return lane heads west at z 20
-  P.push({ x0: 143, x1: 149, z0: 3, z1: 23, y: 8.5 });
+  // the turn: north along the top's end, then the return lanes head west: Boots at z 20, Skates at z 30; the
+  // platform runs three metres past the last lane, room for a skater's drift
+  P.push({ x0: 143, x1: 149, z0: 3, z1: 36, y: 8.5 });
   star(146, 8.5 + STAR_Y, 8); star(146, 8.5 + STAR_Y, 12); star(146, 8.5 + STAR_Y, 16); bubble(146, 9.3, 20);
 
   // Return lane at z 20, heading west: 2.4 m gaps and a step down every platform, two boost pads, home and the gate
@@ -87,8 +89,26 @@ export function buildCourse(): Course {
   for (const [x0, x1, y] of C) { const p: Platform = { x0, x1, z0: 17, z1: 23, y }; P.push(p); arc(x1, last.x0, y, last.y, 20); run(p, 20); last = p; }
   pads.push({ kind: 'boost', x: 61.5, z: 20, y: 0, w: 3, d: 2.4, dir: [-1, 0] }, { kind: 'boost', x: 36.5, z: 20, y: 0, w: 3, d: 2.4, dir: [-1, 0] });
   bubble(123, 7.8, 20); bubble(98, 4.8, 18.8); bubble(73, 1.8, 20); bubble(60, 0.8, 21.2); bubble(36, 0.8, 20); bubble(20, 0.8, 18.8);
-  ring(135, 8.5, 20, -1, YAW_WEST); ring(110, 5.5, 20, -1, YAW_WEST); ring(86, 2.5, 20, -1, YAW_WEST); ring(60, 0, 20, -1, YAW_WEST);
-  const gate: Crossing = { x: 12, z0: 14, z1: 26, y: 0, h: 6, dir: -1 };
+  const west = (x: number) => 200 + 149 - x; // the return lanes' order: how far west of the turn
+  ring(135, 8.5, 20, -1, YAW_WEST, west(135)); ring(110, 5.5, 20, -1, YAW_WEST, west(110)); ring(86, 2.5, 20, -1, YAW_WEST, west(86)); ring(60, 0, 20, -1, YAW_WEST, west(60));
+
+  // The Skates line at z 30, heading west: a 5 m gap off the turn then 5.5 m gaps between 10 m platforms, each about a
+  // metre lower than the last, so a single jump at the tuck, a double at the cruise, and a boost pad's push with
+  // either all land on the next (the landing zone is 5.5–15.5 m out; the tuck's single carries 6.6, the cruise's
+  // double 7.9, a boosted tuck's double under 14). The pads sit four metres in from the edge, so their push has
+  // settled by the jump. Cyan-ringed stars, a ring and a bubble on every other platform, and the Skates diamond on
+  // the home stretch, before the gate
+  const S: [number, number, number][] = [[128, 138, 7.4], [112.5, 122.5, 6.3], [97, 107, 5.3], [81.5, 91.5, 4.2], [66, 76, 3.2], [50.5, 60.5, 2.1], [35, 45, 1.1]];
+  let lastS: Platform = { x0: 143, x1: 149, z0: 27, z1: 33, y: 8.5 };
+  for (const [x0, x1, y] of S) { const p: Platform = { x0, x1, z0: 27, z1: 33, y }; P.push(p); arc(x1, lastS.x0, y, lastS.y, 30, 'skates'); run(p, 30, 'skates'); lastS = p; }
+  // home runs on past the gate to the pad's side, so a skater through the gate coasts to a stop instead of the edge
+  const homeS: Platform = { x0: -8, x1: 29.5, z0: 23, z1: 33, y: 0 }; P.push(homeS); arc(29.5, 35, 0, 1.1, 30, 'skates');
+  for (const x of [26, 23.5, 21, 18.5]) star(x, STAR_Y, 30, 'skates');
+  K.push({ kind: 'diamond', x: 14, y: 1.2, z: 30, line: 'skates' });
+  for (const [x, y] of [[116.5, 6.3], [85.5, 4.2], [54.5, 2.1]] as const) pads.push({ kind: 'boost', x, z: 30, y, w: 3, d: 2.4, dir: [-1, 0] });
+  bubble(135, 8.2, 28.8); bubble(104, 6.1, 31.2); bubble(73, 4.0, 28.8); bubble(42, 1.9, 31.2);
+  ring(132, 7.4, 30, -1, YAW_WEST, west(132)); ring(101, 5.3, 30, -1, YAW_WEST, west(101)); ring(70, 3.2, 30, -1, YAW_WEST, west(70)); ring(39, 1.1, 30, -1, YAW_WEST, west(39));
+  const gate: Crossing = { x: 12, z0: 14, z1: 33, y: 0, h: 6, dir: -1 };
   // the bridge from home back to the pad, for walking around after the gate
   P.push({ x0: 6, x1: 14, z0: 8, z1: 14, y: 0 });
 
@@ -97,7 +117,8 @@ export function buildCourse(): Course {
     { name: 'boardwalk', x0: 8, x1: 74, z0: -6, z1: 10, yaw: YAW_EAST },
     { name: 'stairs', x0: 74, x1: 160, z0: -6, z1: 3.5, yaw: YAW_EAST },
     { name: 'turn', x0: 141, x1: 151, z0: 3.5, z1: 16, yaw: YAW_NORTH },
-    { name: 'skyline', x0: 0, x1: 151, z0: 12, z1: 34, yaw: YAW_WEST },
+    { name: 'turn-skates', x0: 141, x1: 151, z0: 16, z1: 26, yaw: YAW_NORTH, gear: 'skates' }, // on skates the turn faces north until the z 30 lane is near
+    { name: 'skyline', x0: 0, x1: 151, z0: 12, z1: 38, yaw: YAW_WEST },
   ];
   return { platforms: P, pickups: K, rings: R, pads, stands, portal: { x: -5, z: -5, r: 1.4 }, start, gate, sections, spawn: { x: 0, y: 0.05, z: 0, yaw: YAW_EAST }, ceiling: 18 };
 }
@@ -112,9 +133,9 @@ export function courseBoxes(c: Course): Box[] {
   return out;
 }
 
-/** Which section the body is in, if any: the first whose rectangle holds it. */
-export function sectionAt(c: Course, x: number, z: number): Section | null {
-  return c.sections.find((s) => x >= s.x0 && x <= s.x1 && z >= s.z0 && z <= s.z1) ?? null;
+/** Which section the body is in, if any: the first whose rectangle holds it, skipping those for another gear. */
+export function sectionAt(c: Course, x: number, z: number, gear?: Gear): Section | null {
+  return c.sections.find((s) => (!s.gear || s.gear === gear) && x >= s.x0 && x <= s.x1 && z >= s.z0 && z <= s.z1) ?? null;
 }
 
 /** Did the body cross this plane in its direction between two positions? */

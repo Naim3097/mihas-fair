@@ -18,8 +18,8 @@ import { NexoActor, loadNexo, loadNexoLibrary } from '../fair/nexo';
 import type { Quality, Scene, Stage } from '../fair/stage';
 import { modal, toast } from '../state';
 import { buzz, sfx } from '../sfx';
-import { BOOST, FALL_Y, JUMP_PAD, PickupIndex, buildCourse, courseBoxes, crossed, platformUnder, sectionAt, type Course, type Gear, type Section } from './course';
-import { GEAR, GEAR_READY } from './gear';
+import { FALL_Y, JUMP_PAD, PickupIndex, buildCourse, courseBoxes, crossed, platformUnder, sectionAt, type Course, type Gear, type Section } from './course';
+import { GEAR, GEAR_READY, boostBody } from './gear';
 import { Run, type RunEvent } from './run';
 import { pgBalance, pgBest, pgCombo, pgControls, pgFade, pgGear, pgHint, pgMode, pgNearPortal, pgO2, pgRunStars, pgScore, pgStandNote, pgSummary, pgUnlocks } from './state';
 import { LocalStore } from './store';
@@ -47,11 +47,14 @@ export class PlaygroundEngine implements Scene {
   private gear: Gear = 'boots';
   private acc = 0; private near: number[] = new Array(64).fill(0);
   private prev = v3(); private section: Section | null = null;
-  private orbitAt = 0; private returnAt = 0; private padAt = new Map<string, number>(); private standOn: string | null = null;
+  private orbitAt = 0; private returnAt = 0; private padOn: string | null = null; private standOn: string | null = null;
   private labelEls: { el: HTMLDivElement; pos: THREE.Vector3 }[] = [];
   private floats: Float[] = [];
   private lv = new THREE.Vector3();
   private hudAt = 0; private jumped = false; private disposed = false;
+  private feet: [THREE.Vector3, THREE.Vector3] = [new THREE.Vector3(), new THREE.Vector3()]; private lastYaw = 0;
+  /** the pinch's scale on the gear's camera distance */
+  private zoom = 1;
   private stops: (() => void)[] = [];
 
   constructor(private stage: Stage, private quality: Quality) {
@@ -65,7 +68,7 @@ export class PlaygroundEngine implements Scene {
     this.sink = {
       onTap: () => this.jump(),
       onOrbit: (dx, dy) => { this.orbitAt = performance.now(); this.rig.turn(dx * 2.2, dy * 1.6); },
-      onZoom: (f) => { this.rig.dist = THREE.MathUtils.clamp(this.rig.dist * f, CAM.min, CAM.max); },
+      onZoom: (f) => { this.zoom = THREE.MathUtils.clamp(this.zoom * f, 0.6, 1.6); },
       onKey: (a) => { if (a === 'interact') this.jump(); },
       enabled: () => !modal.value,
     };
@@ -82,7 +85,7 @@ export class PlaygroundEngine implements Scene {
     if (import.meta.env.DEV) (window as unknown as { __pg?: unknown }).__pg = this;
   }
 
-  private makeActor(): NexoActor { const a = new NexoActor(this.gltf, this.lib, 'visitor', this.quality === 'high'); a.setBlob(!this.world.light.shadows); this.world.scene.add(a.root); return a; }
+  private makeActor(): NexoActor { const a = new NexoActor(this.gltf, this.lib, 'visitor', this.quality === 'high'); a.setBlob(!this.world.light.shadows); a.setLocomotion(this.gear === 'skates' ? 'skate' : 'walk'); this.world.scene.add(a.root); return a; }
   private publishStore() { const s = this.store.get(); pgBalance.value = s.stars; pgUnlocks.value = s.unlocks; pgBest.value = s.best?.score ?? null; pgGear.value = this.gear; }
 
   /* ---------------- entering, leaving, the pad ---------------- */
@@ -105,11 +108,14 @@ export class PlaygroundEngine implements Scene {
   private teleport(x: number, y: number, z: number, yaw: number) {
     const p = this.sim.player; p.body.pos.x = x; p.body.pos.y = y; p.body.pos.z = z; p.body.vel = v3(); p.body.grounded = false; p.yaw = yaw; p.peak = y;
     p.action = null; p.dodge = null; p.airDash = null; p.slamming = false; p.jumpBuffer = 0; loop(p, 'idle');
-    this.prev.x = x; this.prev.y = y; this.prev.z = z; this.acc = 0;
+    this.prev.x = x; this.prev.y = y; this.prev.z = z; this.acc = 0; this.lastYaw = yaw;
+    for (const r of this.world.ribbons) r.clear();
   }
   private setGear(g: Gear) {
     this.gear = g; this.store.choose(g); pgGear.value = g;
     this.sim.movement = GEAR[g].movement; // the controller reads the tuning every step
+    this.actor?.setLocomotion(g === 'skates' ? 'skate' : 'walk');
+    for (const r of this.world.ribbons) r.clear();
   }
   /** The summary's Again: back on the pad, straight over the line. */
   again() { this.toPad(); pgMode.value = 'pad'; pgSummary.value = null; }
@@ -128,11 +134,18 @@ export class PlaygroundEngine implements Scene {
       this.prev.x = p.body.pos.x; this.prev.y = p.body.pos.y; this.prev.z = p.body.pos.z;
       this.sim.camYaw = this.rig.yaw; this.sim.step(step, STEP);
       p.stamina = p.vit.stamina; p.spirit = p.vit.spirit; // no stamina here either
-      this.afterStep(now);
+      this.afterStep();
       this.acc -= STEP; n++;
     }
-    const b = p.body, sp = lenXZ(b.vel);
-    if (this.actor) { this.actor.place(b.pos.x, b.pos.y, b.pos.z, p.yaw, b.grounded ? Math.min(0.8, sp / 11) * 0.16 : 0); this.actor.attend(null); this.actor.applySim(p.anim, dt, sp); }
+    const b = p.body, sp = lenXZ(b.vel), skating = this.gear === 'skates';
+    if (this.actor) {
+      const yawRate = angleDiff(this.lastYaw, p.yaw) / Math.max(dt, 1e-3); this.lastYaw = p.yaw;
+      this.actor.setLean(skating ? THREE.MathUtils.clamp(yawRate * 0.08 * Math.min(1, sp / 6), -0.35, 0.35) : 0);
+      this.actor.place(b.pos.x, b.pos.y, b.pos.z, p.yaw, b.grounded ? Math.min(0.8, sp / 11) * (skating ? 0.22 : 0.16) : 0); this.actor.attend(null); this.actor.applySim(p.anim, dt, sp);
+      // the skates' ribbons: from the ankles, on the floor, while the body is on the ground and moving
+      if (skating && b.grounded && sp > 4 && this.actor.feet(this.feet)) for (let k = 0; k < 2; k++) { const f = this.feet[k]!; this.world.ribbons[k]!.push(f.x, b.pos.y + 0.03, f.z, b.vel.x, b.vel.z); }
+    }
+    for (const r of this.world.ribbons) r.update(dt);
     this.sounds(sp, b.grounded, dt);
     this.updateCamera(dt);
     this.world.light.follow(b.pos.x, b.pos.z);
@@ -144,18 +157,23 @@ export class PlaygroundEngine implements Scene {
   }
 
   /** One simulation step happened: what did the body do? */
-  private afterStep(now: number) {
+  private afterStep() {
     const p = this.sim.player, b = p.body, pos = b.pos, tag = b.groundTag;
-    // pads and stands, by the tag of what the feet stand on
-    if (tag?.startsWith('boost:')) { const key = `${tag}@${Math.round(pos.x / 3)},${Math.round(pos.z / 3)}`; if (now - (this.padAt.get(key) ?? 0) > 800) { this.padAt.set(key, now); const [dx, dz] = tag.slice(6).split(',').map(Number); b.vel.x += dx! * BOOST; b.vel.z += dz! * BOOST; this.steps.play('dodge'); } }
-    else if (tag === 'jump') { const key = `jump@${Math.round(pos.x / 3)}`; if (now - (this.padAt.get(key) ?? 0) > 500) { this.padAt.set(key, now); b.vel.y = JUMP_PAD; b.grounded = false; this.steps.play('jump'); } }
+    // pads and stands, by the tag of what the feet stand on; a pad pushes once per touch (the tag's edge), however
+    // fast the body crosses it, and the air between two pads clears the edge
+    const pad = tag && (tag === 'jump' || tag.startsWith('boost:')) ? tag : null;
+    if (pad !== this.padOn) {
+      this.padOn = pad;
+      if (pad === 'jump') { b.vel.y = JUMP_PAD; b.grounded = false; this.steps.play('jump'); }
+      else if (pad) { const [dx, dz] = pad.slice(6).split(',').map(Number); boostBody(p, dx!, dz!); this.rig.kick(GEAR[this.gear].camera.kick); this.steps.play('dodge'); }
+    }
     const stand = tag?.startsWith('stand:') ? tag.slice(6) : null;
     if (stand !== this.standOn) { this.standOn = stand; if (stand) this.onStand(stand as Gear); else pgStandNote.value = null; }
     const nearPortal = Math.hypot(pos.x - this.course.portal.x, pos.z - this.course.portal.z) < this.course.portal.r + 0.4;
     if (pgNearPortal.value !== nearPortal) pgNearPortal.value = nearPortal;
     if (this.jumped !== !b.grounded) { this.jumped = !b.grounded; if (b.grounded && pgHint.value && p.peak > pos.y + 0.5) pgHint.value = false; }
 
-    if (pgMode.value === 'pad') { if (crossed(this.course.start, this.prev, pos)) this.startRun(); return; }
+    if (pgMode.value === 'pad') { if (pos.y < FALL_Y) this.backToPad(); else if (crossed(this.course.start, this.prev, pos)) this.startRun(); return; }
     const run = this.run; if (!run || run.ended) return;
     run.tick(STEP);
     // pickups against the chest, every step
@@ -165,7 +183,7 @@ export class PlaygroundEngine implements Scene {
       const kind = this.course.pickups[i]!.kind; this.world.collect(i);
       if (kind === 'star') run.star(); else if (kind === 'bubble') run.bubble(); else if (kind === 'cell') run.cell(); else run.diamond();
     }
-    this.course.rings.forEach((r, i) => { if (crossed(r, this.prev, pos)) run.ringAt(i + 1); });
+    for (const r of this.course.rings) if (crossed(r, this.prev, pos)) run.ringAt(r.order);
     if (crossed(this.course.gate, this.prev, pos)) run.gate();
     if (pos.y < FALL_Y && !run.ended) { run.fall(); this.respawn(); }
     for (const e of run.drain()) this.onEvent(e, pos);
@@ -176,9 +194,11 @@ export class PlaygroundEngine implements Scene {
     this.run = new Run(); this.world.reset(); pgMode.value = 'run'; pgCombo.value = 1; pgRunStars.value = 0; pgScore.value = 0; pgO2.value = this.run.o2;
     sfx('go');
   }
+  /** Off the pad's edge before a run: back on it, after the same dark moment. */
+  private backToPad() { const s = this.course.spawn; this.teleport(s.x, s.y, s.z, s.yaw); this.rig.snapBehind(s.yaw); pgFade.value = true; setTimeout(() => { pgFade.value = false; }, 500); }
   /** Back at the last ring, the air a little thinner, after a short dark moment. */
   private respawn() {
-    const run = this.run!, r = run.ring ? this.course.rings[run.ring - 1]!.at : { x: this.course.start.x + 1, y: 0.05, z: 0, yaw: this.course.spawn.yaw };
+    const run = this.run!, back = this.course.rings.find((k) => k.order === run.ring), r = back ? back.at : { x: this.course.start.x + 1, y: 0.05, z: 0, yaw: this.course.spawn.yaw };
     this.teleport(r.x, r.y, r.z, r.yaw); this.rig.snapBehind(r.yaw);
     pgFade.value = true; setTimeout(() => { pgFade.value = false; }, 500);
   }
@@ -192,10 +212,10 @@ export class PlaygroundEngine implements Scene {
     if (s.reason === 'gate') { sfx('big'); buzz([18, 40, 18]); } else if (s.reason === 'o2') sfx('warn');
   }
   private onStand(gear: Gear) {
-    const g = GEAR[gear], s = this.store.get();
-    if (s.unlocks.includes(gear)) { this.setGear(gear); pgStandNote.value = `${g.name} on`; sfx('tap'); return; }
+    const g = GEAR[gear], s = this.store.get(), tip = gear === 'skates' ? ' · hold the rim to tuck' : '';
+    if (s.unlocks.includes(gear)) { this.setGear(gear); pgStandNote.value = `${g.name} on${tip}`; sfx('tap'); return; }
     if (!GEAR_READY[gear]) { pgStandNote.value = `${g.name}: coming soon`; return; }
-    if (this.store.spend(gear, g.price)) { this.publishStore(); this.setGear(gear); pgStandNote.value = `${g.name} unlocked`; sfx('big'); buzz([18, 40, 18]); toast(`${g.name} are yours`, `${g.price} stars well spent`, 'xp'); }
+    if (this.store.spend(gear, g.price)) { this.publishStore(); this.setGear(gear); pgStandNote.value = `${g.name} unlocked${tip}`; sfx('big'); buzz([18, 40, 18]); toast(`${g.name} are yours`, `${g.price} stars well spent`, 'xp'); }
     else pgStandNote.value = `${g.name}: ${g.price - s.stars} more stars`;
   }
 
@@ -222,12 +242,13 @@ export class PlaygroundEngine implements Scene {
    *  player has just dragged to look. The gear sets the distance and the tilt. */
   private updateCamera(dt: number) {
     const p = this.sim.player, pos = p.body.pos, g = GEAR[this.gear].camera;
-    const sec = sectionAt(this.course, pos.x, pos.z); if (sec) this.section = sec;
+    const sec = sectionAt(this.course, pos.x, pos.z, this.gear); if (sec) this.section = sec;
     if (performance.now() - this.orbitAt > ORBIT_HOLD_MS) {
       const base = this.section?.yaw ?? p.yaw, want = base + angleDiff(base, p.yaw) * 0.25;
       this.rig.yaw += angleDiff(this.rig.yaw, want) * (1 - Math.exp(-2.5 * dt));
       this.rig.pitch = damp(this.rig.pitch, g.pitch, 3, dt);
     }
+    this.rig.dist = damp(this.rig.dist, THREE.MathUtils.clamp(g.dist * this.zoom, CAM.min, CAM.max), 3, dt);
     this.rig.update(dt, pos, p.body.vel, null, p.gait === 'sprint');
     const under = platformUnder(this.course, this.camera.position.x, this.camera.position.y, this.camera.position.z);
     if (under && this.camera.position.y < under.y + 0.5) this.camera.position.y = under.y + 0.5;
@@ -236,7 +257,7 @@ export class PlaygroundEngine implements Scene {
   private sounds(speed: number, grounded: boolean, dt: number) {
     for (const ev of this.sim.events) { if (ev.kind === 'jump' || ev.kind === 'airjump') this.steps.play('jump'); else if (ev.kind === 'land') this.steps.play('land', 0.4 + (ev.power ?? 0)); }
     this.sim.events.length = 0;
-    if (!grounded || speed < 0.8) { this.stepAcc = 0; return; }
+    if (!grounded || speed < 0.8 || this.gear === 'skates') { this.stepAcc = 0; return; } // skates glide: no footsteps
     this.stepAcc += speed * dt; const stride = this.sim.player.gait === 'sprint' ? 2.1 : 1.45;
     if (this.stepAcc >= stride) { this.stepAcc -= stride; this.steps.play('step', 0.4 + speed / 12); }
   }

@@ -92,7 +92,11 @@ export class NexoActor {
   private stride = 1;
   private lastKey: AnimKey | null = null; private lastSerial = -1;
   /** The attention layer: breathing, a slow sway, the head turning to whoever is near. */
-  private bones: { head?: THREE.Object3D; spine?: THREE.Object3D; hips?: THREE.Object3D } = {};
+  private bones: { head?: THREE.Object3D; spine?: THREE.Object3D; hips?: THREE.Object3D; lUp?: THREE.Object3D; lLow?: THREE.Object3D; lFoot?: THREE.Object3D; rUp?: THREE.Object3D; rLow?: THREE.Object3D; rFoot?: THREE.Object3D } = {};
+  /** How the body moves over the ground: on its feet, or on skates (a held glide over a still clip, in by speed). */
+  private loco: 'walk' | 'skate' = 'walk';
+  private glide = 0; private speed = 0; private lean = 0; private leanWant = 0;
+  private model: THREE.Object3D | null = null; private modelY = 0;
   private lookTarget: THREE.Vector3 | null = null;
   private look = { yaw: 0, pitch: 0 };
   private attentionWeight = 1;
@@ -131,11 +135,13 @@ export class NexoActor {
       });
       const clips = lib ? retarget(lib, model) : new Map<AnimKey, THREE.AnimationClip>();
       if (gltf.animations[0]) clips.set('idle', gltf.animations[0]);
-      let hips: THREE.Object3D | null = null; model.traverse((o) => { if (o.name === 'Hips') hips = o; if (o.name === 'Head') this.bones.head = o; if (o.name === 'Spine01') this.bones.spine = o; });
+      let hips: THREE.Object3D | null = null;
+      const B = this.bones, want: Record<string, keyof typeof B> = { Head: 'head', Spine01: 'spine', LeftUpLeg: 'lUp', LeftLeg: 'lLow', LeftFoot: 'lFoot', RightUpLeg: 'rUp', RightLeg: 'rLow', RightFoot: 'rFoot' };
+      model.traverse((o) => { if (o.name === 'Hips') hips = o; const k = want[o.name]; if (k) B[k] = o; });
       if (hips) this.bones.hips = hips;
       if (hips) { model.updateMatrixWorld(true); const hy = (hips as THREE.Object3D).getWorldPosition(new THREE.Vector3()).y; this.stride = Math.pow(Math.max(0.15, Math.min(1.5, hy / SOURCE_HIPS)), 0.3); }
       this.anims = new AnimSet(model, clips);
-      this.root.add(model);
+      this.root.add(model); this.model = model; this.modelY = model.position.y;
     } else {
       this.anims = null;
       const { group, suit } = primitiveNexo(ROLE_TINT[role]);
@@ -146,6 +152,17 @@ export class NexoActor {
     this.blob = new THREE.Mesh(new THREE.CircleGeometry(0.5, 20).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x1b2130, transparent: true, opacity: 0.16, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
     this.blob.position.y = 0.02;
     this.root.add(this.blob);
+  }
+
+  /** Skates or feet: on skates the walk and run clips give way to a still one under a held glide. */
+  setLocomotion(m: 'walk' | 'skate'): void { this.loco = m; }
+  /** How far the torso leans into a turn (radians, signed, left positive); the engine sets it from the yaw rate. */
+  setLean(z: number): void { this.leanWant = z; }
+  /** Where the ankles are in the world, for a trail. False without a rigged body. */
+  feet(out: [THREE.Vector3, THREE.Vector3]): boolean {
+    const { lFoot, rFoot } = this.bones; if (!lFoot || !rFoot) return false;
+    lFoot.updateWorldMatrix(true, false); rFoot.updateWorldMatrix(true, false);
+    lFoot.getWorldPosition(out[0]); rFoot.getWorldPosition(out[1]); return true;
   }
 
   /** The soft blob under the feet stands in for a shadow when the sun throws none. */
@@ -161,7 +178,8 @@ export class NexoActor {
   /** The sim's state in the fair's clips: a stroll for walking, a jog for running and sprinting, a calm idle; loops
    * play at the rate that carries this body's feet at the given speed. Crossing from run to sprint keeps the jog going. */
   private mapped(anim: AnimState, speed: number): AnimState {
-    const key = FAIR_KEYS[anim.key] ?? anim.key;
+    let key = FAIR_KEYS[anim.key] ?? anim.key;
+    if (this.loco === 'skate' && (key === 'stroll' || key === 'jog')) key = 'idle-calm'; // the glide is a pose, not a clip
     let serial = anim.serial;
     if (anim.loop && key === this.lastKey) serial = this.lastSerial; else { this.lastKey = anim.loop ? key : null; this.lastSerial = anim.serial; }
     const natural = NATURAL[key];
@@ -170,7 +188,7 @@ export class NexoActor {
   }
 
   /** Drive the body from the sim's own animation state (the player); speed is the body's ground speed in m/s. */
-  applySim(anim: AnimState, dt: number, speed = 0): void { if (this.anims) { this.anims.apply(this.mapped(anim, speed)); this.anims.update(dt); this.attention(dt, anim.loop); } }
+  applySim(anim: AnimState, dt: number, speed = 0): void { if (this.anims) { this.anims.apply(this.mapped(anim, speed)); this.anims.update(dt); this.speed = speed; this.attention(dt, anim.loop); } }
 
   /** Where the head should turn to, in world space; null looks ahead. The engine sets it every tick. */
   attend(target: THREE.Vector3 | null): void { this.lookTarget = target; }
@@ -192,6 +210,16 @@ export class NexoActor {
     }
     this.look.yaw = THREE.MathUtils.damp(this.look.yaw, wantYaw, 4, dt); this.look.pitch = THREE.MathUtils.damp(this.look.pitch, wantPitch, 4, dt);
     if (head) head.quaternion.multiply(this.tmpQ.setFromEuler(this.tmpE.set(-this.look.pitch * w, this.look.yaw * w, 0, 'YXZ')));
+    // the glide on skates: knees bent, the left leg leading, the feet flat, the torso forward and into the turn, the
+    // hips a hair lower so the feet stay on the floor; in by speed, out for a jump or a stop
+    const g = (this.glide = THREE.MathUtils.damp(this.glide, this.loco === 'skate' && loop ? THREE.MathUtils.clamp((this.speed - 0.6) / 2, 0, 1) : 0, 6, dt));
+    this.lean = THREE.MathUtils.damp(this.lean, this.leanWant, 6, dt);
+    if (this.model) this.model.position.y = this.modelY - 0.04 * g;
+    if (g > 0.001) {
+      const { lUp, lLow, lFoot, rUp, rLow, rFoot } = this.bones, bend = (o: THREE.Object3D | undefined, a: number) => { if (o) o.quaternion.multiply(this.tmpQ.setFromAxisAngle(X_AXIS, a * g)); };
+      bend(lUp, -0.45); bend(lLow, 0.55); bend(lFoot, -0.1); bend(rUp, -0.1); bend(rLow, 0.55); bend(rFoot, -0.45);
+      if (spine) { spine.quaternion.multiply(this.tmpQ.setFromAxisAngle(X_AXIS, 0.18 * g)); spine.quaternion.multiply(this.tmpQ.setFromAxisAngle(Z_AXIS, -this.lean * g)); }
+    }
   }
 
   /** Drive a body we only hear about: walk or run by speed, or hold a pose. Speeds in m/s. */

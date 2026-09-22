@@ -132,7 +132,8 @@ Jump reach, measured on the physics (the body's 0.36 m radius lands a toe on an 
 clears 3.2 m, half a metre early 2.7 m; the air jump 4.7 m and 4.2 m; at top speed 4.2 / 3.7 m and, with the air
 jump, 6.3 / 5.8 m. The course's gaps are set to what a jump half a metre early still clears, and the tests jump
 every one both ways: **Boardwalk 1.8–2.2 m** (one jump, any gear), **Stairs 2.6–2.8 m with 1 m rises** (the air
-jump), the jump pad for the tall step, **Sky Line 6–8 m** (Skates at speed, or the Jetpack). Momentum is not new
+jump), the jump pad for the tall step, **Sky Line: a 5 m gap off the turn, then 5.5 m gaps between 10 m platforms
+each about a metre lower** (a single jump at the tuck, a double at the cruise, or the Jetpack). Momentum is not new
 code: the controller already accelerates the velocity toward the stick's direction at the tuning's rate, so a low
 rate is a glide.
 
@@ -150,7 +151,10 @@ rate is a glide.
 
 - Speed is a state, not an input: the stick sets a heading, the body carries its momentum, letting go glides to a
   stop over a few seconds. The rim hold is the tuck: top speed and a narrower turn.
-- Boost pads chain along the glide line; the long glide's last star is the Skates diamond.
+- Boost pads sit four metres in from every other platform's edge and push once per touch: a single jump at the cruise
+  lands off one, and the tuck's double after one still lands inside the 10 m platform (the landing zone is 5.5–15.5 m
+  out; the tuck's single carries 6.6, the cruise's double 7.9, a boosted tuck's double under 14). The glide's last
+  pickup is the Skates diamond, on the home stretch before the gate; home runs on past the gate so a skater coasts out.
 
 ### Pickups, rings, pads and the gate
 
@@ -175,8 +179,8 @@ you can use, gold for what you earn, cyan for air and fuel, orange only on the J
 3. **Stairs** (70–150 m): platforms rising 1 m at a time with 2.6–2.8 m gaps and a jump pad for the one tall step,
    stars on the rises, rings at 78, 105 and 137, the Boots diamond on a ledge 4 m past the top (a top-speed jump or
    the air jump). Teaches the air jump.
-4. **Sky Line** (140–210 m): a long glide with 6–8 m gaps and boost pads (the Skates line, cyan-ringed stars, its
-   diamond at the end), a lower safe path with 2.5 m gaps for Boots, and above both the Jetpack's line (orange-ringed
+4. **Sky Line** (140–210 m): a long glide with a 5 m gap then 5.5 m gaps between 10 m platforms, a boost pad on every
+   other one (the Skates line at z 30: cyan-ringed stars, four rings, its diamond before the gate), a lower safe path with 2.5 m gaps for Boots, and above both the Jetpack's line (orange-ringed
    stars at 4–8 m up, its diamond at the top), rings at 140 and 175, then the gate back at the pad.
 
 The course is data (`src/playground/course.ts`): platforms as boxes, pickups as points with a line and a gear,
@@ -222,9 +226,10 @@ after 1.5 s. The camera never drops below 0.5 m over the platform under it.
 
 ### Poses without new clips
 
-The library has no skating or flying clip and the Playground does not wait for one. Skates: the jog clip at a slow
-rate with the legs held in a glide by the bone layer that already turns the head (a fixed knee and ankle pose,
-blended over 0.3 s) and the torso leaning into the turn. The Jetpack: the jump clip's apex held, the body tilted into
+The library has no skating or flying clip and the Playground does not wait for one. Skates: the calm idle clip under
+a glide held by the bone layer that already turns the head (knees bent, the left leg leading, the feet flat, the hips
+4 cm lower so the feet stay on the floor; in by speed, out for a jump or a stop) and the torso leaning into the turn
+from the yaw rate. The Jetpack: the jump clip's apex held, the body tilted into
 the direction of travel. Cheap and clean, in one file; real clips can replace them later without touching anything
 else. This is the one place where "good enough" is a judgement to be made on the screen, not on this page.
 
@@ -360,5 +365,26 @@ history entry under any sheet, tested). Each world's labels live in an overlay s
   fair resuming at once, re-entering with the same engine. The Playground draws 14 calls and 72k triangles.
 - For working on it: `?pg` (dev only) goes straight into the Playground after the first screen; the browser pane's
   hidden state pauses the stage like a hidden tab, so a scripted run in the pane drives `__stage.frame` itself.
-- Not yet: Skates (Phase 2), the Jetpack (Phase 3), the boards, the chimes per combo level and the phone pass
-  (Phase 4), the server (Phase 5). Skates and Jetpack stands say "coming soon" until then.
+**Phase 2 — done (23 Sep): Skates.** The tuning in `src/playground/gear.ts` (cruise 7.5, the rim hold tucks to 9.5,
+acceleration 7 and braking 5 for the long glide, 260°/s, a 6.8 jump); the stand sells them for 100 stars and says
+"hold the rim to tuck". The glide is a pose over the calm clip in `src/fair/nexo.ts` (knees bent, the left leg
+leading, the torso forward and into turns from the yaw rate, the hips 4 cm lower so the feet stay on the floor), in
+by speed and out for a jump; no footsteps on skates; two ribbons (`src/playground/ribbon.ts`: a fixed ring of
+samples in one strip, nothing allocated per frame) trail from the ankles while gliding. The Skates line at z 30, west
+from the turn: a 5 m gap then 5.5 m gaps between 10 m platforms each about a metre lower, laid by the landing-zone
+rule above; boost pads four metres in from the edge on every other platform, pushing once per touch (edge-triggered:
+the 3 m grid cooldown gave a fast body two or three pushes and the run hit 38 m/s); cyan-ringed stars, four rings,
+four bubbles, the Skates diamond before the gate; home runs on past the gate. Rings carry an `order` (the way back is
+200 plus the metres west of the turn) so a fall returns to the furthest ring passed on either lane; a section can be
+one gear's (on skates the turn faces north until z 26). The camera distance is the gear's preset times the pinch, a
+boost kicks the field of view, the boost is the same kick on every gear. Falling off the pad before a run returns to
+the pad. Tests: every Skates gap by a tuck single and a cruise double, both half a metre early, none on Boots; the
+pads carry a cruising single and do not overshoot with a tuck double; ring orders rise along every lane; the ribbon.
+- Verified in the browser: Skates bought on the stand (153 → 53 stars); a scripted run down the line at the tuck with
+  a predictive autopilot (the air jump only when the ballistic landing falls short): 2,543 points, 70 stars, ×4, 14 s,
+  all four rings, no falls, 9.5 m/s cruising and 15.5 → 12.6 off a pad; the glide pose and the ribbons from behind
+  and from the side; the tinted rings; the summary with "New best".
+- Harness note: with the pane visible the stage loop runs, so the driver wraps `__stage.frame` with the autopilot
+  (jump 0.45 m before a platform's west edge) and holds keys on `__stage.input.keys` (`fromKeys()` after a change).
+- Not yet: the Jetpack (Phase 3), the boards, the chimes per combo level and the phone pass (Phase 4), the server
+  (Phase 5). The Jetpack stand says "coming soon" until then.
