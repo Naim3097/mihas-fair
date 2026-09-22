@@ -10,15 +10,15 @@ import { facts, hallCards } from './facts';
 const level = JSON.parse(readFileSync('public/data/floor.json', 'utf8')) as LevelData;
 const places = buildPlaces(level), nav = new NavGrid(level);
 
-test('every named area of the floor plan becomes a place, on all three levels', () => {
+test('every named area of the floor plan becomes a place', () => {
   assert.equal(places.length, level.areas.length);
-  assert.deepEqual([...new Set(places.filter((p) => p.open).map((p) => p.deck))].sort(), [1, 2, 3]);
+  assert.deepEqual([...new Set(places.filter((p) => p.open).map((p) => p.deck))].sort(), [2]);
   for (const p of places) {
     for (const s of p.solids) assert.ok(s.x - s.w / 2 >= p.rect.x0 - 0.3 && s.x + s.w / 2 <= p.rect.x1 + 0.3 && s.y - s.d / 2 >= p.rect.y0 - 0.3 && s.y + s.d / 2 <= p.rect.y1 + 0.3, `${p.name}: furniture stays inside its footprint`);
     if (p.verb === 'sit' || p.verb === 'watch') assert.ok(p.seats.some((_, i) => !taken(p, i)), `${p.name}: a free seat`);
     if (p.verb === 'photo') assert.ok(p.spot && nav.walkable(p.spot.x, p.spot.y), `${p.name}: the photo mark can be stood on`);
   }
-  assert.ok(places.filter((p) => p.verb).length >= 14, 'most places have something to do');
+  assert.ok(places.filter((p) => p.verb).length >= 10, 'most places have something to do');
 });
 
 test('you can walk into every open place, stand up from every seat, and nothing is built over the things that matter', () => {
@@ -31,7 +31,7 @@ test('you can walk into every open place, stand up from every seat, and nothing 
 
 test('what the game says about the show is counted from the data', () => {
   const cards = hallCards(level);
-  assert.equal(cards.length, 9); assert.equal(cards.reduce((n, c) => n + c.booths, 0), level.booths.length);
+  assert.equal(cards.length, 3); assert.equal(cards.reduce((n, c) => n + c.booths, 0), level.booths.length);
   const lines = facts(level);
   assert.ok(lines.length >= 6 && lines.every((l) => l.length < 140 && !/undefined|NaN/.test(l)), lines.join('\n'));
   assert.ok(lines[0]!.includes(level.booths.length.toLocaleString()));

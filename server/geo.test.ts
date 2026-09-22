@@ -68,7 +68,7 @@ test('calibration refuses a booth that does not exist and a fix too vague to use
   assert.equal(vague.status, 400); assert.match(vague.json.error!, /only good to 120 m/);
 });
 
-test('on site, GPS wobble inside its accuracy circle and changing level are walking, not speeding', async () => {
+test('on site, GPS wobble inside its accuracy circle is walking, not speeding', async () => {
   for (const presenceKind of ['memory', 'db'] as const) {
     let now = Date.UTC(2026, 8, 23, 3, 0, 0);
     const stores = await testStores(), presence = presenceKind === 'db' ? { presence: new (await import('./presence.js')).DbPresence(stores.db) } : {};
@@ -81,9 +81,7 @@ test('on site, GPS wobble inside its accuracy circle and changing level are walk
     assert.equal((await ping(100, 60, 20)).deck, true, 'on site, the avatar may follow the person');
     await ping(122, 60, 20); // 22 m in 2 s: impossible on foot, but both fixes are ±20 m
     assert.equal(await flags(), 0, `${presenceKind}: GPS wobble is not a speed flag`);
-    await ping(122, -60, 20); // level 2 → level 1 (the plan lays levels side by side)
-    assert.equal(await flags(), 0, `${presenceKind}: taking the escalator is not a speed flag`);
-    await ping(22, -60, 3); // 100 m across level 1 in 2 s with a tight fix: that really is too fast
+    await ping(22, 60, 3); // 100 m across the hall in 2 s with a tight fix: that really is too fast
     assert.equal(await flags(), 1, `${presenceKind}: a real jump is still flagged`);
   }
 });

@@ -211,7 +211,7 @@ function Calibrate() {
   };
   const remove = async (id: number) => { try { setData(await call<CalData>('POST', '/api/crew/geocal/delete', { id })); } catch (x) { setErr((x as Error).message); } };
 
-  const levels = [1, 2, 3].map((deck) => ({ deck, map: data?.geo.decks[deck], pts: (data?.points ?? []).filter((p) => p.deck === deck) }));
+  const levels = [2].map((deck) => ({ deck, map: data?.geo.decks[deck], pts: (data?.points ?? []).filter((p) => p.deck === deck) }));
   const status = (l: (typeof levels)[number]) => {
     if (!l.map) return l.pts.length ? `${l.pts.length} point${l.pts.length > 1 ? 's' : ''} — not enough yet: add booths far from ${l.pts.length > 1 ? 'these' : 'this one'}` : 'Not set up — players on this level move with the stick';
     if (l.map.kind === 'borrowed') return '1 point, borrowing the shape of another level — add 2 more for accuracy';

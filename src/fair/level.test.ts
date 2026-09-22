@@ -37,7 +37,7 @@ test('stands: cells of one exhibitor join, partitions go where a neighbour is, f
   assert.equal(hero.front, 'W');
   const kinds = new Map<string, number>();
   for (const s of stands) kinds.set(s.kind, (kinds.get(s.kind) ?? 0) + 1);
-  assert.ok((kinds.get('shell') ?? 0) > 500 && (kinds.get('corner') ?? 0) > 50 && (kinds.get('block') ?? 0) > 20, JSON.stringify([...kinds]));
+  assert.ok((kinds.get('shell') ?? 0) > 150 && (kinds.get('corner') ?? 0) > 100 && (kinds.get('block') ?? 0) >= 5, JSON.stringify([...kinds]));
   const cells = stands.reduce((n, s) => n + s.cells.length, 0);
   assert.equal(cells, level.booths.length, 'every cell belongs to exactly one stand');
 });

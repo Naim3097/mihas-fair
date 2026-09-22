@@ -108,7 +108,7 @@ export function TourSheet() {
 
       <h3 class="tourh">The world · nothing here scores, all of it is play</h3>
       <ol class="tour">
-        <Row title="Places on all three levels"><L to={go('map')}>Open the map</L>: cafés, lounges, stages, kitchens, the photo booth, the press rooms. Tap one to be guided there; take a lift (the blue discs) to Levels 1 and 3. Walking into a hall or a place for the first time tells you what it is.</Row>
+        <Row title="Places across Halls 6–8"><L to={go('map')}>Open the map</L>: cafés, lounges, stages, kitchens, the photo booth, the press rooms. Tap one to be guided there. Walking into a hall or a place for the first time tells you what it is.</Row>
         <Row title="Sit, watch, take a photo">In a place the big button changes: sit down at a café table or in front of a stage (true facts about the show appear while you sit); on the blue mark at the Photo Booth, take a picture of your astronaut to share.</Row>
         <Row title="Express yourself">The face button: wave, cheer, dance, jump. On a keyboard: 1 · 2 · 3, space to jump, E for the big button, M for the map. The cast sits in the cafés too — and waves back when you walk up.</Row>
       </ol>

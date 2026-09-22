@@ -23,7 +23,7 @@ test('from the game camera angle, aiming at the middle of a roof picks that boot
     const eye: [number, number, number] = [b.x + Math.sin(yaw) * 14, b.y - Math.cos(yaw) * 14, 22]; // ~57° down, like the default view
     assert.equal(picker.pick(ray(eye, [b.x, b.y, H]))?.id, b.id, `${b.id} from yaw ${yaw}`); n++;
   }
-  assert.ok(n > 500);
+  assert.ok(n > 200);
 });
 
 test('a booth is never picked through the one in front of it, and open floor picks nothing', () => {

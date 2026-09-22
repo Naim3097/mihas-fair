@@ -41,34 +41,13 @@ async function rig() {
   return { clock, user, crew, services };
 }
 
-test('three decks: a lift ride is the only legal jump; Level 1 booths stamp, count for their own halls, and get their own offers', async () => {
-  const { clock, user } = await rig(), p = await user().join('visitor');
-  assert.deepEqual(level.decks.map((d) => d.level).sort(), [1, 2, 3]);
-  assert.equal(level.booths.length, new Set(level.booths.map((b) => b.id)).size, 'booth ids are unique across decks');
-  assert.ok(level.booths.filter((b) => b.deck === 1).length > 650 && level.booths.filter((b) => b.deck === 3).length > 450);
-
-  const lift2 = level.lifts.find((l) => l.deck === 2 && l.id === 'west')!, lift1 = level.lifts.find((l) => l.deck === 1 && l.id === 'west')!;
-  await p.post('/api/presence', { x: level.spawns.short.x, y: level.spawns.short.y, h: 0, spawn: true });
-  clock.advance(8000); await p.post('/api/presence', { x: lift2.x, y: lift2.y, h: 0 });
-  // claiming to be somewhere on Level 1 that is not a lift: refused, position unchanged
-  const f = booth('3G09'); clock.advance(2000);
-  await p.post('/api/presence', { x: f.x - 2.5, y: f.y, h: 0, spawn: true });
-  assert.equal((await p.post('/api/stamp', { stationId: '3G09', proof: 'virtual' })).json.code, 'too_far');
-  // the lift ride itself is accepted
-  clock.advance(2000);
-  const r = await p.post('/api/presence', { x: lift1.x, y: lift1.y + 1.5, h: 0, spawn: true });
-  assert.ok(r.json.events.some((e: { target?: string }) => e.target === 'Hall 4'), 'arrived in Hall 4 on Level 1');
-  await p.walkTo('3G09');
-  const st = await p.post('/api/stamp', { stationId: '3G09', proof: 'virtual' });
-  assert.equal(st.status, 200, JSON.stringify(st.json));
-  assert.equal(st.json.events[0].target, 'FGV Holdings', 'official exhibitor name');
-
+test('one deck: Level 2 only, booth ids unique, and the sectors are Halls 6–8', async () => {
+  const { user } = await rig(), p = await user().join('visitor');
+  assert.deepEqual(level.decks.map((d) => d.level), [2]);
+  assert.ok(level.booths.every((b) => b.deck === 2) && level.lifts.length === 0);
+  assert.equal(level.booths.length, new Set(level.booths.map((b) => b.id)).size, 'booth ids are unique');
   const sectors = ((await p.get('/api/sectors')).json.data as SectorsView).sectors;
-  assert.deepEqual(sectors.map((s) => s.hall).sort((a, b) => a - b), [2, 3, 4, 6, 7, 8, 9, 10, 11]);
-  assert.ok(sectors.find((s) => s.hall === 3)!.scores.visitor > 0 && sectors.find((s) => s.hall === 8)!.scores.visitor === 0);
-
-  const m = (await p.get('/api/missions')).json.data as MissionsView;
-  for (const o of m.offers) if (o.target) assert.ok(o.target.y < 0, `${o.title} stays on Level 1 (south of the Level 2 platform)`);
+  assert.deepEqual(sectors.map((s) => s.hall).sort((a, b) => a - b), [6, 7, 8]);
 });
 
 test('trust: remote play cannot reach the bar; venue + host code + docking does; a teleport attempt costs it', async () => {

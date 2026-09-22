@@ -53,7 +53,7 @@ export async function startTracking(): Promise<void> {
   stopTracking();
   if (!('geolocation' in navigator)) { siteState.value = 'unsupported'; return; }
   siteState.value = 'asking';
-  if (siteDeck.value == null) siteDeck.value = anchoredDeck();
+  if (siteDeck.value == null) siteDeck.value = startDeck();
   try { geo = await api.geo(); } catch { geo = null; }
   watch = navigator.geolocation.watchPosition(onFix, onError, { enableHighAccuracy: true, maximumAge: 2000, timeout: 30_000 });
   firstFixTimer = setTimeout(() => { if (siteState.value === 'asking') siteState.value = 'nofix'; }, FIRST_FIX_MS);
@@ -69,6 +69,12 @@ export function stopTracking() {
 function anchoredDeck(): number | null {
   const a = me.value?.anchor; if (!a || Date.now() - a.at > 30 * 60_000) return null;
   return level.value?.booths.find((b) => b.id === a.stationId)?.deck ?? null;
+}
+
+/** The level to start on: the last scan's, or the only one there is. */
+function startDeck(): number | null {
+  const decks = level.value?.decks ?? [];
+  return anchoredDeck() ?? (decks.length === 1 ? decks[0]!.level : null);
 }
 
 function onError(e: GeolocationPositionError) {
@@ -105,8 +111,9 @@ async function venueCheck() {
 function place() {
   const f = lastFix; if (!f) return;
   if (!geo || !Object.keys(geo.decks).length) { siteState.value = 'uncalibrated'; gpsTarget.value = null; return; } // the crew has not mapped any level yet
-  const deck = siteDeck.value;
+  const deck = siteDeck.value ?? startDeck();
   if (deck == null) { siteState.value = 'level'; return; }
+  siteDeck.value = deck;
   const p = geo ? geoToPlan(geo, deck, f.lat, f.lon, f.acc) : null;
   if (!p) { siteState.value = 'uncalibrated'; gpsTarget.value = null; return; }
   const k = corrWeight(deck);

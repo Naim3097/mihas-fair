@@ -1,7 +1,5 @@
-// Builds public/data/floor.json: all three exhibition levels in ONE plan coordinate space.
-// Level 2 keeps its own frame (dy = 0). Levels 1 and 3 (tools/data/level{1,3}.json, from build-decks.mjs) are shifted
-// south / north of it, so distances, presence, pathfinding and missions need no notion of "floor" — decks are simply
-// far apart, and lifts are portals between them. In the 3D world they read as three platforms of the station.
+// Builds public/data/floor.json: Level 2 only (Halls 6–8), the one level the game covers. The format still carries a
+// deck on everything, so a level could come back without touching the client.
 // Level 2 source: tools/data/level2-source.json (vector-derived from Floor Plan V226, page 2).
 // Units: metres, origin = source PDF lower-left, +y = north.
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
@@ -100,40 +98,10 @@ const out = {
   booths,
   decks: [{ level: 2, x0: 2, y0: 26, x1: 206, y1: 111, boothD: 3.06, label: 'Deck 2 · Halls 6–8' }],
   halls: [{ id: 8, deck: 2, x0: 3.4, x1: 66.5, y0: 35, y1: 110 }, { id: 7, deck: 2, x0: 66.5, x1: 127, y0: 35, y1: 110 }, { id: 6, deck: 2, x0: 127, x1: 184, y0: 35, y1: 110 }],
-  // The two lifts that stand between the halls on every level (positions read off the plan's LIFT labels).
-  lifts: [{ id: 'west', deck: 2, x: 63.5, y: 31.5, label: 'West lift' }, { id: 'east', deck: 2, x: 124.5, y: 31.5, label: 'East lift' }],
+  lifts: [], // one level: nowhere for a lift to go
 };
-
-const level2Count = booths.length;
-
-/* ---------------- Levels 1 and 3 ---------------- */
-const r1 = (n) => +n.toFixed(2);
-const FRONT_LIFTS = { 1: [[66.5, 43.25], [126.38, 43.25]], 3: [[79.48, 31.61], [140.7, 31.61]] };
-const GAP = 45; // metres of "space" between platforms
-for (const lv of [1, 3]) {
-  const file = resolve(here, `data/level${lv}.json`);
-  if (!existsSync(file)) { console.warn(`  level ${lv}: tools/data/level${lv}.json missing — run node tools/build-decks.mjs`); continue; }
-  const d = JSON.parse(readFileSync(file, 'utf8'));
-  const bx = d.booths.map((b) => b.x), by = d.booths.map((b) => b.y);
-  // keep only areas that belong to the exhibition floor (the PDF also labels lobbies and back-of-house)
-  const floorAreas = d.areas.filter((a) => (a.x0 + a.x1) / 2 > Math.min(...bx) - 14 && (a.x0 + a.x1) / 2 < Math.max(...bx) + 8 && (a.y0 + a.y1) / 2 < Math.max(...by) + 24);
-  const hall = { x0: Math.min(...bx, ...floorAreas.map((a) => a.x0)) - 5, x1: Math.max(...bx, ...floorAreas.map((a) => a.x1)) + 5, y0: Math.min(...by) - 6, y1: Math.max(...by, ...floorAreas.map((a) => a.y1)) + 4 };
-  const lifts = FRONT_LIFTS[lv], frontY = Math.min(hall.y0, ...lifts.map((l) => l[1] - 4)) - 6;
-  const dy = lv === 1 ? out.decks[0].y0 - GAP - hall.y1 : out.decks[0].y1 + GAP - frontY;
-  const Y = (y) => r1(y + dy);
-
-  out.decks.push({ level: lv, x0: r1(hall.x0 - 3), y0: Y(frontY - 1), x1: r1(hall.x1 + 3), y1: Y(hall.y1 + 1), boothD: 2.82, label: `Deck ${lv} · Halls ${d.halls.map((h) => h.id).sort((a, b) => a - b).join(', ').replace(/, (\d+)$/, '–$1').replace(/^(\d+), .*–/, '$1–')}` });
-  out.walkable.push({ x0: r1(hall.x0), y0: Y(hall.y0), x1: r1(hall.x1), y1: Y(hall.y1) }, { x0: r1(hall.x0), y0: Y(frontY), x1: r1(hall.x1), y1: Y(hall.y0) });
-  const hs = [...d.halls].sort((a, b) => a.x0 - b.x0);
-  hs.forEach((h, i) => out.halls.push({ id: h.id, deck: lv, x0: r1(i ? (hs[i - 1].x1 + h.x0) / 2 : hall.x0), x1: r1(i < hs.length - 1 ? (h.x1 + hs[i + 1].x0) / 2 : hall.x1), y0: Y(hall.y0), y1: Y(hall.y1) }));
-  lifts.forEach(([x, y], i) => out.lifts.push({ id: i ? 'east' : 'west', deck: lv, x: r1(x), y: Y(y), label: i ? 'East lift' : 'West lift' }));
-  d.entrances.filter((e) => e.y < hall.y0 + 3 && e.y > frontY - 6 && e.x > hall.x0 && e.x < hall.x1).forEach((e, i) => out.gates.push({ id: `l${lv}-e${i}`, name: `Hall ${hs.find((h) => e.x <= h.x1 + 3)?.id ?? ''} entrance`.replace('  ', ' '), x: r1(e.x), y: Y(hall.y0 - 0.2), axis: 'x' }));
-  for (const a of floorAreas) out.areas.push({ ...a, id: `l${lv}-${a.id}`, y0: Y(a.y0), y1: Y(a.y1), deck: lv });
-  for (const b of d.booths) out.booths.push({ ...b, y: Y(b.y), deck: lv });
-  console.log(`  level ${lv}: ${d.booths.length} booths, ${floorAreas.length} areas, shifted ${dy > 0 ? '+' : ''}${dy.toFixed(1)} m → y ${Y(frontY)}…${Y(hall.y1)}`);
-}
 
 mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(OUT, JSON.stringify(out));
 console.log(`  ${booths.filter((b) => official[b.id]).length} names from the official list, ${booths.filter((b) => b.name && !official[b.id]).length} from plan labels`);
-console.log(`floor.json: ${out.booths.length} booths on ${out.decks.length} decks, ${out.halls.length} halls, ${out.booths.filter((b) => b.name).length} named · Level 2: ${level2Count} booths (${raw.booths.length - level2Count} phantoms removed), ${booths.filter((b) => b.name).length} named, hero ${HERO_ID} @ ${hero.x},${hero.y}`);
+console.log(`floor.json: Level 2, ${booths.length} booths (${raw.booths.length - booths.length} phantoms removed), ${out.halls.length} halls, ${booths.filter((b) => b.name).length} named, hero ${HERO_ID} @ ${hero.x},${hero.y}`);

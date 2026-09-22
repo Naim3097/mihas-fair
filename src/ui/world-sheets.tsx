@@ -70,7 +70,7 @@ export function MapSheet({ engine }: Eng) {
         <>
           <div class="seg three">{[...lv.decks].sort((a, b) => a.level - b.level).map((k) => <button key={k.level} class={k.level === deck ? 'on' : ''} onClick={() => setDeck(k.level)}><strong>Level {k.level}</strong><small>{k.label.split(' · ')[1]}</small></button>)}</div>
           <div ref={wrap} class="mapwrap"><canvas ref={canvas} class="map" onClick={tap} role="img" aria-label={`Map of level ${deck}. Tap to set a trail.`} /></div>
-          <p class="fine">Tap anywhere to be guided there. White booths, <b class="gold-t">gold</b> once you have stamped them, <b class="green-t">green</b> when the exhibitor is online. Blue dots are lifts.</p>
+          <p class="fine">Tap anywhere to be guided there. White booths, <b class="gold-t">gold</b> once you have stamped them, <b class="green-t">green</b> when the exhibitor is online.</p>
           <div class="results flow" style={{ marginTop: '12px' }}>
             {deck === 2 && <button class="result hero" onClick={() => go(lv.hero.dock.x, lv.hero.dock.y, 'The X · Booth 8H18A')}><strong>The X — Lean X Digital · nexova</strong><small>Booth 8H18A · Hall 8 · your free digital business card</small></button>}
             {places.filter((p) => p.deck === deck).map((p) => <button key={p.id} class={'result' + (been.has(`place:${p.id}`) ? ' seen' : '')} onClick={() => go((p.rect.x0 + p.rect.x1) / 2, (p.rect.y0 + p.rect.y1) / 2, p.name)}><strong>{p.name}</strong><small>{p.blurb}</small></button>)}
