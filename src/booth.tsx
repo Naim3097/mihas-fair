@@ -38,7 +38,8 @@ function Dashboard() {
   return (
     <main class="console">
       <header><div class="brand"><span>lean<b>.x</b>digital</span><i /><span>Exhibitor dashboard</span></div>
-        {booths.length > 1 && <nav>{booths.map((x) => <button key={x.id} class={'chip' + (x.id === sel ? ' on' : '')} onClick={() => setSel(x.id)}>{x.id}</button>)}</nav>}</header>
+        <nav>{booths.length > 1 && booths.map((x) => <button key={x.id} class={'chip' + (x.id === sel ? ' on' : '')} onClick={() => setSel(x.id)}>{x.id}</button>)}
+          {b && <a class="chip" href="/">‹ Back to the game</a>}</nav></header>
       {err && <p class="banner bad" role="alert">{err}</p>}
       {!b ? (
         <section class="sheet wide">
@@ -125,6 +126,8 @@ function Booth({ b, onChange }: { b: HostStation; onChange: () => void }) {
           ))}</ul>
         )}
       </section>
+
+      <a class="btn primary big backtogame" href="/">Back to the game</a>
     </>
   );
 }
