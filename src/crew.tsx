@@ -8,7 +8,9 @@ import './ui.css';
 import './crew.css';
 import './demo/demo.css';
 import { demo, demoState, ensureBackend } from './demo/client';
-import type { CrewStationRow, CrewTicketView, ReferralRow } from '../shared/types';
+import type { CrewStationRow, CrewTicketView, LevelData, ReferralRow } from '../shared/types';
+import { NavGrid } from './game/nav';
+import { planSpots, resolveSpots, spotUrl, type Spot } from './game/spots';
 import type { GeoCalPoint, GeoCalibration } from '../shared/geo';
 
 type Res<T> = { ok: true; data: T } | { ok: false; error: string; code: string };
@@ -28,17 +30,17 @@ function extractTicket(raw: string): string {
 
 function Crew() {
   const [authed, setAuthed] = useState<boolean | null>(null);
-  const [tab, setTab] = useState<'scan' | 'leads' | 'stations' | 'review' | 'ops' | 'beacons' | 'calibrate' | 'referrals'>('scan');
+  const [tab, setTab] = useState<'scan' | 'leads' | 'stations' | 'review' | 'ops' | 'beacons' | 'posters' | 'calibrate' | 'referrals'>('scan');
   useEffect(() => { call('GET', '/api/crew/check').then(() => setAuthed(true), () => setAuthed(false)); }, []);
   if (authed === null) return <main class="console"><p>Loading…</p></main>;
   if (!authed) return <Login onDone={() => setAuthed(true)} />;
   return (
     <main class="console">
       <header><div class="brand"><span>lean<b>.x</b>digital</span><i /><span>Crew console</span></div>
-        <nav>{([['scan', 'Scan'], ['leads', 'Leads'], ['stations', 'Booths'], ['review', 'Review'], ['ops', 'Live'], ['beacons', 'Booth QRs'], ['referrals', 'Referrals'], ['calibrate', 'Calibrate GPS']] as const).map(([t, label]) => <button key={t} class={'chip' + (tab === t ? ' on' : '')} onClick={() => setTab(t)}>{label}</button>)}
+        <nav>{([['scan', 'Scan'], ['leads', 'Leads'], ['stations', 'Booths'], ['review', 'Review'], ['ops', 'Live'], ['beacons', 'Booth QRs'], ['posters', 'You-are-here posters'], ['referrals', 'Referrals'], ['calibrate', 'Calibrate GPS']] as const).map(([t, label]) => <button key={t} class={'chip' + (tab === t ? ' on' : '')} onClick={() => setTab(t)}>{label}</button>)}
           <button class="chip ghost" onClick={() => call('POST', '/api/crew/logout').finally(() => setAuthed(false))}>Sign out</button></nav></header>
       {demo.value && <p class="demobar"><b>Demo mode.</b> This console talks to the demo world inside this browser — the same one the game tab is playing in. Leads, stations and the accounts under review belong to a simulated cast; your own demo player is in there too.</p>}
-      {tab === 'scan' && <Scan />}{tab === 'leads' && <Leads />}{tab === 'stations' && <StationsTab />}{tab === 'review' && <ReviewTab />}{tab === 'ops' && <OpsTab />}{tab === 'beacons' && <Beacons />}{tab === 'calibrate' && <Calibrate />}{tab === 'referrals' && <Referrals />}
+      {tab === 'scan' && <Scan />}{tab === 'leads' && <Leads />}{tab === 'stations' && <StationsTab />}{tab === 'review' && <ReviewTab />}{tab === 'ops' && <OpsTab />}{tab === 'beacons' && <Beacons />}{tab === 'posters' && <Posters />}{tab === 'calibrate' && <Calibrate />}{tab === 'referrals' && <Referrals />}
     </main>
   );
 }
@@ -153,6 +155,71 @@ function BeaconCard({ b }: { b: Beacon }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => { const c = qrcode(0, 'M'); c.addData(b.url); c.make(); if (ref.current) ref.current.innerHTML = c.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); }, [b.url]);
   return <div class="beacon"><div class="k">Mission X · Find the X</div><h3>{b.name || 'Booth'} <small>{b.id}</small></h3><div class="qr" ref={ref} /><p>Scan for +50 points</p></div>;
+}
+
+/* ---------------- "You are here" posters: one at each aisle crossing the plan picked; a scan pins a visitor there ---------------- */
+
+function Posters() {
+  const [lv, setLv] = useState<{ level: LevelData; nav: NavGrid; base: Spot[] } | null>(null);
+  const [moved, setMoved] = useState<Record<string, string>>({}), [err, setErr] = useState(''), [edit, setEdit] = useState<Record<string, string>>({});
+  useEffect(() => {
+    fetch('/data/floor.json').then((r) => r.json() as Promise<LevelData>).then((level) => { const nav = new NavGrid(level); setLv({ level, nav, base: planSpots(level, nav) }); }, () => setErr('Could not load the floor plan'));
+    call<Record<string, string>>('GET', '/api/spots').then(setMoved, () => {});
+  }, []);
+  const move = async (id: string, stationId: string | null) => {
+    setErr('');
+    try { setMoved(await call<Record<string, string>>('POST', '/api/crew/spots', { id, stationId })); setEdit((e) => ({ ...e, [id]: '' })); }
+    catch (x) { setErr((x as Error).message); }
+  };
+  if (!lv) return <section class="sheet wide"><p>{err || 'Loading the floor plan…'}</p></section>;
+  const spots = resolveSpots(lv.level, lv.nav, lv.base, moved);
+  return (
+    <section class="sheet wide">
+      <div class="row"><h2>You-are-here posters ({spots.length})</h2><button class="btn" onClick={() => print()}>Print all</button></div>
+      <p class="fine no-print">GPS inside the halls is about 25 m off. These posters fix that: a visitor who scans one is put exactly on that spot, and their phone's steps carry them on from there. No points — position only. <b>Print all</b> gives the map, then one A4 poster per spot. Hang each at the aisle crossing its label names, at eye level (a pillar or an aisle sign is ideal); a metre or two off is fine. If you had to hang one somewhere else, type the booth it is next to and tap <b>Moved</b> so the map knows.</p>
+      {err && <p class="banner bad" role="alert">{err}</p>}
+      <SpotMap level={lv.level} spots={spots} />
+      <div class="scroll no-print"><table><thead><tr><th>Spot</th><th>Hang it at</th><th>Hung next to a different booth?</th></tr></thead>
+        <tbody>{spots.map((s) => (
+          <tr key={s.id}><td><b>{s.id}</b></td><td>{s.where}{s.movedTo && <small> · moved by crew</small>}</td>
+            <td class="acts"><input class="spotin" value={edit[s.id] ?? ''} placeholder="booth, e.g. 7C17" autocapitalize="characters" onInput={(e) => setEdit((x) => ({ ...x, [s.id]: (e.target as HTMLInputElement).value }))} />
+              <button class="chip" disabled={!edit[s.id]?.trim()} onClick={() => move(s.id, edit[s.id]!.trim())}>Moved</button>
+              {s.movedTo && <button class="chip" onClick={() => move(s.id, null)}>Back to plan</button>}</td></tr>
+        ))}</tbody></table></div>
+      <div class="posters">{spots.map((s) => <Poster key={s.id} s={s} />)}</div>
+    </section>
+  );
+}
+
+/** Level 2 from above, north up, with every spot: for finding where each poster goes. */
+function SpotMap({ level, spots }: { level: LevelData; spots: Spot[] }) {
+  const d = level.decks[0]!, W = d.x1 - d.x0, H = d.y1 - d.y0, bw = level.booth.w, bd = d.boothD;
+  // the plan's +x runs north: turn it so north is up on paper, the way people read a hall map
+  const X = (y: number) => d.y1 - y, Y = (x: number) => d.x1 - x;
+  return (
+    <figure class="spotmap">
+      <svg viewBox={`-2 -2 ${H + 4} ${W + 4}`} role="img" aria-label="Map of Halls 6 to 8 with the poster spots">
+        {level.halls.map((h) => <g key={h.id}><rect x={X(h.y1)} y={Y(h.x1)} width={h.y1 - h.y0} height={h.x1 - h.x0} class="hall" /><text x={X(h.y0) - 3} y={Y(h.x1) + 6} class="hn">Hall {h.id}</text></g>)}
+        {level.booths.map((b) => <rect key={b.id} x={X(b.y + bd / 2)} y={Y(b.x + bw / 2)} width={bd} height={bw} class="bo" />)}
+        {spots.map((s) => <g key={s.id}><circle cx={X(s.y)} cy={Y(s.x)} r={2.4} class="sp" /><text x={X(s.y) + 3.2} y={Y(s.x) + 1.4} class="sl">{s.id}</text></g>)}
+      </svg>
+      <figcaption>North is up. Blue dots are poster spots; grey are booths.</figcaption>
+    </figure>
+  );
+}
+
+function Poster({ s }: { s: Spot }) {
+  const ref = useRef<HTMLDivElement>(null), url = spotUrl(location.origin, s.id);
+  useEffect(() => { const c = qrcode(0, 'M'); c.addData(url); c.make(); if (ref.current) ref.current.innerHTML = c.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); }, [url]);
+  return (
+    <div class="poster">
+      <div class="k">Mission X · MIHAS 2026</div>
+      <h3>You are here</h3>
+      <p class="sub">Scan to put your astronaut on this spot</p>
+      <div class="qr" ref={ref} />
+      <p class="tag"><b>{s.id}</b> · {s.where}</p>
+    </div>
+  );
 }
 
 /** Exhibitors who brought in other exhibitors: the ranking for the special prize. Points count approved booths only. */

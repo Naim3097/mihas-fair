@@ -190,6 +190,7 @@ export function createApp({ game, stations, social, crews, venue, director, gc, 
   crew.get('/referrals', async (c) => c.json({ ok: true, data: await referrals.ranking() }));
   crew.get('/geocal', async (c) => c.json({ ok: true, data: { points: await venue.calPoints(), geo: await venue.geo(true) } }));
   crew.post('/geocal', async (c) => { const b = await body(c); await venue.addCalPoint(String(b.stationId ?? ''), { lat: Number(b.lat), lon: Number(b.lon), acc: Number(b.acc) }); return c.json({ ok: true, data: { points: await venue.calPoints(), geo: await venue.geo() } }); });
+  crew.post('/spots', async (c) => { const b = await body(c); return c.json({ ok: true, data: await venue.moveSpot(String(b.id ?? ''), b.stationId == null ? null : String(b.stationId)) }); });
   crew.post('/geocal/delete', async (c) => { await venue.removeCalPoint(Number((await body(c)).id)); return c.json({ ok: true, data: { points: await venue.calPoints(), geo: await venue.geo() } }); });
   crew.post('/stations/status', async (c) => { const b = await body(c); await stations.crewSetStatus(String(b.stationId), String(b.status)); return c.json({ ok: true, data: null }); });
 
@@ -203,6 +204,7 @@ export function createApp({ game, stations, social, crews, venue, director, gc, 
   });
   // How a phone at MITEC turns GPS into a spot on the plan. Public: it is a map of the building, nothing about anyone.
   app.get('/api/geo', async (c) => c.json({ ok: true, data: await venue.geo() }));
+  app.get('/api/spots', async (c) => c.json({ ok: true, data: await venue.spotMoves() }));
   app.route('/api/crew', crew);
   app.route('/api', player);
 

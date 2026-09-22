@@ -3,7 +3,7 @@ import { parseScan } from './ui/common';
 import { demo } from './demo/client';
 import { VENUE_DEFAULT } from '../shared/rules';
 import { level, modal, panelStation, pendingLink, stationMap, toast, me } from './state';
-import { pinToBooth } from './onsite';
+import { pinToBooth, pinToSpot } from './onsite';
 
 /**
  * A printed booth QR can be photographed and passed around, so it only scores as "at the real booth" when the phone is
@@ -30,6 +30,11 @@ export async function handleScan(text: string): Promise<boolean> {
   if (!s) { toast('Not a Mission X code', undefined, 'warn'); return false; }
   try {
     if (s.kind === 'link') { pendingLink.value = s.code; modal.value = 'swap'; return true; }
+    if (s.kind === 'spot') { // a "You are here" poster: position only, no points
+      const spot = await pinToSpot(s.id);
+      if (spot) toast('You are here', `Hall ${spot.hall} — your avatar is on your spot`, 'info', 3200); else toast('That poster is not on the map', undefined, 'warn');
+      return !!spot;
+    }
     if (s.kind === 'host') await api.stamp({ stationId: s.stationId, proof: 'host', code: s.code });
     else { await confirmAtVenue(); await api.stamp({ stationId: s.stationId, proof: 'beacon', beacon: s.token }); }
     pinToBooth(s.stationId); // on site: this is exactly where they are, and which level

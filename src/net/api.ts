@@ -31,6 +31,7 @@ export const api = {
   venue: (fix: { lat: number; lon: number; acc: number }) => call<{ onsite: boolean; distanceM: number; reason?: 'outside' | 'inaccurate' }>('POST', '/api/venue', fix, true),
   /** How a GPS fix at MITEC lands on each level's plan (the crew's calibration). */
   geo: () => call<GeoCalibration & { radiusM: number }>('GET', '/api/geo', undefined, true),
+  spots: () => call<Record<string, string>>('GET', '/api/spots', undefined, true),
   today: () => call<TodayView>('GET', '/api/today'),
   track: (name: string, props?: unknown) => { void call('POST', '/api/event', { name, props }, true).catch(() => {}); },
 

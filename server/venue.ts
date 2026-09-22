@@ -10,7 +10,7 @@ export interface VenueConfig { lat: number; lon: number; radiusM: number }
 /** What the game needs to place a phone: where MITEC is, and each calibrated level's map. */
 export interface GeoView extends GeoCalibration { radiusM: number }
 
-const CAL_KEY = 'geo_cal';
+const CAL_KEY = 'geo_cal', SPOTS_KEY = 'spot_moves';
 
 function haversineM(aLat: number, aLon: number, bLat: number, bLon: number): number {
   const R = 6_371_000, r = Math.PI / 180, dLat = (bLat - aLat) * r, dLon = (bLon - aLon) * r;
@@ -119,6 +119,27 @@ export class Venue {
     points.push({ id: Math.max(0, ...points.map((p) => p.id)) + 1, deck: b.deck, x: b.x, y: b.y, lat, lon, acc: Math.round(acc * 10) / 10, label: b.id });
     await this.saveCal(points);
     return this.geo(true);
+  }
+
+  /* ---------------- "You are here" posters the crew put up somewhere other than the plan's spot ---------------- */
+
+  async spotMoves(): Promise<Record<string, string>> {
+    const row = await this.g.db.get<{ value: string }>('SELECT value FROM settings WHERE key = ?', [SPOTS_KEY]);
+    try { return row ? (JSON.parse(row.value) as Record<string, string>) : {}; } catch { return {}; }
+  }
+
+  /** The poster for spot `id` hangs next to booth `stationId`; null puts it back where the plan has it. */
+  async moveSpot(id: string, stationId: string | null): Promise<Record<string, string>> {
+    if (!/^Y\d{2}$/.test(id)) throw new GameError('bad_spot', 'No spot with that number', 404);
+    const moves = await this.spotMoves();
+    if (stationId == null || stationId === '') delete moves[id];
+    else {
+      const b = this.g.stations.get(stationId.trim().toUpperCase());
+      if (!b) throw new GameError('no_station', 'No booth with that number', 404);
+      moves[id] = b.id;
+    }
+    await this.g.db.run('INSERT INTO settings (key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', [SPOTS_KEY, JSON.stringify(moves)]);
+    return moves;
   }
 
   async removeCalPoint(id: number): Promise<GeoView> {

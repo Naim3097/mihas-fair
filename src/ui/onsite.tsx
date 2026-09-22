@@ -3,13 +3,14 @@
 import { level } from '../state';
 import { gpsAcc, onsiteAvailable, setSiteDeck, setSiteMode, siteDeck, siteMode, siteState, startTracking } from '../onsite';
 import { Sheet } from './common';
+import { askMotion } from '../motion';
 
 /** The first screen's question. Nothing starts until one is picked. */
 export function SiteChoice() {
   if (!onsiteAvailable()) return null;
   const m = siteMode.value;
   const opt = (mode: 'onsite' | 'remote', title: string, sub: string) => (
-    <button type="button" class={'site' + (m === mode ? ' on' : '')} aria-pressed={m === mode} onClick={() => { siteMode.value = mode; }}>
+    <button type="button" class={'site' + (m === mode ? ' on' : '')} aria-pressed={m === mode} onClick={() => { if (mode === 'onsite') void askMotion(); siteMode.value = mode; }}>
       <strong>{title}</strong><small>{sub}</small>
     </button>
   );

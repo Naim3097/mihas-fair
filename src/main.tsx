@@ -51,7 +51,7 @@ async function boot() {
     const team = new URLSearchParams(location.search).get('team');
     if (team && /^[A-Za-z0-9]{6,10}$/.test(team)) { teamInvite.value = team.toUpperCase(); history.replaceState(null, '', location.pathname); }
     const query = location.search;
-    if (/[?&](b|h|l)=/.test(query)) {
+    if (/[?&](b|h|l|w)=/.test(query)) {
       history.replaceState(null, '', location.pathname);
       const returning = !!me.value?.cls;
       if (returning) { engine.start('short'); if (siteMode.value && onsiteAvailable()) setSiteMode(siteMode.value); phase.value = 'play'; }

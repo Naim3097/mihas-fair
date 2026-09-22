@@ -127,3 +127,15 @@ test('people meet people at MIHAS: players there see each other; a player from e
   // a player at MIHAS whose GPS is not placing them yet (free roam) is not shown either
   assert.deepEqual((await ping(here1, 0, false)).holograms, []);
 });
+
+test('the crew can say a you-are-here poster hangs next to another booth, and put it back', async () => {
+  const { call } = await rig();
+  assert.deepEqual((await call('GET', '/api/spots')).json.data, {}, 'everyone reads the moves; none yet');
+  assert.equal((await call('POST', '/api/crew/spots', { id: 'Y07', stationId: '7C17' })).status, 401, 'crew only');
+  await call('POST', '/api/crew/login', { pin: '4321' });
+  assert.deepEqual((await call('POST', '/api/crew/spots', { id: 'Y07', stationId: '7c17' })).json.data, { Y07: '7C17' });
+  assert.equal((await call('POST', '/api/crew/spots', { id: 'Y07', stationId: 'NOPE' })).status, 404);
+  assert.equal((await call('POST', '/api/crew/spots', { id: 'X1', stationId: '7C17' })).status, 404);
+  assert.deepEqual((await call('GET', '/api/spots')).json.data, { Y07: '7C17' });
+  assert.deepEqual((await call('POST', '/api/crew/spots', { id: 'Y07', stationId: null })).json.data, {});
+});

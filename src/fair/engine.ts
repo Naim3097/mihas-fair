@@ -30,7 +30,7 @@ import { CX, CY, buildFairLevel, toPlan, toWorld, yScaleAt, type FairLevel } fro
 import { NexoActor, loadNexo, loadNexoLibrary, type NexoRole } from './nexo';
 import { FAIR_MOVEMENT } from './movement';
 import { FAIR, FairWorld } from './world';
-import { following, gpsTarget, setSiteDeck } from '../onsite';
+import { following, gpsTarget, setSiteDeck, snapTo } from '../onsite';
 
 export type Quality = 'high' | 'low';
 export function pickQuality(): Quality {
@@ -79,6 +79,8 @@ export class FairEngine implements EngineApi {
   private followTo: P2 | null = null;
   /** Whether GPS has placed the avatar since following began: the first placement jumps, after that it walks. */
   private gpsPlaced = false;
+  /** The last scan spot walked to while the stick was in charge. */
+  private snapSeen: P2 | null = null;
   private route: P2[] = [];
   private stall = 0;
   private replans = 0;
@@ -250,6 +252,7 @@ export class FairEngine implements EngineApi {
   private intent(dt: number): Intent {
     const it = this.input.poll();
     if (following()) { it.move.x = 0; it.move.y = 0; this.followGps(); } else this.gpsPlaced = false;
+    const snap = snapTo.value; if (snap && snap !== this.snapSeen) { this.snapSeen = snap; if (!following()) this.walkTo(snap); } // a scan while the stick drives: go there
     if (it.move.x || it.move.y) { if (this.route.length) { this.route = []; this.world.mark('goal', null); } this.seatGoal = null; return it; }
     if (!this.route.length) return it;
     const pos = this.position, n = this.route[0]!, dx = n.x - pos.x, dy = n.y - pos.y, l = Math.hypot(dx, dy);

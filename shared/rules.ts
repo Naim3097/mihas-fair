@@ -104,6 +104,9 @@ export const VENUE_DEFAULT = { lat: 3.17811, lon: 101.66864, radiusM: 400 };
 export const ONSITE_TTL_MS = 30 * 60_000;
 /** GPS fixes worse than this cannot place anyone inside or outside a 400 m circle. */
 export const VENUE_MAX_ACCURACY_M = 250;
+/** How the floor plan is turned against north: its +x runs north, +y west (fitted to the crew's GPS points, -91.6°).
+ *  Turns the phone's compass into plan directions for step tracking. */
+export const PLAN_ROT_DEG = -90;
 
 /** Trust: only used by the crew when a prize hangs on the board. Never shown to players. */
 export const TRUST_W = { geofence: 0.25, hostCode: 0.3, plausible: 0.2, steps: 0.15, human: 0.1 } as const;
