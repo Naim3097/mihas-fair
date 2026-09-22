@@ -123,7 +123,7 @@ function StationsTab() {
   return (
     <section class="sheet wide">
       <div class="row"><h2>Booths online {rows ? `(${rows.length})` : ''}</h2><button class="btn" onClick={load}>Refresh</button></div>
-      <p class="fine">Approve = “verified exhibitor” badge. Revoke = the booth goes dark and that person cannot take it again. Release = remove them so the real exhibitor can bring the booth online.</p>
+      <p class="fine">Approve = “verified exhibitor” badge. Revoke = the booth goes dark and that person cannot take it again. Release = remove them so the real exhibitor can bring the booth online; their logo, photo and the visitors who scanned or left a card are cleared, so the next owner starts clean.</p>
       {err && <p class="banner bad">{err}</p>}
       <div class="scroll"><table><thead><tr><th>Booth</th><th>Logo</th><th>Name shown</th><th>Brought online by</th><th>Their company</th><th>Status</th><th>Visits</th><th></th></tr></thead>
         <tbody>{(rows ?? []).map((r) => (

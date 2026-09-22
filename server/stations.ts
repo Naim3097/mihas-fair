@@ -196,7 +196,11 @@ export class Stations {
   }
 
   async crewSetStatus(stationId: string, status: string): Promise<void> {
-    if (status === 'release') await this.g.db.run('DELETE FROM stations WHERE station_id = ?', [stationId]); // frees the booth for its real exhibitor
+    // Release frees the booth for its real exhibitor. Everything filed under the booth number goes with the old owner: the
+    // next person to register it must not inherit their logo and photo, or see the visitors who scanned or left a card.
+    // Visitors keep their own checkpoint progress (the checkpoints table) and their points.
+    if (status === 'release') await this.g.db.batch(['stations', 'station_logos', 'station_photos', 'booth_scans', 'verified_contacts'].map((t) => [`DELETE FROM ${t} WHERE station_id = ?`, [stationId]] as Stmt)
+      .concat([['DELETE FROM card_shares WHERE to_station = ?', [stationId]]]));
     else if (status === 'approved' || status === 'revoked' || status === 'pending') await this.g.db.run('UPDATE stations SET status = ? WHERE station_id = ?', [status, stationId]);
     else throw new GameError('bad_status', 'Unknown status');
     this.cache.at = -1e9; this.onStatus();

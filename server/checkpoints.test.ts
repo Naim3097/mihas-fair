@@ -149,3 +149,23 @@ test('exhibitors are here with a booth: the visitor mission is not for them', as
   assert.equal((await owner.call('POST', '/api/stamp', { stationId: level.hero.id, proof: 'beacon', beacon: await r.beacon(level.hero.id) })).json.code, 'exhibitor');
   assert.equal((await owner.me()).mission.started, false);
 });
+
+test('release: the next owner of a booth starts clean — no old logo, photo, scans or cards', async () => {
+  const r = await rig();
+  const first = r.user(), next = r.user(), v = r.user();
+  await first.register('Wrong Owner', 'exhibitor'); await next.register('Real Owner', 'exhibitor'); await v.register('Aisyah Rahman', 'visitor');
+  assert.equal((await first.call('POST', '/api/station/claim', { stationId: '7C17', company: 'Wrong Co', offer: '', link: '', color: 0 })).status, 200);
+  await first.call('POST', '/api/station/logo', { stationId: '7C17', image: PNG }); await first.call('POST', '/api/station/photo', { stationId: '7C17', image: PNG });
+  r.tick(); assert.equal((await v.call('POST', '/api/stamp', { stationId: '7C17', proof: 'beacon', beacon: await r.beacon('7C17') })).status, 200);
+  assert.equal((await v.call('POST', '/api/station/share', { stationId: '7C17', fields: ['name', 'email'] })).status, 200);
+  assert.equal(((await first.call('GET', '/api/host/scans?station=7C17')).json.data as BoothScan[]).length, 1);
+
+  assert.equal((await r.crew.call('POST', '/api/crew/stations/status', { stationId: '7C17', status: 'release' })).status, 200);
+  assert.equal((await next.call('POST', '/api/station/claim', { stationId: '7C17', company: 'Real Co', offer: '', link: '', color: 0 })).status, 200);
+  const mine = (await next.call('GET', '/api/host/stations')).json.data as { id: string; logo: string | null; photo: string | null; scans: number }[];
+  assert.deepEqual(mine.map((s) => [s.id, s.logo, s.photo, s.scans]), [['7C17', null, null, 0]]);
+  assert.deepEqual((await next.call('GET', '/api/host/scans?station=7C17')).json.data, [], 'the old owner\'s visitors are not handed over');
+  assert.deepEqual((await next.call('GET', '/api/host/leads?station=7C17')).json.data, [], 'nor the cards left with them');
+  assert.equal((await first.call('GET', '/api/host/scans?station=7C17')).status, 403, 'and the old owner is out');
+  assert.ok((await v.me()).stamps.includes('7C17'), 'the visitor keeps their stamp and points');
+});
