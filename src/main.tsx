@@ -5,6 +5,7 @@ import './ui.css';
 import './fair/fair.css';
 import { App } from './ui/App';
 import type { FairEngine } from './fair/engine';
+import type { Stage } from './fair/stage';
 import { fairLevelData } from './fair/level';
 import { api, ApiError } from './net/api';
 import { handleScan } from './scan';
@@ -14,7 +15,7 @@ import { installSfx } from './sfx';
 import { bootError, bootNote, drop, level, me, modal, myBooths, online, phase, setReferral, stations, teamInvite } from './state';
 import type { LevelData } from '../shared/types';
 
-let engine: FairEngine | null = null;
+let stage: Stage | null = null, engine: FairEngine | null = null;
 render(<App engine={() => engine} />, document.getElementById('ui')!);
 installBack();
 installSfx();
@@ -42,14 +43,15 @@ async function boot() {
   try {
     await ensureBackend((text) => (bootNote.value = text));
     // the renderer and the engine arrive while the plan and the player load, after the splash has painted
-    const [lv, , , { FairEngine, pickQuality }] = await Promise.all([
+    const [lv, , , { FairEngine }, { Stage, pickQuality }] = await Promise.all([
       fetch('/data/floor.json').then((r) => { if (!r.ok) throw new Error('level'); return r.json() as Promise<LevelData>; }),
       api.me(),
       document.fonts.load('800 32px Urbanist').catch(() => {}),
       import('./fair/engine'),
+      import('./fair/stage'),
     ]);
     level.value = lv;
-    try { engine = new FairEngine(document.getElementById('stage')!, fairLevelData(lv), pickQuality()); }
+    try { stage = new Stage(document.getElementById('stage')!, pickQuality()); engine = new FairEngine(stage, fairLevelData(lv), stage.quality); }
     catch { bootError.value = 'This browser cannot open the 3D fair. Try opening the link in Chrome or Safari.'; phase.value = 'error'; return; }
     poll();
     // an exhibitor's invitation link: remember whose it was for when this person registers a booth
@@ -68,7 +70,7 @@ async function boot() {
     }
     phase.value = 'start';
     if (teamInvite.value) modal.value = 'jointeam';
-    api.track('boot', { q: pickQuality(), world: 'nexova', returning: (me.value?.xp ?? 0) > 0 });
+    api.track('boot', { q: stage.quality, world: 'nexova', returning: (me.value?.xp ?? 0) > 0 });
   } catch (e) {
     bootError.value = e instanceof ApiError || (e instanceof Error && /demo/i.test(e.message)) ? e.message : 'Could not reach the fair. Check your connection.';
     phase.value = 'error';

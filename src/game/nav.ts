@@ -157,3 +157,31 @@ export function pointAlong(p: P2[], d: number): P2 {
   }
   return p[p.length - 1]!;
 }
+
+/** The nearest point of a polyline to `p`: which segment, how far along it (0–1), and the distance. Only the first
+ *  `within` metres of the path are searched, so a route that doubles back does not pull the point behind. */
+export function nearestOnPath(path: P2[], p: P2, within = Infinity): { i: number; t: number; d: number } {
+  let best = { i: 0, t: 0, d: path.length ? Math.hypot(path[0]!.x - p.x, path[0]!.y - p.y) : Infinity }, walked = 0;
+  for (let i = 1; i < path.length && walked <= within; i++) {
+    const a = path[i - 1]!, b = path[i]!, dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
+    const t = l2 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2)) : 0;
+    const d = Math.hypot(a.x + dx * t - p.x, a.y + dy * t - p.y);
+    if (d < best.d) best = { i: i - 1, t, d };
+    walked += Math.sqrt(l2);
+  }
+  return best;
+}
+
+/** Points every `step` metres along the path, the first `first` metres past `at`, at most `max` of them, written
+ *  into `out` (which is reused between frames). Returns how many were written. */
+export function dotsAlong(path: P2[], at: { i: number; t: number }, first: number, step: number, max: number, out: P2[]): number {
+  if (path.length < 2) return 0;
+  let n = 0, next = first, i = at.i;
+  let ax = path[i]!.x + (path[i + 1]!.x - path[i]!.x) * at.t, ay = path[i]!.y + (path[i + 1]!.y - path[i]!.y) * at.t;
+  for (; i + 1 < path.length && n < max; i++) {
+    const b = path[i + 1]!, l = Math.hypot(b.x - ax, b.y - ay);
+    while (next <= l && n < max) { const k = l ? next / l : 0; const o = out[n]!; o.x = ax + (b.x - ax) * k; o.y = ay + (b.y - ay) * k; n++; next += step; }
+    next -= l; ax = b.x; ay = b.y;
+  }
+  return n;
+}

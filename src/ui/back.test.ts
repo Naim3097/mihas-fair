@@ -16,7 +16,7 @@ class FakeHistory {
   get depth() { return this.i; }
   at() { return (this.state as { mx?: string } | null)?.mx ?? null; }
 }
-const tick = () => new Promise((r) => setTimeout(r, 2));
+const tick = () => new Promise((r) => setTimeout(r, 12)); // long enough for the stand-in's back() under a loaded machine
 
 function world(playing = true) {
   const h = new FakeHistory(); let open: string | null = null, clock = 1000; const said: string[] = [];

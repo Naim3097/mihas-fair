@@ -13,7 +13,7 @@ import { api, ApiError } from '../net/api';
 import { sfx } from '../sfx';
 import type { EngineApi } from '../game/engine-api';
 import { hallCards, hallLine } from '../game/facts';
-import { NavGrid, pathLength, pointAlong, type P2 } from '../game/nav';
+import { NavGrid, dotsAlong, nearestOnPath, pathLength, type P2 } from '../game/nav';
 import { BoothPicker } from '../game/pick';
 import { placeAt, type Seat } from '../game/places';
 import { RemoteTrack } from '../game/remote';
@@ -25,19 +25,15 @@ import { loop, oneShot } from '../ceritera/game/entities';
 import { Sfx } from '../ceritera/game/sfx';
 import { Sim } from '../ceritera/game/sim';
 import { angleDiff, lenXZ, v3 } from '../ceritera/game/v3';
-import { FairInput } from './input';
+import type { FairInput, FairSink } from './input';
+import type { Quality, Scene, Stage } from './stage';
+export { pickQuality, type Quality } from './stage';
 import { CX, CY, buildFairLevel, fixY, toPlan, toWorld, type FairLevel } from './level';
 import { NexoActor, loadNexo, loadNexoLibrary, loadNexoLod, type NexoRole } from './nexo';
 import { FAIR_MOVEMENT } from './movement';
 import { Reach } from './reach';
 import { RouteFollower } from './route';
 import { FAIR, FairWorld } from './world';
-
-export type Quality = 'high' | 'low';
-export function pickQuality(): Quality {
-  const mem = (navigator as { deviceMemory?: number }).deviceMemory ?? 8;
-  return /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) || mem <= 4 ? 'low' : 'high';
-}
 
 /** Players at MIHAS meet each other, so their position goes out every 2 s. A player from elsewhere is seen by nobody:
  *  every 12 s keeps them in the "here now" count (15 s window) at a sixth of the load; a stamp still sends its own. */
@@ -53,8 +49,10 @@ const EMOTE = { wave: { clip: 'wave', ms: 2600 }, cheer: { clip: 'victory', ms: 
 interface Holo { actor: NexoActor; cls: Hologram['cls']; track: RemoteTrack; label: HTMLDivElement; seen: number; pose: string; tx: number; ty: number }
 interface Label { text: string; pos: THREE.Vector3; kind: 'area' | 'gate' | 'hero' | 'lift' }
 
-export class FairEngine implements EngineApi {
+export class FairEngine implements EngineApi, Scene {
   private renderer: THREE.WebGLRenderer;
+  private host: HTMLElement;
+  readonly sink: FairSink;
   private camera = new THREE.PerspectiveCamera(50, 1, 0.35, 1600);
   private rig: CameraRig;
   private world: FairWorld;
@@ -70,8 +68,6 @@ export class FairEngine implements EngineApi {
   /** the body other people get: the lighter copy on the phone tier, the same file on the desktop tier */
   private gltfOthers: GLTF | null = null;
   private lib: Library | null = null;
-  private clock = { cpu: 0, gpu: 0, t0: 0 };
-  private gpu: GpuClock | null = null;
   private player: NexoActor | null = null;
   private started = false;
   private holos = new Map<string, Holo>();
@@ -87,31 +83,21 @@ export class FairEngine implements EngineApi {
   private trail: THREE.InstancedMesh;
   private trailPath: P2[] = [];
   private trailAt = 0;
+  private dots: P2[] = Array.from({ length: TRAIL_MAX }, () => ({ x: 0, y: 0 })); private trailM = new THREE.Matrix4();
   private ping: { mesh: THREE.Mesh; t: number };
-  private running = false; private last = 0; private pingAt = 0; private proxAt = 0; private firstPing = true; private arrivalSeen = 0;
-  /** The quality ladder: 0 is everything; each step gives a little (a finer shadow map first, then pixels, then the shadows) and comes back when the phone can. */
-  private fps = { acc: 0, n: 0, dpr: 1, at: 0, level: 0, good: 0, changedAt: 0 };
-  private shadowsWanted = new URLSearchParams(location.search).get('shadows') !== '0';
-  private paused = false;
+  private disposed = false; private pingAt = 0; private proxAt = 0; private firstPing = true; private arrivalSeen = 0;
   private pose: Pose = ''; private poseUntil = 0;
   private seat: Seat | null = null; private seatGoal: Seat | null = null; private wantBeforeSit = CAM.dist;
   private liftT = 1; private hallNow: number | null = null; private walked = 0; private picked: Booth | null = null;
   private stepAcc = 0; private introT = -1; private orbit = 0.6; private orbitAt = 0;
   private stops: (() => void)[] = [];
-  private perf: { el: HTMLDivElement; t0: number; frames: number } | null = null;
 
-  constructor(private host: HTMLElement, private level: LevelData, private quality: Quality) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' }); // throws without WebGL
-    this.fps.dpr = Math.min(devicePixelRatio || 1, 2);
-    this.renderer.setPixelRatio(this.fps.dpr);
-    this.renderer.toneMapping = THREE.NoToneMapping;
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.shadowMap.enabled = this.shadowsWanted; this.renderer.shadowMap.type = quality === 'high' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
-    host.prepend(this.renderer.domElement);
+  constructor(private stage: Stage, private level: LevelData, private quality: Quality) {
+    this.renderer = stage.renderer; const host = this.host = stage.host;
 
     this.fair = buildFairLevel(level);
     this.sim = new Sim('pengembara', classByKey('pengembara')!.base, this.fair.def, 1, FAIR_MOVEMENT);
-    this.world = new FairWorld(level, this.fair, quality === 'low', this.shadowsWanted);
+    this.world = new FairWorld(level, this.fair, quality === 'low', stage.shadowsWanted);
     // the camera collides with what the body does (partitions, counters, glass): in a 2.5 m aisle it rides over the wall tops
     this.rig = new CameraRig(this.camera, this.sim.world);
     this.rig.dist = CAM.dist; this.rig.pitch = CAM.pitch;
@@ -128,15 +114,16 @@ export class FairEngine implements EngineApi {
     this.ping = { mesh: new THREE.Mesh(new THREE.RingGeometry(0.8, 1, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: FAIR.blue, transparent: true, ...onFloor })), t: 1 };
     this.ping.mesh.visible = false; this.ping.mesh.renderOrder = 3; this.world.scene.add(this.ping.mesh);
 
-    this.input = new FairInput(this.renderer.domElement, {
+    this.input = stage.input;
+    this.sink = {
       onTap: (x, y, coarse) => this.tapMove(x, y, coarse),
       onOrbit: (dx, dy) => { this.orbitAt = performance.now(); this.rig.turn(dx * 2.2, dy * 1.6); },
       onZoom: (f) => { if (this.introT >= 0) { this.introT = -1; this.rig.pitch = CAM.pitch; this.rig.dist = CAM.dist; } this.rig.dist = THREE.MathUtils.clamp(this.rig.dist * f, CAM.min, CAM.max); },
       onHover: (at) => this.hover(at),
       onKey: (a) => { if (a === 'interact') void this.interact(); else if (a === 'map') modal.value = 'map'; else this.emote(a); },
       enabled: () => !modal.value,
-    });
-    this.stops.push(effect(() => { if (modal.value) { this.input.release(); this.hover(null); } }));
+    };
+    this.stops.push(effect(() => { if (modal.value && stage.scene === this) { this.input.release(); this.hover(null); } }));
 
     for (const l of this.world.labels) {
       const el = Object.assign(document.createElement('div'), { className: `lbl ${l.kind}`, textContent: l.text });
@@ -146,12 +133,6 @@ export class FairEngine implements EngineApi {
     this.myLabel = Object.assign(document.createElement('div'), { className: 'lbl holo me' }); host.appendChild(this.myLabel);
     this.tip = Object.assign(document.createElement('div'), { className: 'lbl booth tip' }); host.appendChild(this.tip);
 
-    const ro = new ResizeObserver(() => this.resize()); ro.observe(host); this.stops.push(() => ro.disconnect()); this.resize();
-    const canvas = this.renderer.domElement;
-    canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.running = false; toast('Graphics paused', 'Reloading…', 'warn', 6000); setTimeout(() => location.reload(), 1500); });
-    // a hidden tab draws nothing; back in view, the loop picks up from now
-    const vis = () => { if (!document.hidden && this.paused && this.running) { this.paused = false; this.loop(true); } };
-    document.addEventListener('visibilitychange', vis); this.stops.push(() => document.removeEventListener('visibilitychange', vis));
     this.stops.push(effect(() => this.world.setStamped(stampedSet.value)));
     this.stops.push(effect(() => this.world.setStations(stations.value)));
     this.stops.push(effect(() => { void guideTarget.value; this.trailAt = 0; }));
@@ -162,13 +143,11 @@ export class FairEngine implements EngineApi {
     window.addEventListener('pointerdown', wake, { capture: true }); window.addEventListener('keydown', wake, { capture: true });
     this.stops.push(() => { window.removeEventListener('pointerdown', wake, { capture: true }); window.removeEventListener('keydown', wake, { capture: true }); });
 
-    if (new URLSearchParams(location.search).has('perf')) { this.perf = { el: Object.assign(document.createElement('div'), { className: 'perf' }), t0: performance.now(), frames: 0 }; host.appendChild(this.perf.el); }
     if (import.meta.env.DEV) (window as unknown as { __fair?: unknown }).__fair = this;
 
     const lod = quality === 'low' && new URLSearchParams(location.search).get('lod') !== '0';
-    void Promise.all([loadNexo(), lod ? loadNexoLod() : loadNexo(), loadNexoLibrary()]).then(([g, o, lib]) => { if (!this.running) return; this.gltf = g; this.gltfOthers = o ?? g; this.lib = lib; this.rebuildBodies(); });
-    if (this.perf && new URLSearchParams(location.search).has('gpu')) this.gpu = new GpuClock(this.renderer.getContext() as WebGL2RenderingContext); // ?perf&gpu: the queries stall some drivers, so only when asked
-    this.loop(true);
+    void Promise.all([loadNexo(), lod ? loadNexoLod() : loadNexo(), loadNexoLibrary()]).then(([g, o, lib]) => { if (this.disposed) return; this.gltf = g; this.gltfOthers = o ?? g; this.lib = lib; this.rebuildBodies(); });
+    stage.use(this);
   }
 
   private role(): NexoRole { return me.value?.cls === 'exhibitor' ? 'exhibitor' : 'visitor'; }
@@ -186,9 +165,8 @@ export class FairEngine implements EngineApi {
     for (const o of this.holos.values()) { o.actor.dispose(); o.actor = this.makeActor(o.cls === 'exhibitor' ? 'exhibitor' : 'visitor'); }
   }
 
-  private resize() {
-    const w = this.host.clientWidth || innerWidth, h = this.host.clientHeight || innerHeight;
-    this.renderer.setSize(w, h); this.camera.aspect = w / h; this.rig.baseFov = w < h ? 58 : 50;
+  resize(w: number, h: number) {
+    this.camera.aspect = w / h; this.rig.baseFov = w < h ? 58 : 50;
     if (!this.started) this.camera.fov = this.rig.baseFov; // in play the rig eases the lens to it
     this.camera.updateProjectionMatrix();
   }
@@ -220,19 +198,8 @@ export class FairEngine implements EngineApi {
     this.teleport(p.x, p.y, this.sim.player.yaw); this.firstPing = true; this.pingAt = 0; this.trailAt = 0;
   }
 
-  private loop(first = false) {
-    if (first) { this.running = true; this.last = performance.now(); }
-    const frame = (now: number) => {
-      if (!this.running) return;
-      if (document.hidden) { this.paused = true; return; }
-      const dt = Math.min(0.05, (now - this.last) / 1000); this.last = now;
-      this.tick(now, dt); requestAnimationFrame(frame);
-    };
-    requestAnimationFrame(frame);
-  }
-
-  private tick(now: number, dt: number) {
-    const t = now / 1000, t0 = this.perf ? performance.now() : 0;
+  frame(now: number, dt: number) {
+    const t = now / 1000;
     this.world.update(t, dt);
     if (!this.started) {
       // behind the first screen: a slow turn around the X
@@ -263,11 +230,7 @@ export class FairEngine implements EngineApi {
       this.world.followSun(b.pos.x, b.pos.z);
     }
     this.updatePing(dt); this.updateLabels();
-    if (this.perf) { this.clock.cpu = this.clock.cpu * 0.9 + (performance.now() - t0) * 0.1; this.gpu?.begin(); }
     this.renderer.render(this.world.scene, this.camera);
-    if (this.perf) { this.gpu?.end(); if (this.gpu) this.clock.gpu = this.gpu.ms; }
-    this.adaptQuality(now);
-    if (this.perf) { const pf = this.perf; pf.frames++; if (now - pf.t0 >= 1000) { const i = this.renderer.info.render; pf.el.textContent = `${Math.round((pf.frames * 1000) / (now - pf.t0))} fps · ${i.calls} calls · ${Math.round(i.triangles / 1000)}k tris · dpr ${this.fps.dpr} · q${this.fps.level}${this.world.shadows ? '' : ' no-shadow'}\ncpu ${this.clock.cpu.toFixed(1)} ms${this.gpu?.available ? ` · gpu ${this.clock.gpu.toFixed(1)} ms` : ''} · people ${this.holos.size}`; pf.t0 = now; pf.frames = 0; } }
   }
 
   /* ---------------- movement: the stick, or a route (a tap, "take me there", walking to a seat) ---------------- */
@@ -559,10 +522,11 @@ export class FairEngine implements EngineApi {
         if (here) { toast('You have arrived', target.label); guideTarget.value = null; }
       }
     }
-    const L = pathLength(this.trailPath), n = Math.min(TRAIL_MAX, Math.floor(L / TRAIL_STEP)), M = new THREE.Matrix4();
+    // laid from where the body is now, not from where the route was planned: the first dot a metre ahead of the feet, nothing behind
+    const n = dotsAlong(this.trailPath, nearestOnPath(this.trailPath, this.position, 8), 1, TRAIL_STEP, TRAIL_MAX, this.dots), M = this.trailM;
     for (let i = 0; i < n; i++) {
-      const d = (i + 1) * TRAIL_STEP, q = pointAlong(this.trailPath, d), s = 1 + 0.45 * Math.max(0, Math.sin(d * 0.3 - t * 4));
-      M.makeScale(s, 1, s).setPosition(q.x - CX, 0.04, CY - q.y); this.trail.setMatrixAt(i, M);
+      const q = this.dots[i]!, d = 1 + i * TRAIL_STEP, s = 1 + 0.45 * Math.max(0, Math.sin(d * 0.3 - t * 4));
+      const w = toWorld(q.x, q.y, 0.04); M.makeScale(s, 1, s).setPosition(w.x, w.y, w.z); this.trail.setMatrixAt(i, M); // toWorld: level 2 is drawn compressed, the raw plan y put the dots up to 3 m off
     }
     this.trail.count = n; this.trail.instanceMatrix.needsUpdate = true;
   }
@@ -580,7 +544,7 @@ export class FairEngine implements EngineApi {
 
   private applyHolos(list: Hologram[], now: number) {
     // how many other people a phone draws: twelve, six once the quality ladder has taken the shadows away
-    for (const h of list.slice(0, this.quality === 'high' ? 24 : this.fps.level >= 3 ? 6 : 12)) {
+    for (const h of list.slice(0, this.quality === 'high' ? 24 : this.stage.level >= 3 ? 6 : 12)) {
       let o = this.holos.get(h.id);
       if (o && o.cls !== h.cls) { o.actor.dispose(); o.label.remove(); this.holos.delete(h.id); o = undefined; }
       if (!o) {
@@ -660,53 +624,18 @@ export class FairEngine implements EngineApi {
 
   /* ---------------- resolution: start sharp, give a little only if the phone cannot keep up ---------------- */
 
-  private adaptQuality(now: number) {
-    const f = this.fps, gap = now - (f.at || now); f.at = now;
-    if (gap > 250 || document.hidden) { f.acc = 0; f.n = 0; return; }
-    f.acc += gap / 1000; f.n++;
-    if (f.acc < 3) return;
-    const fps = f.n / f.acc; f.acc = 0; f.n = 0;
-    const capped30 = fps > 27 && fps < 33; // a display that runs at 30 is not a phone in trouble
-    if (fps < 42 && !capped30) { f.good = 0; if (f.level < 4) this.setLevel(f.level + 1, now); }
-    else if (fps > 56 && now - f.changedAt > 8000 && ++f.good >= 2 && f.level > 0) { f.good = 0; this.setLevel(f.level - 1, now); }
-    else if (fps <= 56) f.good = 0;
-  }
-  /** 0: everything. 1: a coarser shadow map. 2: a quarter fewer pixels. 3: half, and no shadows. 4: one pixel per CSS pixel. */
-  private setLevel(level: number, now: number) {
-    const f = this.fps, max = Math.min(devicePixelRatio || 1, 2), fine = this.quality === 'high' ? 2048 : 1024;
-    f.level = level; f.changedAt = now;
-    f.dpr = Math.max(1, level >= 4 ? 1 : level >= 3 ? max - 0.5 : level >= 2 ? max - 0.25 : max); this.renderer.setPixelRatio(f.dpr);
-    const shadows = this.shadowsWanted && level < 3; this.renderer.shadowMap.enabled = shadows;
-    this.world.setShadows(shadows, level >= 1 ? fine / 2 : fine);
+  /** The stage's quality step: shadows on or off and how fine, and the feet's blob when there are none. */
+  applyLevel(_level: number, shadows: boolean, mapSize: number) {
+    this.world.setShadows(shadows, mapSize);
     this.player?.setBlob(!shadows); for (const o of this.holos.values()) o.actor.setBlob(!shadows);
   }
+  perfExtra(): string { return `people ${this.holos.size}`; }
 
   dispose() {
-    this.running = false; this.paused = false; this.input.dispose(); this.stops.forEach((s) => s());
+    this.disposed = true; this.stops.forEach((s) => s());
     for (const o of this.holos.values()) { o.actor.dispose(); o.label.remove(); }
     this.player?.dispose(); this.steps.dispose(); this.world.dispose(); this.tip.remove();
-    this.renderer.dispose(); this.renderer.domElement.remove();
+    for (const { el } of this.labelEls) el.remove(); for (const { el } of this.boothEls) el.remove(); this.myLabel.remove();
   }
 }
 
-/** GPU time of one frame, when the browser will say (EXT_disjoint_timer_query_webgl2: desktop Chrome does, phones
- *  mostly do not). A query wraps each render; results are read a few frames later and smoothed. */
-class GpuClock {
-  private ext: { TIME_ELAPSED_EXT: number; GPU_DISJOINT_EXT: number } | null;
-  private pending: WebGLQuery[] = [];
-  private active: WebGLQuery | null = null;
-  ms = 0;
-  constructor(private gl: WebGL2RenderingContext) { this.ext = gl.getExtension('EXT_disjoint_timer_query_webgl2') as GpuClock['ext']; }
-  get available(): boolean { return !!this.ext; }
-  begin() { if (!this.ext || this.pending.length > 4) return; const q = this.gl.createQuery(); if (!q) return; this.gl.beginQuery(this.ext.TIME_ELAPSED_EXT, q); this.active = q; }
-  end() {
-    if (!this.ext || !this.active) return;
-    this.gl.endQuery(this.ext.TIME_ELAPSED_EXT); this.pending.push(this.active); this.active = null;
-    while (this.pending.length) {
-      const q = this.pending[0]!;
-      if (!this.gl.getQueryParameter(q, this.gl.QUERY_RESULT_AVAILABLE)) break;
-      if (!this.gl.getParameter(this.ext.GPU_DISJOINT_EXT)) { const ns = this.gl.getQueryParameter(q, this.gl.QUERY_RESULT) as number; this.ms = this.ms ? this.ms * 0.9 + (ns / 1e6) * 0.1 : ns / 1e6; }
-      this.gl.deleteQuery(q); this.pending.shift();
-    }
-  }
-}

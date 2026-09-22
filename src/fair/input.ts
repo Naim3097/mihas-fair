@@ -64,6 +64,9 @@ export class FairInput {
     on(document, 'visibilitychange', () => { if (document.hidden) this.release(); });
   }
 
+  /** Whose world the input is in: the stage hands it to the scene that is on. */
+  setSink(sink: FairSink) { this.sink = sink; }
+
   /** What the mouse cursor looks like over the world when nothing is being dragged. */
   setCursor(c: 'grab' | 'pointer') { this.cursor = c; this.paintCursor(); }
   private paintCursor() { const c = this.grabbing ? 'grabbing' : this.cursor; if (this.el.style.cursor !== c) this.el.style.cursor = c; }
