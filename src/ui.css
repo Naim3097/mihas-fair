@@ -173,7 +173,7 @@ input::placeholder,textarea::placeholder{color:var(--ink-3)}textarea{font-size:1
 .rules li{counter-increment:ch;display:grid;grid-template-columns:26px 1fr;column-gap:10px}.rules li::before{content:counter(ch);grid-row:span 2;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:12.5px;font-weight:800;background:var(--blue-soft);color:var(--blue)}
 .rules strong{font-size:15px}.rules span{font-size:13.5px;color:var(--ink-2)}
 .points{width:100%;border-collapse:collapse;margin:10px 0;font-size:14px}.points td{padding:9px 0;border-bottom:1px solid var(--line)}.points td:last-child{text-align:right;font-weight:800;color:var(--gold-ink);font-variant-numeric:tabular-nums}
-@media (max-width:640px){.objective h2{font-size:16px}.objective .k{font-size:10.5px}.objective .dots{margin:6px 0 4px}.cps{gap:2px;margin:6px 0 2px}.cps li{font-size:13px}.cps li i{width:14px;height:14px}.cps li small{font-size:11px}.objective .via{font-size:12.5px;margin-top:4px}.objective .go-row{margin-top:6px;padding-top:6px;font-size:13px}
+@media (max-width:640px){.objective h2{font-size:16px}.objective .k{font-size:10.5px}.objective .dots{margin:6px 0 4px}.cps{gap:2px;margin:6px 0 2px}.cps li{font-size:13px}.cps li i{width:14px;height:14px}.cps li small{font-size:11px}.objective .via{font-size:12.5px;margin-top:4px}.objective .go-row{margin-top:6px;padding-top:6px;font-size:13px}}
 @media (max-width:640px){.hostgrid{grid-template-columns:1fr}.teamrow{grid-template-columns:1fr}.teamrow .qr{margin:0 auto}.fields{grid-template-columns:1fr}.two{grid-template-columns:1fr}h1{font-size:32px}}
 
 /* ---- a mouse: things answer before they are pressed, and say which key does the same.
