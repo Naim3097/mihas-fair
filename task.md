@@ -106,6 +106,9 @@ All nine, in one commit. Checked in Chrome on the isolated local copy: beams, th
 - [x] Swap card detail tak complete; orang yang scan tak perlu "Save to phone"; WhatsApp tak boleh
   - Now: a contact in My contacts shows title, a one-line sub, and chips (WhatsApp, Email, Their page, Save to phone, Take back). Done: show every field they shared (name, company, role, phone, email) in full; drop "Save to phone" on the scanner's side (My contacts) and "Save contact" on the public card page. WhatsApp: the link is `wa.me/<digits of the number as typed>`, so a number typed the Malaysian way (`012…`) gives `wa.me/012…`, which WhatsApp rejects — normalise to `60…` (drop the leading 0, add 60 when there is no country code) in the contact chips, the public card page and the crew's WhatsApp buttons.
 
+- [x] Notification pill bertindih dengan mission pill — `d5d709d`
+  - Toasts were at the top centre, the mission card at the top left: on a phone they overlapped. Now the card and the toasts are one top-left column, a toast under whatever the card shows. Checked in Chrome on the isolated local copy with the card folded and two toasts.
+
 ## Still to do
 
 - Nothing on the list. Approve or register exhibitors so visitors have 3 checkpoints.
