@@ -56,7 +56,7 @@ Status: everything below is pushed to GitHub `main` and live. The 23 September i
 - Only one real exhibitor is approved (6A25). Until three are approved, visitors get fewer than 3 checkpoints; the mission tops up as you approve or register more.
 - Register exhibitors at the counter from `/crew.html → Register`; approve self-signups in **Booths**.
 
-- [x] Bila berjalan dekat booth user boleh nampak detail company — `9feb0da`
+- [x] Bila berjalan dekat booth user boleh nampak detail company — `a8dd788`
   - Walking up to a booth that is online shows a card above the buttons: logo, company, booth number, their one line for visitors, and their website. Tap it for the full booth sheet.
 
 ## Still to do
