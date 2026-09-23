@@ -160,7 +160,7 @@ test('link-up: peek shows no personal data, each side shares only what they chos
   assert.equal((await b.post('/api/link', { code: code.code, fields: ['name'] })).json.code, 'bad_link', 'one code, one handshake');
 
   const mine = (await b.get('/api/contacts')).json.data as Contact[], theirs = (await a.get('/api/contacts')).json.data as Contact[];
-  assert.deepEqual(mine[0]!.card, { name: 'Aisyah Rahman', company: 'Aisyah Rahman Trading', role: 'Owner' }, 'A shares the default fields — no phone, no email');
+  assert.deepEqual(mine[0]!.card, { name: 'Aisyah Rahman', company: 'Aisyah Rahman Trading', role: 'Owner', phone: '+60120000001', email: 'aisyah.rahman@example.com' }, 'A shares the default fields — everything, unticked nothing');
   assert.deepEqual(theirs[0]!.card, { name: 'Ben Tan', phone: '+60120000001' }, 'B chose name + phone only');
 
   // already linked → refused even with a fresh code; expired code → refused

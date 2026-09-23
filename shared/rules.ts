@@ -94,7 +94,8 @@ export const MAX_STATIONS_PER_OWNER = 12;
 /** What a person may choose to share. Name is always part of a share; the rest is per-share consent. */
 export const SHARE_FIELDS = ['name', 'company', 'role', 'phone', 'email'] as const;
 export type ShareField = (typeof SHARE_FIELDS)[number];
-export const DEFAULT_SHARE: ShareField[] = ['name', 'company', 'role'];
+/** Everything is ticked to start with; a person unticks what they would rather keep. */
+export const DEFAULT_SHARE: ShareField[] = [...SHARE_FIELDS];
 
 /** With a card, a player appears as "Aisyah R." above their astronaut and on the board; without one, as "Visitor 4821". */
 export const NAME_ON_BOARD = true;
