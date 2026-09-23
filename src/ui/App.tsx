@@ -226,6 +226,17 @@ function Hud({ engine }: Eng) {
         {nearLift.value && <div class="liftrow">{nearLift.value.others.map((l) => <button key={l.deck} class="btn lift" onClick={() => engine()?.useLift(l)}>Level {l.deck}<small>{level.value?.decks.find((d) => d.level === l.deck)?.label.split(' · ')[1]}</small></button>)}</div>}
         {atLaunchPad.value && !m.passport && <button class="btn primary big" onClick={() => (modal.value = 'card')}>Get my free card</button>}
         {atLaunchPad.value && m.passport && !m.mission.started && j.kind === 'visitor' && <button class="btn primary big" onClick={() => (modal.value = 'scan')}>Scan the start QR</button>}
+        {/* walking up to a booth that is online: who they are and what they are offering, before tapping in */}
+        {!sitting && !atLaunchPad.value && st && view && (view.offer || view.link || view.logo) && (
+          <div class="nearcard" role="button" tabIndex={0} onClick={() => { panelStation.value = st; modal.value = 'booth'; }}>
+            {view.logo && <img src={view.logo} alt="" />}
+            <div>
+              <strong>{view.company}<small>Booth {st.id}</small></strong>
+              {view.offer && <span>{view.offer}</span>}
+              {view.link && <a href={view.link} target="_blank" rel="noopener noreferrer nofollow" onClick={(e) => e.stopPropagation()}>{view.link.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</a>}
+            </div>
+          </div>
+        )}
         {!sitting && (st || place?.verb) && (
           <div class="chiprow">
             {place?.verb === 'photo' && <button class="chip act" onClick={() => void eng?.photo()}>Take a photo<kbd>E</kbd></button>}

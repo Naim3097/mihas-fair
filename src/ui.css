@@ -221,6 +221,11 @@ input::placeholder,textarea::placeholder{color:var(--ink-3)}textarea{font-size:1
 .objective.mini .d{font-size:12.5px;font-weight:700;color:var(--ink-2);white-space:nowrap;font-variant-numeric:tabular-nums}
 .objective.mini .btn{min-height:30px;padding:4px 14px;font-size:13px;border-radius:999px;flex:none}
 .objective.mini .score{flex:none;margin-right:6px}
+.nearcard{display:flex;align-items:center;gap:10px;justify-self:center;max-width:100%;background:var(--surface);border-radius:var(--r-m);padding:8px 14px 8px 10px;box-shadow:var(--shadow);cursor:pointer;text-align:left;animation:rise .3s cubic-bezier(.2,.8,.2,1)}
+.nearcard img{width:38px;height:38px;flex:none;object-fit:contain;border-radius:8px;background:#fff}.nearcard>div{min-width:0}
+.nearcard strong{display:block;font-size:14px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.nearcard strong small{margin-left:6px;font-weight:600;color:var(--ink-3);font-size:11.5px}
+.nearcard span{display:block;font-size:12.5px;line-height:1.35;color:var(--ink-2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.nearcard a{display:inline-block;margin-top:2px;font-size:12.5px;font-weight:700;color:var(--blue);text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .chiprow{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}
 .chiprow .chip{box-shadow:var(--shadow);border-color:transparent;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .chip.act{background:var(--blue);color:#fff;border-color:var(--blue)}.chip.act kbd{margin-left:8px;opacity:.75}.chip.act:disabled{opacity:.6}
