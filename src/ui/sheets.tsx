@@ -206,8 +206,8 @@ export function MyBoothSheet() {
 
 export function SwapSheet() {
   const m = me.value!, [mode, setMode] = useState<'show' | 'scan'>(pendingLink.value ? 'scan' : 'show');
-  const [code, setCode] = useState<{ c: LinkCode; until: number } | null>(null), [prefs, setPrefs] = useState<ShareField[]>(m.sharePrefs);
-  const [cam, setCam] = useState(false), [typed, setTyped] = useState(''), [peek, setPeek] = useState<{ code: string; p: LinkPeek } | null>(null), [mine, setMine] = useState<ShareField[]>(m.sharePrefs), [busy, setBusy] = useState(false);
+  const [code, setCode] = useState<{ c: LinkCode; until: number } | null>(null);
+  const [cam, setCam] = useState(false), [typed, setTyped] = useState(''), [peek, setPeek] = useState<{ code: string; p: LinkPeek } | null>(null), [busy, setBusy] = useState(false);
   const left = useCountdown(code?.until ?? 0), swapsAtOpen = useRef(m.links);
 
   const fresh = () => api.swapCode().then((c) => setCode({ c, until: Date.now() + c.expiresInMs }), (e) => fail(e, 'Could not create your code'));
@@ -218,27 +218,23 @@ export function SwapSheet() {
   }, [mode]);
   useEffect(() => { if (m.links > swapsAtOpen.current) { swapsAtOpen.current = m.links; toast('Cards swapped', 'Their card is in My contacts', 'xp'); void fresh(); } }, [m.links]);
 
-  const visitor = m.cls !== 'exhibitor';
   const look = async (raw: string) => {
     const c = (raw.match(/[?&]l=([A-Za-z0-9]{8})/)?.[1] ?? raw).trim().toUpperCase();
     try {
       const p = await api.swapPeek(c);
-      // a visitor's scan swaps on the spot with the saved defaults; an exhibitor still chooses what to hand over
-      if (visitor && !p.alreadyLinked) { setBusy(true); await api.swap(c, m.sharePrefs); api.track('swap'); setBusy(false); modal.value = 'contacts'; return; }
+      // a scan swaps on the spot: the whole card both ways, nothing to tick
+      if (!p.alreadyLinked) { setBusy(true); await api.swap(c, m.sharePrefs); api.track('swap'); setBusy(false); modal.value = 'contacts'; return; }
       setPeek({ code: c, p });
     } catch (e) { setBusy(false); fail(e, 'That code did not work'); }
   };
   useEffect(() => { const c = pendingLink.value; if (c && m.passport) { pendingLink.value = null; void look(c); } }, []);
-  const doSwap = async () => { if (!peek) return; setBusy(true); try { await api.swap(peek.code, mine); api.track('swap'); setPeek(null); modal.value = 'contacts'; } catch (e) { fail(e, 'Could not swap cards'); } setBusy(false); };
 
   if (!m.passport) return <Sheet k="Swap cards" title="You need your card first"><p class="lead">Your digital business card is what you swap. It is free, and takes a minute.</p><button class="btn primary big" onClick={() => (modal.value = 'card')}>Make my card</button></Sheet>;
 
   if (peek) return (
     <Sheet k="Swap cards" title={`Swap with ${peek.p.callsign}?`} onClose={() => setPeek(null)}>
-      <p class="lead">{peek.p.cls ? ROLE_INFO[peek.p.cls].label : 'Player'}. They are sharing: <b>{peek.p.shares.join(', ')}</b>.</p>
-      {peek.p.alreadyLinked ? <p class="fine">You two have already swapped — find them in My contacts.</p> : (
-        <><strong>What do you share with them?</strong><FieldPicker value={mine} onChange={setMine} /><button class="btn primary big" disabled={busy} onClick={doSwap}>{busy ? 'Swapping…' : `Swap cards · +${POINTS.swap} each`}</button></>
-      )}
+      <p class="lead">{peek.p.cls ? ROLE_INFO[peek.p.cls].label : 'Player'}.</p>
+      <p class="fine">You two have already swapped — find them in My contacts.</p>
     </Sheet>
   );
 
@@ -249,13 +245,12 @@ export function SwapSheet() {
         <div class="center">
           {code && <Qr text={code.c.url} label="My card-swap code" />}
           <div class="code small">{code?.c.code.replace(/(.{4})/, '$1 ') ?? '···· ····'}</div>
-          <p class="fine">Fresh code in {left}s · works once.</p>
-          <div class="box left"><strong>Whoever scans you receives</strong><FieldPicker value={prefs} onChange={(f) => { setPrefs(f); void api.swapPrefs(f).catch((e) => fail(e, 'Could not save')); }} /></div>
+          <p class="fine">Fresh code in {left}s · works once. Whoever scans it gets your card, and you get theirs: name, company, role, phone and email.</p>
           <LinkDemoHint mode="show" onCode={() => {}} />
         </div>
       ) : (
         <div>
-          {cam ? <Camera onCode={(t) => { setCam(false); void look(t); }} onFail={(msg) => { setCam(false); toast(msg, undefined, 'warn', 5000); }} /> : <button class="btn primary big" onClick={() => setCam(true)}>Open camera</button>}
+          {busy ? <p class="lead">Swapping cards…</p> : cam ? <Camera onCode={(t) => { setCam(false); void look(t); }} onFail={(msg) => { setCam(false); toast(msg, undefined, 'warn', 5000); }} /> : <button class="btn primary big" onClick={() => setCam(true)}>Open camera</button>}
           <form class="inline" onSubmit={(e) => { e.preventDefault(); void look(typed); }}>
             <input maxLength={9} placeholder="or type their 8 characters" aria-label="8-character code" autocapitalize="characters" autocomplete="off" value={typed} onInput={(e) => setTyped((e.target as HTMLInputElement).value.toUpperCase().replace(/\s/g, ''))} />
             <button class="btn" disabled={typed.length !== 8}>Look up</button>
