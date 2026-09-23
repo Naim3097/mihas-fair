@@ -52,12 +52,13 @@ export const BOOTH_TEAM_MAX = 20;
 export const REFERRAL_POINTS = 10;
 export interface MissionFacts { started: boolean; card: boolean; checkpoints: number; target: number; claimed: boolean }
 export interface Chapter { n: number; title: string; todo: string; done: boolean }
-/** Three chapters, in order: the card, the start QR at Lean X, then the checkpoints. */
+/** Three chapters, in order: the card, the checkpoints, then the tote bag at Lean X. The mission starts the moment the
+ *  card is made (`started` is that, for a visitor): nobody has to come to Lean X first. */
 export function chapters(f: MissionFacts): Chapter[] {
   return [
     { n: 1, title: 'Your card', todo: 'Make your free digital business card.', done: f.card },
-    { n: 2, title: 'Find Lean X Digital', todo: 'Go to Booth 8H18A in Hall 8 and scan the Lean X Digital QR to start.', done: f.started },
-    { n: 3, title: 'Checkpoints', todo: `Find your ${f.target || CHECKPOINTS} checkpoint booths and scan the QR at each one.`, done: f.target > 0 && f.checkpoints >= f.target },
+    { n: 2, title: 'Checkpoints', todo: `Find your ${f.target || CHECKPOINTS} checkpoint booths and scan the Mission X QR at each one.`, done: f.target > 0 && f.checkpoints >= f.target },
+    { n: 3, title: 'Claim your tote bag', todo: 'Show your prize code at Lean X Digital, Booth 8H18A in Hall 8, and collect your tote bag.', done: f.claimed },
   ];
 }
 

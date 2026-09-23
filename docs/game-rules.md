@@ -3,8 +3,8 @@
 This page is the whole game. If something is not here, it is not in the game.
 The numbers live in [`shared/rules.ts`](../shared/rules.ts); the words on screen live in `src/ui/`.
 
-**In one sentence:** walk the MIHAS expo on your phone, stamp booths, swap cards — and find the X for your free
-digital business card and a gift at the real Booth 8H18A.
+**In one sentence:** make your free digital business card, walk the MIHAS expo on your phone to the exhibitor booths
+on your list, scan the Mission X QR at each — and claim your tote bag at the real Booth 8H18A.
 
 ## Two doors
 
@@ -12,7 +12,7 @@ The first screen has two buttons and nothing else to decide.
 
 | | **I'm visiting** | **I'm exhibiting** |
 |---|---|---|
-| What it is | One mission, five chapters, about five minutes | Three steps on your own booth, about two minutes |
+| What it is | One mission, three chapters, about five minutes | Three steps on your own booth, about two minutes |
 | Wears | the astronaut, blue jacket | the astronaut, green jacket |
 | Shown as | "Visitor 4821" until they have a card, then "Aisyah R." | the same |
 
@@ -20,18 +20,18 @@ Anyone can switch doors from the menu. Whoever brings a booth online becomes an 
 
 ## The visitor's mission
 
-One instruction on screen at a time, and five dots that fill in.
+One instruction on screen at a time, and three dots that fill in.
 
-1. **Arrive** — land at the Hall 8 entrance and walk.
-2. **Find the X** — follow the trail to Booth 8H18A. Reward: your free digital business card (its own link, QR and
-   contact file). This is the only form in the game.
-3. **Collect** — walk up to any five booths and stamp them.
-4. **Connect** — swap cards with one person, or leave your card at one booth that is online.
-5. **Make it real** — show your prize code at the real Booth 8H18A. Our crew scans it; you get your gift.
+1. **Your card** — the form comes before the world: your free digital business card (its own link, QR and contact
+   file). This is the only form in the game, and it is the start of the mission. Nobody has to come to Lean X first.
+2. **Checkpoints** — up to three exhibitor booths, drawn from the ones the crew approved. The trail leads to the nearest
+   one; scan the Mission X QR on its counter. Every scan lands on that exhibitor's dashboard.
+3. **Claim your tote bag** — with every checkpoint done the trail leads to Booth 8H18A. Show your prize code (the
+   mission card, or menu → My prize code); our crew scans it and hands over the tote bag.
 
-Chapters 3 and 4 can be done in either order, and someone standing at the booth can do 5 early.
-Someone playing from home before the show finishes 1–4 and sees chapter 5 waiting: *that* is the invitation to MIHAS.
-When the fifth closes, the ending says what they just did — a customer journey — and who builds those.
+Lean X Digital's own QR at 8H18A starts nothing: scanned, it says how many checkpoints are left, or that the tote bag
+is here. Someone standing at the booth can be handed the tote bag early; the crew sees how far they got.
+When the third chapter closes, the ending says what they just did — a customer journey — and who builds those.
 
 After the mission it is free play: the same actions keep scoring.
 

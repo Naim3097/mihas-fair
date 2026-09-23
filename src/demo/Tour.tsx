@@ -101,9 +101,9 @@ export function TourSheet() {
 
       <h3 class="tourh">As a visitor · one mission, three steps</h3>
       <ol class="tour">
-        <Row done={ch(1)} title="1 · Find Lean X Digital">Walk with WASD / arrow keys, the joystick, or tap the floor. Follow the trail, or tap <b>Take me there</b>, to Booth 8H18A.</Row>
-        <Row done={ch(2)} title="2 · Register and start">At the booth, create your card — this is the lead capture — then scan the Lean X Digital QR (the crew console prints it under Booth QRs · 8H18A).</Row>
-        <Row done={ch(3)} title="3 · Checkpoints">Scan the QR at each exhibitor booth on your list. Every scan lands on that exhibitor's <a class="link" href="/booth.html" target="_blank" rel="noopener">dashboard</a> with your name, phone and email.{near ? <> Try <L to={find(near.id)}>{near.name}</L>: its exhibitor is “at the counter”.</> : null}</Row>
+        <Row done={ch(1)} title="1 · Your card">Create your card before entering — this is the lead capture. The mission is on from that moment: no need to go to Lean X first.</Row>
+        <Row done={ch(2)} title="2 · Checkpoints">Walk with WASD / arrow keys, the joystick, or tap the floor; follow the trail, or tap <b>Take me there</b>. Scan the QR at each exhibitor booth on your list. Every scan lands on that exhibitor's <a class="link" href="/booth.html" target="_blank" rel="noopener">dashboard</a> with your name, phone and email.{near ? <> Try <L to={find(near.id)}>{near.name}</L>: its exhibitor is “at the counter”.</> : null}</Row>
+        <Row done={ch(3)} title="3 · Claim your tote bag">With every checkpoint done the trail leads to Booth 8H18A. Show your prize code (menu → My prize code); the crew console scans it and hands over the tote bag.</Row>
       </ol>
 
       <h3 class="tourh">The world · nothing here scores, all of it is play</h3>

@@ -72,7 +72,7 @@ test('the points and proofs under the mission: card, stamps, booth QRs, the priz
   me = r.json.me as Me;
   assert.deepEqual(r.json.events, [{ action: 'passport', xp: POINTS.card }]);
   assert.ok(me.passport && me.ticket, 'card and prize code issued');
-  assert.equal(me.callsign, 'Aisyah R.'); assert.deepEqual(open(me), [2, 3], 'registered: next, the start QR at Lean X');
+  assert.equal(me.callsign, 'Aisyah R.'); assert.equal(me.mission.started, true, 'the card starts the mission'); assert.deepEqual(open(me), [2, 3], 'registered: next, the checkpoints (none to give out here: no exhibitor is approved)');
   assert.equal((await call('POST', '/api/passport', passportInput)).json.code, 'dup');
   assert.equal((await call('GET', `/p/${me.passport!.slug}`)).status, 200);
   assert.match((await call('GET', `/p/${me.passport!.slug}/vcard`)).raw, /FN:Aisyah Rahman/);
@@ -95,7 +95,7 @@ test('the points and proofs under the mission: card, stamps, booth QRs, the priz
   clock.advance(60_000);
   assert.equal((await call('POST', '/api/stamp', { stationId: '7C17', proof: 'beacon', beacon: '7C17.forged' })).json.code, 'bad_beacon');
 
-  // chapter 5 can come before chapter 4: the crew scans the prize code at the real booth
+  // chapter 3 can come before chapter 2: the crew scans the prize code at the real booth
   const crewJar = new Map<string, string>();
   assert.equal((await call('GET', `/api/crew/ticket?t=${me.ticket!.code}`, undefined, crewJar)).status, 401);
   assert.equal((await call('POST', '/api/crew/login', { pin: '0000' }, crewJar)).status, 401);
@@ -105,7 +105,7 @@ test('the points and proofs under the mission: card, stamps, booth QRs, the priz
   assert.equal((await call('POST', '/api/crew/dock', { t: me.ticket!.code }, crewJar)).status, 409);
   me = (await call('GET', '/api/me')).json.me as Me;
   assert.equal(me.docked, true); assert.equal(me.ticket, null);
-  assert.equal(me.xp, POINTS.card + MISSION_STAMPS * POINTS.stamp + POINTS.booth); assert.deepEqual(open(me), [2, 3]);
+  assert.equal(me.xp, POINTS.card + MISSION_STAMPS * POINTS.stamp + POINTS.booth); assert.deepEqual(open(me), [2], 'the tote bag is claimed; the checkpoints still are not');
 
   // a printed booth QR is a real-booth scan: no location check, it scores in full
   const beacons = (await call('GET', '/api/crew/beacons', undefined, crewJar)).json.data as { id: string; url: string }[];
@@ -124,7 +124,7 @@ test('the points and proofs under the mission: card, stamps, booth QRs, the priz
   r = await call('POST', '/api/link', { code, fields: ['name', 'company'] }, otherJar);
   assert.deepEqual(r.json.events, [{ action: 'link', xp: POINTS.swap, target: 'Aisyah R.' }]);
   me = (await call('GET', '/api/me')).json.me as Me;
-  assert.deepEqual(open(me), [2, 3], 'swaps score, but the mission is the checkpoints (server/checkpoints.test.ts)');
+  assert.deepEqual(open(me), [2], 'swaps score, but the mission is the checkpoints (server/checkpoints.test.ts)');
   assert.equal(me.xp, POINTS.card + MISSION_STAMPS * POINTS.stamp + POINTS.booth + 2 * POINTS.scan + POINTS.swap);
 
   // the board: one number, and a sub-line anyone can read

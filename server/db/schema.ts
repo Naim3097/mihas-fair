@@ -311,9 +311,10 @@ CREATE TABLE IF NOT EXISTS ceritera_ledger (
 CREATE INDEX IF NOT EXISTS ceritera_ledger_player ON ceritera_ledger(player_id, created_at);
 
 -- ---------------------------------------------------------------- Checkpoints
--- The MIHAS mission: register at Lean X Digital (8H18A) and scan its QR to start, then scan the QR at the exhibitor
--- booths you were given. A start, the booths each player was given, and every QR scan at an exhibitor's booth
--- (what the exhibitor's dashboard lists: the visitor agreed at registration that a scan shares their contact).
+-- The MIHAS mission: make your card, scan the QR at the exhibitor booths you were given, claim your tote bag at Lean X
+-- Digital (8H18A). The booths each player was given, and every QR scan at an exhibitor's booth (what the exhibitor's
+-- dashboard lists: the visitor agreed at registration that a scan shares their contact). mission_starts is from when
+-- the Lean X QR started the mission; kept, no longer written.
 CREATE TABLE IF NOT EXISTS mission_starts (
   player_id   TEXT PRIMARY KEY REFERENCES players(id),
   started_at  INTEGER NOT NULL

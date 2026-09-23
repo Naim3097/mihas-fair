@@ -81,14 +81,16 @@ test('register at Lean X, scan its QR to start, get checkpoints, scan them — a
   const v = r.user(); await v.call('POST', '/api/start', { role: 'visitor' });
   assert.equal((await v.call('POST', '/api/stamp', { stationId: '7C17', proof: 'beacon', beacon: await r.beacon('7C17') })).json.code, 'card');
   assert.equal((await v.call('POST', '/api/stamp', { stationId: level.hero.id, proof: 'beacon', beacon: await r.beacon(level.hero.id) })).json.code, 'card');
+  assert.equal((await v.me()).mission.started, false, 'no card, no mission');
   await v.call('POST', '/api/passport', { name: 'Aisyah Rahman', company: 'Kedai Kopi', role: 'Founder', phone: '+60123456789', email: 'aisyah@example.com', showContact: false, consentMarketing: false, consentNotice: true });
   let me = await v.me();
-  assert.equal(me.mission.started, false);
+  assert.equal(me.mission.started, true, 'the card starts the mission: no need to come to Lean X first');
 
-  // walking up to the Lean X booth in the game does not start anything; its QR does
+  // the Lean X QR starts nothing: it says how the visitor is doing, and can be scanned again and again
   r.tick(); const hero = await v.call('POST', '/api/stamp', { stationId: level.hero.id, proof: 'beacon', beacon: await r.beacon(level.hero.id) });
-  assert.equal(hero.json.events[0].action, 'mission_start');
-  assert.equal((await v.call('POST', '/api/stamp', { stationId: level.hero.id, proof: 'beacon', beacon: await r.beacon(level.hero.id) })).json.code, 'dup');
+  assert.equal(hero.json.events[0].action, 'progress');
+  assert.match(hero.json.events[0].note, new RegExp(`^0 of ${CHECKPOINTS} checkpoints`));
+  r.tick(); assert.equal((await v.call('POST', '/api/stamp', { stationId: level.hero.id, proof: 'beacon', beacon: await r.beacon(level.hero.id) })).json.events[0].action, 'progress');
   me = await v.me();
   assert.equal(me.mission.started, true);
   assert.equal(me.mission.target, CHECKPOINTS);
@@ -100,7 +102,7 @@ test('register at Lean X, scan its QR to start, get checkpoints, scan them — a
     await r.services.game.db.run('UPDATE checkpoints SET station_id = ? WHERE station_id = ?', [id, drop.stationId]); me = await v.me();
   }
   const facts = (m: Me) => ({ started: m.mission.started, card: !!m.passport, checkpoints: m.mission.checkpoints.filter((c) => c.done).length, target: m.mission.target, claimed: m.docked });
-  assert.deepEqual(chapters(facts(me)).filter((c) => !c.done).map((c) => c.n), [3]);
+  assert.deepEqual(chapters(facts(me)).filter((c) => !c.done).map((c) => c.n), [2, 3]);
 
   // scanning a checkpoint: the exhibitor's live QR, or their printed one
   const live = (await ex[0]!.u.call('GET', '/api/host/code?station=7C17')).json.data as { url: string };
@@ -124,9 +126,14 @@ test('register at Lean X, scan its QR to start, get checkpoints, scan them — a
   // the rest of the checkpoints, then the prize: the crew sees how far the visitor got
   for (const c of me.mission.checkpoints.filter((c) => !['7C17', '7C19'].includes(c.stationId))) { r.tick(); await v.call('POST', '/api/stamp', { stationId: c.stationId, proof: 'beacon', beacon: await r.beacon(c.stationId) }); }
   me = await v.me();
-  assert.deepEqual(chapters(facts(me)).filter((c) => !c.done).map((c) => c.n), [], 'all checkpoints done: mission complete');
+  assert.deepEqual(chapters(facts(me)).filter((c) => !c.done).map((c) => c.n), [3], 'all checkpoints done: the tote bag at Lean X is what is left');
+  r.tick(); const back = await v.call('POST', '/api/stamp', { stationId: level.hero.id, proof: 'beacon', beacon: await r.beacon(level.hero.id) });
+  assert.equal(back.json.events[0].action, 'prize', 'the Lean X QR now says the tote bag is here');
   const ticket = (await r.crew.call('GET', `/api/crew/ticket?t=${me.ticket!.code}`)).json.data;
   assert.deepEqual(ticket.checkpoints, { started: true, done: CHECKPOINTS, target: CHECKPOINTS });
+  assert.equal((await r.crew.call('POST', '/api/crew/dock', { t: me.ticket!.code })).status, 200);
+  me = await v.me();
+  assert.deepEqual(chapters(facts(me)).filter((c) => !c.done).map((c) => c.n), [], 'tote bag claimed: mission complete');
 });
 
 test('more exhibitors than checkpoints: each visitor gets three at random; fewer approved, fewer checkpoints, topped up later', async () => {

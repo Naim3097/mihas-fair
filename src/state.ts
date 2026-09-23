@@ -25,8 +25,8 @@ export const goalVia = signal<string | null>(null);
 export const currentDeck = signal(2);
 export const distToGoal = signal<number | null>(null);
 export const guideOn = signal(true);
-/** Where the trail leads when the player picked a place. null = wherever the mission points: Lean X until it starts,
- *  then the next checkpoint (nextCheckpoint). */
+/** Where the trail leads when the player picked a place. null = wherever the mission points: the next checkpoint
+ *  (nextCheckpoint), then Lean X for the tote bag. */
 export const guideTarget = signal<{ x: number; y: number; label: string } | null>(null);
 /** "Take me there": walking the trail on its own — going, or paused with the route kept. */
 export const autoWalk = signal<'off' | 'going' | 'paused'>('off');
@@ -128,9 +128,9 @@ export function toast(title: string, sub?: string, tone: Toast['tone'] = 'info',
 const ACTION_LABEL: Record<string, string> = {
   passport: 'Your card is ready', dock: 'Claimed at Booth 8H18A', stamp: 'Stamped', scan: 'Scanned at the real booth', verified_contact: 'Met in person',
   share_station: 'Card left', link: 'Cards swapped', station_claim: 'Your booth is online', daily_drop: 'Booth of the day',
-  mission_start: 'Mission started', checkpoint: 'Checkpoint',
+  mission_start: 'Mission started', checkpoint: 'Checkpoint', prize: 'Your tote bag is here', progress: 'Lean X Digital',
 };
-const BIG = new Set(['passport', 'dock', 'station_claim', 'link', 'mission_start', 'checkpoint']);
+const BIG = new Set(['passport', 'dock', 'station_claim', 'link', 'mission_start', 'checkpoint', 'prize']);
 /** One action can pay several ways at once (a scan that is also the booth of the day). It is still one moment: one toast, one total. */
 export function showEvents(events: XpEvent[] | undefined) {
   const list = events ?? []; if (!list.length) return;
@@ -152,7 +152,7 @@ export function boothAction(b: Booth | null): 'stamp' | 'swap' | null {
   return stationMap.value.has(b.id) ? 'swap' : null;
 }
 
-/** The journey. Visitors: five chapters. Exhibitors: three steps on their own booth. `now` is the one thing to do next. */
+/** The journey. Visitors: three chapters. Exhibitors: three steps on their own booth. `now` is the one thing to do next. */
 export interface Journey { kind: 'visitor' | 'exhibitor'; steps: Chapter[]; now: Chapter | null; done: number }
 export const journey = computed<Journey | null>(() => {
   const m = me.value;

@@ -7,7 +7,7 @@ import { afterCard, autoWalk, boothAction, currentCp, gate, handoff, reachCheckp
 import { facts } from '../game/facts';
 import { MapSheet, PhotoSheet } from './world-sheets';
 import { DemoChip, TourSheet } from '../demo/Tour';
-import { Camera, Sheet, hex } from './common';
+import { Camera, Qr, Sheet, hex } from './common';
 import { handleScan } from '../scan';
 import { BoothSheet, ClaimSheet, ContactsSheet, MenuSheet, MyBoothSheet, SwapSheet } from './sheets';
 
@@ -23,6 +23,7 @@ export function App({ engine }: Eng) {
       {phase.value === 'play' && <Hud engine={engine} />}
       {m === 'card' && <CardForm />}
       {(m === 'claimed' || m === 'complete') && <Finish />}
+      {m === 'prize' && <PrizeSheet />}
       {m === 'rules' && <Rules />}
       {m === 'booth' && <BoothSheet engine={engine} />}
       {m === 'claim' && <ClaimSheet />}
@@ -56,7 +57,7 @@ function Start({ engine }: Eng) {
   const enter = (role: Role) => {
     engine()?.start(gate.value); phase.value = 'play'; api.track('start', { role, gate: gate.value });
     if (role === 'exhibitor') modal.value = 'mybooth';
-    else if (!me.value?.mission.started) toast('Welcome to MIHAS', 'Follow the trail to Lean X Digital, Booth 8H18A', 'info', 5000);
+    else if (!me.value?.docked) toast('Welcome to MIHAS', me.value?.mission.checkpoints.length ? 'Follow the trail to your first checkpoint' : 'Your checkpoints appear as exhibitors join', 'info', 5000);
   };
   const go = async (role: Role) => {
     setBusy(role);
@@ -82,7 +83,7 @@ function Start({ engine }: Eng) {
         <p class="lead">The whole MIHAS expo, live on your phone. Make your free digital business card, walk the halls with everyone else in the game, and meet exhibitors.</p>
         {referral.value && !me.value?.hosting.length && was !== 'visitor' && <p class="invite">An exhibitor invited you to put your booth in the game — choose <b>I'm exhibiting</b>.</p>}
         <div class="doors">
-          {door('visitor', was === 'visitor' ? 'Continue visiting' : "I'm visiting", `Make your card, start at Lean X Digital, then scan the QR at ${CHECKPOINTS} exhibitor booths.`)}
+          {door('visitor', was === 'visitor' ? 'Continue visiting' : "I'm visiting", `Make your card, scan the QR at ${CHECKPOINTS} exhibitor booths, then claim your tote bag at Lean X Digital.`)}
           {door('exhibitor', was === 'exhibitor' ? 'Back to my booth' : "I'm exhibiting", 'Put your booth in the game. Collect visitor leads, free.')}
         </div>
         <div class="gates" role="radiogroup" aria-label="Walk in by">
@@ -133,9 +134,10 @@ function Hud({ engine }: Eng) {
     document.addEventListener('pointerdown', away, true); return () => document.removeEventListener('pointerdown', away, true);
   }, [tray]);
   const goal = guideTarget.value, stName = st ? view?.company || st.name || 'Booth ' + st.id : '', total = (level.value?.booths.length ?? 1) - 1;
-  // the trail: a place the player picked; else Lean X until the mission starts, then the next checkpoint
+  // the trail: a place the player picked; else the next checkpoint; else Lean X, for the tote bag
   const next = !goal && j.kind === 'visitor' && m.mission.started ? currentCp.value : null;
-  const trail = guideOn.value && distToGoal.value != null && (goal || next || (!m.mission.started && j.kind === 'visitor'));
+  const toClaim = j.kind === 'visitor' && j.now?.n === 3;
+  const trail = guideOn.value && distToGoal.value != null && (goal || next || toClaim);
   const walk = autoWalk.value;
   const word = j.kind === 'visitor' ? 'Chapter' : 'Step';
   /** "Take me there" — and, once walking, Pause / Resume and Stop. */
@@ -148,7 +150,7 @@ function Hud({ engine }: Eng) {
     </span>
   );
 
-  // the ending is shown once, the moment the fifth chapter closes and nothing else is on screen
+  // the ending is shown once, the moment the third chapter closes and nothing else is on screen
   useEffect(() => {
     if (j.kind !== 'visitor' || j.now || modal.value) return;
     try { if (localStorage.getItem('mx_complete')) return; localStorage.setItem('mx_complete', '1'); } catch { /* private mode: show it */ }
@@ -169,7 +171,8 @@ function Hud({ engine }: Eng) {
           <span class="t">{goal ? goal.label : next ? next.label : j.now ? j.now.title : 'Free play'}</span>
           {trail && distToGoal.value != null && <span class="d">{distToGoal.value} m</span>}
           {trail ? walkBtn(true)
-            : !goal && j.kind === 'visitor' && ((j.now?.n === 2 && m.passport) || j.now?.n === 3) ? scanBtn('Scan')
+            : !goal && toClaim ? <button class="btn primary" onClick={(e) => { e.stopPropagation(); modal.value = 'prize'; }}>Code</button>
+            : !goal && j.kind === 'visitor' && j.now?.n === 2 ? scanBtn('Scan')
             : !goal && j.kind === 'exhibitor' ? <button class="btn primary" onClick={(e) => { e.stopPropagation(); modal.value = m.passport ? 'mybooth' : 'card'; }}>Booth</button> : null}
           <span class="score" title="Points">{points.toLocaleString()}</span>
         </div>
@@ -183,8 +186,9 @@ function Hud({ engine }: Eng) {
         <h2 key={goal ? 'goal' : j.now?.n ?? 0} class="turn">{goal ? goal.label : j.now ? j.now.title : 'Free play'}</h2>
         {!goal && <p>{j.now ? j.now.todo : `${m.stamps.length} of ${total.toLocaleString()} booths stamped. Keep exploring and meet the people you find.`}</p>}
         {!goal && <div class="dots" role="img" aria-label={`${j.done} of ${j.steps.length} done`}>{j.steps.map((s) => <i key={s.n} class={s.done ? 'on' : s === j.now ? 'now' : ''} />)}</div>}
-        {!goal && j.kind === 'visitor' && j.now?.n === 2 && <div class="go-row"><span>{m.passport ? 'At the booth?' : 'At Booth 8H18A?'}</span>{m.passport ? scanBtn('Scan the start QR') : <button class="btn primary" onClick={(e) => { e.stopPropagation(); modal.value = 'card'; }}>Get my free card</button>}</div>}
-        {!goal && j.kind === 'visitor' && j.now?.n === 3 && (
+        {!goal && j.kind === 'visitor' && j.now?.n === 1 && <div class="go-row"><span>One minute, yours to keep</span><button class="btn primary" onClick={(e) => { e.stopPropagation(); modal.value = 'card'; }}>Get my free card</button></div>}
+        {!goal && toClaim && <div class="go-row"><span>{atLaunchPad.value ? 'At the counter?' : 'All checkpoints done'}</span><button class="btn primary" onClick={(e) => { e.stopPropagation(); modal.value = 'prize'; }}>Show my prize code</button></div>}
+        {!goal && j.kind === 'visitor' && j.now?.n === 2 && (
           <>
             {cps.length ? <ul class="cps">{cps.map((c) => <li key={c.stationId} class={c.done ? 'done' : c.stationId === next?.stationId ? 'next' : ''}><i aria-hidden="true" />{c.company}<small>{c.stationId}</small></li>)}</ul> : <div class="via">Your checkpoints appear here as exhibitors join.</div>}
             {next && <div class="via">Next: {next.label}</div>}
@@ -225,7 +229,7 @@ function Hud({ engine }: Eng) {
         {sitting && <button class="btn big" onClick={() => eng?.stand()}>Stand up<kbd>E</kbd></button>}
         {nearLift.value && <div class="liftrow">{nearLift.value.others.map((l) => <button key={l.deck} class="btn lift" onClick={() => engine()?.useLift(l)}>Level {l.deck}<small>{level.value?.decks.find((d) => d.level === l.deck)?.label.split(' · ')[1]}</small></button>)}</div>}
         {atLaunchPad.value && !m.passport && <button class="btn primary big" onClick={() => (modal.value = 'card')}>Get my free card</button>}
-        {atLaunchPad.value && m.passport && !m.mission.started && j.kind === 'visitor' && <button class="btn primary big" onClick={() => (modal.value = 'scan')}>Scan the start QR</button>}
+        {atLaunchPad.value && toClaim && <button class="btn primary big" onClick={() => (modal.value = 'prize')}>Show my prize code</button>}
         {/* walking up to a booth that is online: who they are and what they are offering, before tapping in */}
         {!sitting && !atLaunchPad.value && st && view && (view.offer || view.link || view.logo) && (
           <div class="nearcard" role="button" tabIndex={0} onClick={() => { panelStation.value = st; modal.value = 'booth'; }}>
@@ -273,7 +277,7 @@ function CardForm() {
   const set = (k: keyof PassportInput) => (e: Event) => { const t = e.target as HTMLInputElement, v = t.type === 'checkbox' ? t.checked : t.value; setF((p) => ({ ...p, [k]: v })); };
   const submit = async (e: Event) => {
     e.preventDefault(); setErr(''); setBusy(true);
-    try { await api.card(f); api.track('card'); if (afterCard.value) { afterCard.value(); if (teamInvite.value) modal.value = 'jointeam'; return; } if (teamInvite.value) { modal.value = 'jointeam'; return; } modal.value = exhibitor ? 'mybooth' : me.value?.mission.started ? null : 'scan'; if (!exhibitor && !me.value?.mission.started) toast('You are registered', 'Now scan the Lean X Digital QR at the booth to start', 'info', 5000); }
+    try { await api.card(f); api.track('card'); if (afterCard.value) { afterCard.value(); if (teamInvite.value) modal.value = 'jointeam'; return; } if (teamInvite.value) { modal.value = 'jointeam'; return; } modal.value = exhibitor ? 'mybooth' : null; if (!exhibitor) toast('Your mission is on', me.value?.mission.checkpoints.length ? 'Follow the trail to your first checkpoint' : 'Your checkpoints appear as exhibitors join', 'info', 5000); }
     catch (x) { setErr(x instanceof ApiError ? x.message : 'Something went wrong'); setBusy(false); }
   };
   return (
@@ -299,7 +303,7 @@ function CardForm() {
 }
 
 
-/** Two moments, one screen: the crew's scan at the booth, and the fifth chapter closing. When both are true this is the ending. */
+/** Two moments, one screen: the crew's scan at the booth, and the third chapter closing. When both are true this is the ending. */
 function Finish() {
   const j = journey.value, left = j?.kind === 'visitor' ? j.steps.filter((s) => !s.done) : [];
   const complete = j?.kind === 'visitor' && left.length === 0;
@@ -310,7 +314,7 @@ function Finish() {
       {complete ? (
         <>
           <h2>All checkpoints done.</h2>
-          <p class="lead">You started at Lean X Digital, got your digital business card, and met every exhibitor on your list — in person.</p>
+          <p class="lead">You made your digital business card, met every exhibitor on your list in person, and picked up your tote bag at Lean X Digital.</p>
           <p class="lead">That is a customer journey. Building them is what <b>Lean X Digital</b> does for businesses.</p>
           <a class="btn primary big" href="https://www.nexova.my" target="_blank" rel="noopener" onClick={() => api.track('cta_nexova')}>See what we could build for you</a>
           <button class="btn big" style={{ marginTop: '8px' }} onClick={close}>Keep playing</button>
@@ -336,6 +340,24 @@ function Rules() {
       <p class="fine">After the mission it is free play: walk the halls, stamp booths, meet people.</p>
       <table class="points"><tbody>{rows.map(([what, n]) => <tr key={what}><td>{what}</td><td>+{n}</td></tr>)}</tbody></table>
       <p class="fine">Exhibitors: bring your booth online, put its QR on your counter, and everyone who scans it lands on your dashboard — free.</p>
+    </Sheet>
+  );
+}
+
+/** The prize code: what the crew at Booth 8H18A scans for the tote bag. Shown as a QR their console reads and as six characters to type. */
+function PrizeSheet() {
+  const m = me.value!, j = journey.value, left = m.mission.checkpoints.filter((c) => !c.done).length, ready = j?.kind === 'visitor' && !!j.steps[1]?.done;
+  return (
+    <Sheet k="Lean X Digital · Booth 8H18A" title={m.docked ? 'Tote bag claimed' : 'Your prize code'} gold>
+      {m.docked ? <p class="lead">Thank you for coming by. Enjoy your gift.</p> : m.ticket ? (
+        <>
+          <p class="lead">{ready ? 'All checkpoints done. Show this at the Lean X Digital counter in Hall 8 and our crew hands you your tote bag.' : m.mission.target ? `${left} checkpoint${left === 1 ? '' : 's'} to go. Bring this to Lean X Digital, Booth 8H18A, once they are all scanned.` : 'Your checkpoints appear as exhibitors join. Bring this to Lean X Digital, Booth 8H18A, once they are all scanned.'}</p>
+          <Qr text={`${location.origin}/crew.html?t=${encodeURIComponent(m.ticket.token)}`} label="Your prize code as a QR" />
+          <p class="lead" style={{ letterSpacing: '.18em', fontSize: '28px', fontWeight: 800, textAlign: 'center' }}>{m.ticket.code}</p>
+          <p class="fine">If the camera will not read it, tell the crew the six characters.</p>
+        </>
+      ) : <p class="lead">Your prize code comes with your card.</p>}
+      {!m.docked && !atLaunchPad.value && <button class="btn primary big" onClick={() => { const lv = level.value; if (lv) guideTarget.value = { ...lv.hero.dock, label: 'Lean X Digital · Booth ' + lv.hero.id }; guideOn.value = true; modal.value = null; }}>Guide me to Lean X Digital</button>}
     </Sheet>
   );
 }

@@ -18,7 +18,7 @@ export function facts(level: LevelData): string[] {
     `This game covers Halls ${halls.map((h) => h.hall).sort((a, b) => a - b).join(', ').replace(/, (\d+)$/, ' and $1')} of MITEC: ${booths.length.toLocaleString()} booths.`,
     `Hall ${biggest.hall} is the biggest: ${biggest.booths} booths. Hall ${smallest.hall} has ${smallest.booths}.`,
     `Every booth shows its number. Once its exhibitor registers in the game, their company goes up next to it.`,
-    `Lean X Digital is at Booth ${level.hero.id}, in Hall ${level.hero.id.match(/^\d+/)?.[0] ?? ''}. Your mission starts there.`,
+    `Lean X Digital is at Booth ${level.hero.id}, in Hall ${level.hero.id.match(/^\d+/)?.[0] ?? ''}. Your tote bag is waiting there once your checkpoints are done.`,
   ];
   if (places.length) out.push(`Besides the booths there are ${places.length} places to visit, including ${places.slice(0, 3).join(', ')}.`);
   out.push(`Tap a booth to see who runs it, or open the map to search by booth number or company.`);

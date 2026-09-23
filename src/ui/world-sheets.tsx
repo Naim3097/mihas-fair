@@ -72,7 +72,7 @@ export function MapSheet({ engine }: Eng) {
           <div ref={wrap} class="mapwrap"><canvas ref={canvas} class="map" onClick={tap} role="img" aria-label={`Map of level ${deck}. Tap to set a trail.`} /></div>
           <p class="fine">Tap anywhere to be guided there. White booths, <b class="gold-t">gold</b> once you have stamped them, <b class="green-t">green</b> when the exhibitor is online.</p>
           <div class="results flow" style={{ marginTop: '12px' }}>
-            {deck === 2 && <button class="result hero" onClick={() => go(lv.hero.dock.x, lv.hero.dock.y, 'The X · Booth 8H18A')}><strong>The X — Lean X Digital · nexova</strong><small>Booth 8H18A · Hall 8 · your free digital business card</small></button>}
+            {deck === 2 && <button class="result hero" onClick={() => go(lv.hero.dock.x, lv.hero.dock.y, 'The X · Booth 8H18A')}><strong>The X — Lean X Digital · nexova</strong><small>Booth 8H18A · Hall 8 · your tote bag when the checkpoints are done</small></button>}
             {places.filter((p) => p.deck === deck).map((p) => <button key={p.id} class={'result' + (been.has(`place:${p.id}`) ? ' seen' : '')} onClick={() => go((p.rect.x0 + p.rect.x1) / 2, (p.rect.y0 + p.rect.y1) / 2, p.name)}><strong>{p.name}</strong><small>{p.blurb}</small></button>)}
             {halls.filter((h) => h.level === deck).map((h) => { const r = lv.halls.find((k) => k.id === h.hall)!; return <button key={h.hall} class={'result' + (been.has(`hall:${h.hall}`) ? ' seen' : '')} onClick={() => go((r.x0 + r.x1) / 2, r.y0 + (r.y1 - r.y0) * 0.28, `Hall ${h.hall}`)}><strong>Hall {h.hall}</strong><small>{hallLine(h)}</small></button>; })}
           </div>

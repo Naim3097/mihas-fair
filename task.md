@@ -59,6 +59,11 @@ Status: everything below is pushed to GitHub `main` and live. The 23 September i
 - [x] Bila berjalan dekat booth user boleh nampak detail company — `a8dd788`
   - Walking up to a booth that is online shows a card above the buttons: logo, company, booth number, their one line for visitors, and their website. Tap it for the full booth sheet.
 
+- [x] Bila join game kena pergi Lean X dulu; sepatutnya tak perlu sebab card dah buat — terus ke mission, dan claim tote bag di Lean X bila mission habis — (commit below)
+  - The mission starts the moment the card is made: no Lean X first. Chapters: Your card → Checkpoints → Claim your tote bag. The trail leads to the nearest checkpoint straight away, then to Booth 8H18A once all are scanned.
+  - The prize code (QR + 6 characters) is now shown in the game: the mission card's **Show my prize code** in chapter 3, or menu → **My prize code**. The crew scans it at `/crew.html` → Prize codes.
+  - Lean X's own QR no longer starts anything: scanned, it says how many checkpoints are left, or that the tote bag is here.
+
 ## Still to do
 
 - Nothing on the list. Approve or register exhibitors so visitors have 3 checkpoints.

@@ -82,7 +82,7 @@ function Scan() {
         <div class="sheet wide">
           <div class="k gold">Prize code</div><h2>{ticket.view.name}</h2>
           <p class="lead">{[ticket.view.role, ticket.view.company].filter(Boolean).join(' · ')}<br /><small>{ticket.view.callsign}</small></p>
-          {ticket.view.checkpoints && <p class={'banner ' + (ticket.view.checkpoints.started && ticket.view.checkpoints.target > 0 && ticket.view.checkpoints.done >= ticket.view.checkpoints.target ? 'ok' : 'bad')}>{!ticket.view.checkpoints.started ? 'Has not started the mission (never scanned the Lean X QR)' : `Checkpoints: ${ticket.view.checkpoints.done} of ${ticket.view.checkpoints.target}`}</p>}
+          {ticket.view.checkpoints && <p class={'banner ' + (ticket.view.checkpoints.started && ticket.view.checkpoints.target > 0 && ticket.view.checkpoints.done >= ticket.view.checkpoints.target ? 'ok' : 'bad')}>{ticket.view.checkpoints.target === 0 ? 'No checkpoints yet (none were available when they registered)' : `Checkpoints: ${ticket.view.checkpoints.done} of ${ticket.view.checkpoints.target}`}</p>}
           {ticket.view.alreadyDocked ? <p class="banner bad">Already claimed — do not hand out a second gift.</p> : <button class="btn primary big" onClick={dock}>Confirm · +500 points and the gift</button>}
           <button class="btn big" style={{ marginTop: '8px' }} onClick={() => setTicket(null)}>Back</button>
         </div>
@@ -234,7 +234,7 @@ function Beacons() {
   return (
     <section class="sheet wide">
       <div class="row"><h2>Printed booth QRs</h2><button class="btn" onClick={() => print()}>Print</button></div>
-      <p class="fine no-print"><b>The mission's start QR</b> is the one for Lean X Digital's own booth: search <b>8H18A</b> and print it for the counter. For exhibitors who will not keep a screen open: search a booth, print, and hand them the card for their counter. Each QR is signed for its booth. Scanned at MIHAS it scores +50; anywhere else, +10.</p>
+      <p class="fine no-print"><b>Lean X Digital's own QR</b> (search <b>8H18A</b>) is worth printing for the counter: a visitor who scans it sees how many checkpoints they have left, or that their tote bag is here. The mission itself starts when they make their card — nobody has to come to us first. For exhibitors who will not keep a screen open: search a booth, print, and hand them the card for their counter. Each QR is signed for its booth. Scanned at MIHAS it scores +50; anywhere else, +10.</p>
       <label class="no-print">Find booth<input value={q} placeholder="e.g. 7C17 or Mamee" onInput={(e) => setQ((e.target as HTMLInputElement).value)} /></label>
       <div class="beacons">{list.map((b) => <BeaconCard key={b.id} b={b} />)}</div>
     </section>

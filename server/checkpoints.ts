@@ -1,5 +1,5 @@
-// The MIHAS mission: register at Lean X Digital (8H18A) and scan its QR to start; then scan the QR at the exhibitor
-// booths you were given. Checkpoints are drawn at random from the booths the crew has approved, up to CHECKPOINTS each,
+// The MIHAS mission: make your card (that is the start — no need to come to Lean X first), scan the QR at the exhibitor
+// booths you were given, then claim your tote bag at Lean X Digital (8H18A). Checkpoints are drawn at random from the booths the crew has approved, up to CHECKPOINTS each,
 // and topped up as more exhibitors are approved. Every QR scan at an exhibitor's booth lands on that exhibitor's
 // dashboard with the visitor's name, phone and email: agreeing to that is part of registering.
 import { Game, GameError } from './game.js';
@@ -28,19 +28,22 @@ export class Checkpoints {
   }
   forget() { this.approved.at = -1e9; }
 
+  /** The mission is on from the moment a visitor has their card. Exhibitors (a booth of their own, or on a booth team)
+   *  are here to collect visitors, not to be one. */
   async started(id: string): Promise<boolean> {
-    return !!(await this.g.db.get('SELECT 1 AS x FROM mission_starts WHERE player_id = ?', [id]));
+    const p = await this.g.db.get<{ cls: string | null }>('SELECT pl.cls FROM players pl JOIN passports p ON p.player_id = pl.id WHERE pl.id = ?', [id]);
+    if (!p || p.cls === 'exhibitor') return false;
+    return !(await this.team.isExhibitor(id));
   }
 
-  /** The Lean X Digital QR, scanned at the booth. Registering comes first: the card is what exhibitors receive. */
-  async start(id: string, t: number): Promise<XpEvent[]> {
+  /** The Lean X Digital QR at the booth. It starts nothing any more: it tells the visitor where they stand, and when
+   *  every checkpoint is done, that this is where the tote bag is. */
+  async heroScan(id: string, _t: number): Promise<XpEvent[]> {
     if (await this.team.isExhibitor(id)) throw new GameError('exhibitor', 'The mission is for visitors — you are here with a booth. Your visitors show up on your dashboard.');
-    await this.g.requirePassport(id).catch(() => { throw new GameError('card', 'Register first: fill in your free card here at the booth, then scan the QR again'); });
-    if (await this.started(id)) throw new GameError('dup', 'Your mission has already started — head to your checkpoints');
-    await this.g.db.run('INSERT INTO mission_starts (player_id, started_at) VALUES (?,?) ON CONFLICT DO NOTHING', [id, t]);
-    await this.topUp(id, t);
-    const n = (await this.g.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM checkpoints WHERE player_id = ?', [id]))!.n;
-    return [{ action: 'mission_start', xp: 0, target: 'Lean X Digital', note: n ? `${n} checkpoint${n > 1 ? 's are' : ' is'} on your map` : 'Checkpoints will appear as exhibitors join' }];
+    await this.g.requirePassport(id).catch(() => { throw new GameError('card', 'Make your free card first — then scan again'); });
+    const m = await this.view(id), done = m.checkpoints.filter((c) => c.done).length;
+    if (m.target > 0 && done >= m.target) return [{ action: 'prize', xp: 0, target: 'Lean X Digital', note: 'All checkpoints done — show your prize code to our crew for your tote bag' }];
+    return [{ action: 'progress', xp: 0, target: 'Lean X Digital', note: m.target ? `${done} of ${m.target} checkpoints done — come back with all of them for your tote bag` : 'Your checkpoints appear as exhibitors join — come back with all of them for your tote bag' }];
   }
 
   /** Give this player more checkpoints, at random, until they have CHECKPOINTS or there are no more approved booths. */

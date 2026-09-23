@@ -31,7 +31,7 @@ export interface GameHooks {
   teamOwner?(id: string): Promise<string>;
   /** The checkpoint mission (server/checkpoints.ts). */
   mission?: {
-    start(id: string, t: number): Promise<XpEvent[]>;
+    heroScan(id: string, t: number): Promise<XpEvent[]>;
     isExhibitorBooth(stationId: string): Promise<boolean>;
     scannedBefore(id: string, stationId: string): Promise<boolean>;
     onScan(id: string, stationId: string, proof: string, t: number): Promise<XpEvent[]>;
@@ -119,7 +119,7 @@ export class Game {
 
   async requirePassport(id: string): Promise<PassportRow> {
     const p = await this.passportOf(id);
-    if (!p) throw new GameError('need_passport', 'Get your digital business card first — it is free at the X, Booth 8H18A', 403);
+    if (!p) throw new GameError('need_passport', 'Make your free digital business card first', 403);
     return p;
   }
 
@@ -340,15 +340,15 @@ export class Game {
       throw new GameError('bad_proof', 'Unknown proof');
     }
 
-    // the Lean X Digital QR, scanned at 8H18A: the start of the mission, not a stamp
+    // the Lean X Digital QR, scanned at 8H18A: where you stand, and the tote bag once the checkpoints are done — not a stamp
     if (req.proof !== 'virtual' && station.id === this.level.hero.id && this.hooks.mission) {
-      const ev = await this.hooks.mission.start(id, t);
+      const ev = await this.hooks.mission.heroScan(id, t);
       if (presence === 'onsite') await this.hooks.onOnsiteProof?.(id, station.id, t);
       return ev;
     }
     // a QR at an exhibitor's booth hands the visitor's card to the exhibitor, so it needs a card
     const boothQr = req.proof !== 'virtual' && !!(await this.hooks.mission?.isExhibitorBooth(station.id));
-    if (boothQr && !(await this.passportOf(id))) throw new GameError('card', 'Register first at the Lean X Digital booth (8H18A) — then scan this booth again');
+    if (boothQr && !(await this.passportOf(id))) throw new GameError('card', 'Make your free card first — then scan this booth again');
     const scannedBefore = boothQr && !!(await this.hooks.mission?.scannedBefore(id, station.id));
 
     const events: XpEvent[] = [];

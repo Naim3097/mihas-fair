@@ -421,12 +421,14 @@ export class FairEngine implements EngineApi {
   get position(): P2 { return toPlan(this.sim.player.body.pos); }
   levelOf(p: P2): number { const d = this.level.decks; return (d.find((k) => p.y >= k.y0 - 15 && p.y <= k.y1 + 15) ?? d[0]!).level; }
 
-  /** What the trail leads to: the place the player picked; else the next checkpoint once the mission has started; else Lean X. */
+  /** What the trail leads to: the place the player picked; else the next checkpoint; else, with every checkpoint done and
+   *  the tote bag not yet claimed, Lean X. Nothing before the card (the mission starts with it) or after the claim. */
   private missionGoal(): { x: number; y: number; label: string; stationId?: string } | null {
     const t = guideTarget.value; if (t) return t;
-    const m = me.value; if (!m || m.cls === 'exhibitor') return null;
-    if (!m.mission.started) return { ...this.level.hero.dock, label: 'Lean X Digital · Booth ' + this.level.hero.id };
-    return trailCheckpoint(this.position);
+    const m = me.value; if (!m || m.cls === 'exhibitor' || !m.mission.started) return null;
+    const cp = trailCheckpoint(this.position); if (cp) return cp;
+    const done = m.mission.target > 0 && m.mission.checkpoints.filter((c) => c.done).length >= m.mission.target;
+    return done && !m.docked ? { ...this.level.hero.dock, label: 'Lean X Digital · Booth ' + this.level.hero.id + ' · your tote bag' } : null;
   }
   private get goal(): P2 {
     const target = this.missionGoal() ?? this.level.hero.dock, pos = this.position, here = this.levelOf(pos), there = this.levelOf(target);
