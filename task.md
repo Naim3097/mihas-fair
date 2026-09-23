@@ -64,8 +64,9 @@ Status: everything below is pushed to GitHub `main` and live. The 23 September i
   - The prize code (QR + 6 characters) is now shown in the game: the mission card's **Show my prize code** in chapter 3, or menu → **My prize code**. The crew scans it at `/crew.html` → Prize codes.
   - Lean X's own QR no longer starts anything: scanned, it says how many checkpoints are left, or that the tote bag is here.
 
-- [x] Onboard exhibitor, tapi visitor tak nampak avatar dia dalam game — `849686f`
+- [x] Onboard exhibitor, tapi visitor tak nampak avatar dia dalam game — `9119c2b`
   - The avatar was only there while the game tab was in front: "Open my dashboard" opens a new tab, so the game tab went to the background and stopped sending positions (the server forgets anyone quiet for 15 s). Now the dashboard itself keeps its host standing at the booth: behind the counter, facing the aisle, labelled with the company, and the booth shows "At the counter now". Going back to the game tab from there is not refused as a teleport. A locked phone still steps away, so exhibitors keep the dashboard open on the counter screen.
+  - The first push (`849686f`) took the API down for ~10 min: the server imported game code with extensionless imports, which Node ES modules on Vercel cannot resolve. Reverted (`6a6154b`), then shipped with the geometry in `shared/`. Rule: the server imports only from `server/` and `shared/`, always with `.js`.
 
 - [x] Dalam dashboard Roy tak ada QR untuk share pada teammate — `126efec`
   - It was there, on the dashboard below the QR and photo cards ("Your booth team": QR, link, WhatsApp), so on a phone it sits below the fold; the in-game **My booth** sheet had no team link at all. Now the sheet shows the same team QR, **Copy team link** and **Send on WhatsApp** under the booth QR, for the owner. Checked in Chrome on an isolated local copy: hand-over link → Continue as Roy → My booth shows the team QR; the dashboard shows the team card; a curl visitor sees Roy at his counter, labelled UOB.
