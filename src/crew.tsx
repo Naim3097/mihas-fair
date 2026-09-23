@@ -250,22 +250,62 @@ function StationsTab() {
 
 interface Beacon { id: string; name: string; url: string }
 function Beacons() {
-  const [all, setAll] = useState<Beacon[]>([]), [q, setQ] = useState('');
-  useEffect(() => { call<Beacon[]>('GET', '/api/crew/beacons').then(setAll, () => {}); }, []);
-  const hit = q.trim().toUpperCase(), list = hit ? all.filter((b) => b.id.includes(hit) || b.name.toUpperCase().includes(hit)).slice(0, 24) : [];
+  const [all, setAll] = useState<Beacon[]>([]), [online, setOnline] = useState<CrewStationRow[]>([]), [q, setQ] = useState(''), [picked, setPicked] = useState<string[]>([]);
+  useEffect(() => { call<Beacon[]>('GET', '/api/crew/beacons').then(setAll, () => {}); call<CrewStationRow[]>('GET', '/api/crew/stations').then((r) => setOnline(r.filter((x) => x.status !== 'revoked')), () => {}); }, []);
+  const company = new Map(online.map((r) => [r.id, r.company])), named = (x: Beacon): Beacon => ({ ...x, name: company.get(x.id) || x.name });
+  const byId = new Map(all.map((x) => [x.id, x]));
+  // the box takes one search, or a pasted list of booth numbers (commas, spaces or new lines)
+  const tokens = q.toUpperCase().split(/[\s,;]+/).filter(Boolean), pasted = tokens.length > 1 ? tokens.filter((t) => byId.has(t)) : [];
+  const hit = q.trim().toUpperCase(), list = hit && !pasted.length ? all.filter((x) => x.id.includes(hit) || named(x).name.toUpperCase().includes(hit)).slice(0, 24) : [];
+  const add = (ids: string[]) => setPicked((p) => [...p, ...ids.filter((id) => !p.includes(id) && byId.has(id))]);
+  const remove = (id: string) => setPicked((p) => p.filter((x) => x !== id));
+  const hall = (n: number) => all.filter((x) => x.id.startsWith(String(n))).map((x) => x.id);
+  const cards = picked.map((id) => byId.get(id)).filter((x): x is Beacon => !!x).map(named);
   return (
     <section class="sheet wide">
-      <div class="row"><h2>Printed booth QRs</h2><button class="btn" onClick={() => print()}>Print</button></div>
-      <p class="fine no-print"><b>Lean X Digital's own QR</b> (search <b>8H18A</b>) is worth printing for the counter: a visitor who scans it sees how many checkpoints they have left, or that their tote bag is here. The mission itself starts when they make their card — nobody has to come to us first. For exhibitors who will not keep a screen open: search a booth, print, and hand them the card for their counter. Each QR is signed for its booth. Scanned at MIHAS it scores +50; anywhere else, +10.</p>
-      <label class="no-print">Find booth<input value={q} placeholder="e.g. 7C17 or Mamee" onInput={(e) => setQ((e.target as HTMLInputElement).value)} /></label>
-      <div class="beacons">{list.map((b) => <BeaconCard key={b.id} b={b} />)}</div>
+      <div class="row"><h2>Printed booth QRs</h2><button class="btn primary" disabled={!cards.length} onClick={() => print()}>{cards.length ? `Print ${cards.length} ${cards.length === 1 ? 'card' : 'cards'}` : 'Print'}</button></div>
+      <p class="fine no-print"><b>Lean X Digital's own QR</b> (search <b>8H18A</b>) is worth printing for the counter: a visitor who scans it sees how many checkpoints they have left, or that their tote bag is here. The mission itself starts when they make their card — nobody has to come to us first. For exhibitors who will not keep a screen open: pick their booths, print, and hand them the card for their counter — one A4 card per booth, with the company name once they are registered. Each QR is signed for its booth. Scanned at MIHAS it scores +50; anywhere else, +10.</p>
+      <div class="picks no-print">
+        <span class="fine">Add at once:</span>
+        <button class="chip" onClick={() => add(online.map((r) => r.id))}>All online booths ({online.length})</button>
+        {[8, 7, 6].map((n) => <button key={n} class="chip" onClick={() => add(hall(n))}>Hall {n} ({hall(n).length})</button>)}
+        {picked.length > 0 && <button class="chip" onClick={() => setPicked([])}>Clear</button>}
+      </div>
+      <label class="no-print">Find booth, or paste a list of booth numbers<input value={q} placeholder="e.g. 7C17 or Mamee — or 7C17, 7C19, 6A25" onInput={(e) => setQ((e.target as HTMLInputElement).value)} /></label>
+      {pasted.length > 0 && <div class="picks no-print"><span class="fine">{pasted.length} of {tokens.length} are booths on the plan.</span><button class="chip" onClick={() => { add(pasted); setQ(''); }}>Add {pasted.length}</button></div>}
+      {list.length > 0 && <div class="beacons no-print">{list.map((x) => <BeaconCard key={x.id} b={named(x)} picked={picked.includes(x.id)} onToggle={() => (picked.includes(x.id) ? remove(x.id) : add([x.id]))} />)}</div>}
+      {cards.length > 0 && (
+        <div class="picked no-print">
+          <h3>To print ({cards.length})</h3>
+          <div class="hits">{cards.map((x) => <button key={x.id} class="chip on" onClick={() => remove(x.id)} title="Remove">{x.id}{x.name ? ` · ${x.name}` : ''} ×</button>)}</div>
+        </div>
+      )}
+      <div class="printsheet">{cards.map((x) => <PrintCard key={x.id} b={x} />)}</div>
     </section>
   );
 }
-function BeaconCard({ b }: { b: Beacon }) {
+
+function useQrSvg(text: string, cellSize: number) {
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => { const c = qrcode(0, 'M'); c.addData(b.url); c.make(); if (ref.current) ref.current.innerHTML = c.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); }, [b.url]);
-  return <div class="beacon"><div class="k">Mission X · Find the X</div><h3>{b.name || 'Booth'} <small>{b.id}</small></h3><div class="qr" ref={ref} /><p>Scan for +50 points</p></div>;
+  useEffect(() => { const c = qrcode(0, 'M'); c.addData(text); c.make(); if (ref.current) ref.current.innerHTML = c.createSvgTag({ cellSize, margin: 2, scalable: true }); }, [text, cellSize]);
+  return ref;
+}
+
+/** On screen: a small card that toggles in and out of the print run. */
+function BeaconCard({ b, picked, onToggle }: { b: Beacon; picked: boolean; onToggle: () => void }) {
+  const ref = useQrSvg(b.url, 4);
+  return (
+    <div class={'beacon' + (picked ? ' picked' : '')}>
+      <div class="k">Mission X · Find the X</div><h3>{b.name || 'Booth'} <small>{b.id}</small></h3><div class="qr" ref={ref} /><p>Scan for +50 points</p>
+      <button class={'chip' + (picked ? ' on' : '')} onClick={onToggle}>{picked ? 'Added ✓' : 'Add to print'}</button>
+    </div>
+  );
+}
+
+/** One A4 page per booth: the counter card the exhibitor's own dashboard prints, so every counter looks the same. */
+function PrintCard({ b }: { b: Beacon }) {
+  const ref = useQrSvg(b.url, 8);
+  return <div class="printqr page"><div class="k">Mission X · MIHAS 2026</div><h1>{b.name || `Booth ${b.id}`}</h1><p>Booth {b.id}</p><div class="qr" ref={ref} /><p class="big">Scan me for your checkpoint</p></div>;
 }
 
 /** Exhibitors who brought in other exhibitors: the ranking for the special prize. Points count approved booths only. */
