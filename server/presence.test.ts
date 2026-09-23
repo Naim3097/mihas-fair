@@ -21,6 +21,30 @@ test('one virtual hall: every player sees the visitors and exhibitors near them,
   assert.equal((await ping(a, 0)).holograms.length, 2);
 });
 
+test('a phone that goes quiet leaves its avatar standing where it stopped for the show day, then it is gone', async () => {
+  let now = Date.UTC(2026, 8, 23, 3, 0, 0);
+  const s = buildServices({ ...(await testStores()), secret: 'test-secret', level, publicOrigin: 'http://x.test', now: () => now });
+  const make = async (cls: 'visitor' | 'exhibitor') => { const id = await s.game.createGuest(); await s.game.start(id, cls); return id; };
+  const [walker, watcher] = [await make('visitor'), await make('visitor')];
+  await s.game.ping(walker, { x: 100, y: 60, h: 1, pose: 'jump' }, false); // mid-jump, then the phone locks
+  now += 20 * 60_000;
+  let r = await s.game.ping(watcher, { x: 104, y: 60, h: 0 }, false);
+  assert.equal(r.holograms.length, 1, 'twenty minutes later the walker is still there');
+  assert.deepEqual([r.holograms[0]!.x, r.holograms[0]!.y, r.holograms[0]!.pose], [100, 60, undefined], 'standing where they stopped, not frozen mid-jump');
+  assert.equal(r.online, 2, 'and counted as in the expo');
+  now += 5 * 3600_000;
+  r = await s.game.ping(watcher, { x: 104, y: 60, h: 0 }, false);
+  assert.equal(r.holograms.length, 1, 'five hours on, still there');
+  now += 8 * 3600_000;
+  r = await s.game.ping(watcher, { x: 104, y: 60, h: 0 }, false);
+  assert.equal(r.holograms.length, 0, 'the next day the hall is clear');
+  assert.equal(r.online, 1);
+  // coming back after hours: the first ping lands wherever they are, no speed check against a stale spot
+  now += 1000;
+  const back = await s.game.ping(walker, { x: 160, y: 90, h: 0 }, false);
+  assert.ok(back.deck === false && (await s.game.presence.position(walker, now))?.x === 160, 'accepted');
+});
+
 test('a jump across the hall is still refused and flagged; walking is not', async () => {
   let now = Date.UTC(2026, 8, 23, 3, 0, 0);
   const stores = await testStores();

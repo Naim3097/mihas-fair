@@ -150,6 +150,11 @@ export const INFLUENCE_TAU_MS = 45 * 60_000;
 export const INFLUENCE = { stamp: 1, verified_contact: 2, link_cross_crew: 1 } as const;
 export const INFLUENCE_PRESENCE: Record<Presence, number> = { remote: 0.25, onsite: 1 };
 
+/** How long an avatar keeps standing where its person last was, once the phone has gone quiet (locked, another app,
+ *  the dashboard closed). A show day: someone who stopped in the morning is still there in the afternoon, gone by
+ *  tomorrow. Being *live* (moving, counted as "here now" for the speed check) still means a ping in the last 15 s. */
+export const PRESENCE_LINGER_MS = 12 * 3600_000;
+
 /** On deck (physically there) the avatar follows the person: walking pace, not the 12 m/s of a joystick avatar. */
 export const DECK_MAX_SPEED_MPS = 2.8;
 export const DECK_STALE_MS = 10 * 60_000;

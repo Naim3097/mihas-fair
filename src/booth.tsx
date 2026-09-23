@@ -87,7 +87,7 @@ function Booth({ b, onChange }: { b: HostStation; onChange: () => void }) {
       <section class={'sheet wide status ' + b.status}>
         <div class="row"><h2>{b.company} <small>Booth {b.id}</small></h2><span class={'badge ' + b.status}>{b.status === 'approved' ? 'Approved · you are a checkpoint' : b.status === 'pending' ? 'Waiting for approval' : b.status}</span></div>
         {b.status !== 'approved' && <p class="fine">Lean X Digital checks every booth before it becomes a checkpoint in the game. Your booth, logo and photo are already in the game, visitors can already scan your QR, and you will see them below.</p>}
-        <p class="fine">While this page is open you are standing at your booth in the game, where visitors can walk up and swap cards with you. Keep it open on the counter screen; a locked phone steps away.</p>
+        <p class="fine">With this page open you are standing at your booth in the game, where visitors can walk up and swap cards with you. Close it or lock your phone and you stay there for the rest of the day.</p>
       </section>
 
       <div class="dash">
