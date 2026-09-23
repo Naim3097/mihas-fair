@@ -109,6 +109,9 @@ All nine, in one commit. Checked in Chrome on the isolated local copy: beams, th
 - [x] Notification pill bertindih dengan mission pill — `d5d709d`
   - Toasts were at the top centre, the mission card at the top left: on a phone they overlapped. Now the card and the toasts are one top-left column, a toast under whatever the card shows. Checked in Chrome on the isolated local copy with the card folded and two toasts.
 
+- [x] Buang "Whoever scans you receives" dan checklist; swap card bagi semua terus — `ac815f3`
+  - Swap cards → Show my code has no checklist; scanning someone swaps at once. A swap is the whole card both ways (name, company, role, phone, email), enforced on the server.
+
 ## Still to do
 
 - Nothing on the list. Approve or register exhibitors so visitors have 3 checkpoints.
