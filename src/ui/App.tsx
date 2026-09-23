@@ -3,7 +3,7 @@ import type { EngineApi as Engine } from '../game/engine-api';
 import { api, ApiError } from '../net/api';
 import { CHECKPOINTS, POINTS, ROLE_INFO, chapters, type Role } from '../../shared/rules';
 import type { BoothTeamPeek, HandoffPeek, PassportInput } from '../../shared/types';
-import { afterCard, autoWalk, boothAction, currentCp, gate, handoff, reachCheckpoint, referral, setGate, teamInvite, atLaunchPad, bootError, bootNote, distToGoal, goalVia, guideOn, guideTarget, herePlace, journey, level, me, modal, moveHint, nearLift, nearStation, online, panelStation, phase, seated, stampedSet, stationMap, toast, toasts } from '../state';
+import { afterCard, autoWalk, boothAction, currentCp, gate, handoff, referral, setGate, teamInvite, atLaunchPad, bootError, bootNote, distToGoal, goalVia, guideOn, guideTarget, herePlace, journey, level, me, modal, moveHint, nearLift, nearStation, online, panelStation, phase, seated, stampedSet, stationMap, toast, toasts } from '../state';
 import { facts } from '../game/facts';
 import { MapSheet, PhotoSheet } from './world-sheets';
 import { DemoChip, TourSheet } from '../demo/Tour';
@@ -193,7 +193,7 @@ function Hud({ engine }: Eng) {
             {cps.length ? <ul class="cps">{cps.map((c) => <li key={c.stationId} class={c.done ? 'done' : c.stationId === next?.stationId ? 'next' : ''}><i aria-hidden="true" />{c.company}<small>{c.stationId}</small></li>)}</ul> : <div class="via">Your checkpoints appear here as exhibitors join.</div>}
             {next && <div class="via">Next: {next.label}</div>}
             {!next && left.length > 0 && <div class="via">At the booth? Scan the Mission X QR on their counter.</div>}
-            <div class="go-row">{next && left.length > 1 ? <button class="link" onClick={(e) => { e.stopPropagation(); reachCheckpoint(next.stationId); }}>Skip this one</button> : <span />}{scanBtn('Scan QR')}</div>
+            <div class="go-row"><span />{scanBtn('Scan QR')}</div>
           </>
         )}
         {!goal && j.kind === 'exhibitor' && <div class="go-row"><span /><button class="btn primary" onClick={(e) => { e.stopPropagation(); modal.value = m.passport ? 'mybooth' : 'card'; }}>{m.hosting.length ? 'Open my booth' : 'Set up my booth'}</button></div>}
