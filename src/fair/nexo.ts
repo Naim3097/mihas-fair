@@ -26,8 +26,9 @@ const NATURAL: Partial<Record<AnimKey, number>> = { stroll: 1.05, jog: 3.0, walk
 /** The source rig's hip height, m: a body's stride scales with its own. */
 const SOURCE_HIPS = 0.96;
 const X_AXIS = new THREE.Vector3(1, 0, 0), Z_AXIS = new THREE.Vector3(0, 0, 1);
-/** The meshopt decode off the main thread: the body and the clip library both carry it. */
-(MeshoptDecoder as { useWorkers?: (n: number) => void }).useWorkers?.(1);
+// No decoder workers (MeshoptDecoder.useWorkers): three's copy of the decoder writes its worker's source with the
+// literal name workerProcess, which the production minifier renames; the worker dies on load and every decode waits
+// for an answer that never comes, so the body and the clip library never arrive. The decode stays on the main thread.
 /** What every body cut from one file shares: its rest bounds, its skinned meshes' culling spheres and the library
  *  retargeted onto its skeleton, all measured on the first body so the next ones cost no skinned pass. */
 const SHARED = new Map<GLTF, { box: THREE.Box3; spheres: THREE.Sphere[]; clips: Map<AnimKey, THREE.AnimationClip> | null }>();

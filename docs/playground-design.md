@@ -500,7 +500,7 @@ a phone) and the build played at phone size. Fixed in the same pass: the Playgro
 before its engine, Back throwing a run away, a summary nobody saw on leaving, two kits stacking on the body, a
 button held through a run's end keeping the thrust on, the world resetting behind the summary sheet, the Jump
 label and hint on the Jetpack, the silent step back to Boots, the boards' error copy, every body retargeting the
-whole clip library and disposing the file's shared geometry, meshopt on the main thread, the stand models fetched
+whole clip library and disposing the file's shared geometry, the stand models fetched
 on entry, the second skate file, kits in the shadow map on every tier, the label atlases rebuilt on every station
 poll. What waits for a decision or a later pass is listed at the end of the audit.
 
