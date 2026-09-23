@@ -156,9 +156,10 @@ test('the crew registers an exhibitor at the counter: card and booth in one go, 
   assert.equal((await reg({ email: 'nope' })).json.code, 'email');
   const made = await reg({});
   assert.equal(made.status, 200, made.json?.error);
-  const row = made.json.data as { stationId: string; company: string; status: string; url: string; taken: boolean; code: string };
+  const row = made.json.data as { stationId: string; company: string; status: string; url: string; teamUrl: string; taken: boolean; code: string };
   assert.deepEqual([row.stationId, row.company, row.status, row.taken], ['7C17', 'Kencana Foods', 'approved', false]);
   assert.match(row.url, /^http:\/\/x\.test\/\?join=[A-Z2-9]{8}$/);
+  assert.match(row.teamUrl, /^http:\/\/x\.test\/\?team=[A-Z2-9]{8}$/, 'and the booth-team link for colleagues, handed out at the same time');
   assert.equal((await reg({})).json.code, 'taken', 'the booth is online now');
   assert.equal(((await r.crew.call('GET', '/api/crew/registered')).json.data as { stationId: string }[]).map((x) => x.stationId).join(), '7C17');
   // in the world, approved, so a checkpoint for visitors

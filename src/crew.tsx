@@ -116,7 +116,7 @@ function Register() {
     catch (x) { setErr((x as Error).message); }
     finally { setBusy(false); }
   };
-  const wa = (r: HandoffRow) => `https://wa.me/${r.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${r.name}, your ${r.company} booth (${r.stationId}) is set up in Mission X for MIHAS 2026. Open this link on your phone to take it over — your booth QR, your visitors and your dashboard are inside: ${r.url}`)}`;
+  const wa = (r: HandoffRow) => `https://wa.me/${r.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${r.name}, your ${r.company} booth (${r.stationId}) is set up in Mission X for MIHAS 2026.\n\nOpen this link on your phone to take it over — your booth QR, your visitors and your dashboard are inside: ${r.url}\n\nColleagues working the booth? Send them this one; each joins on their own phone and sees the same dashboard: ${r.teamUrl}`)}`;
   return (
     <section>
       {done && (
@@ -166,18 +166,29 @@ function Register() {
     </section>
   );
 }
+/** Two links for the counter: the account for the person registered, and the booth team for their colleagues. */
 function HandoffCard({ r, wa }: { r: HandoffRow; wa: string }) {
-  const [copied, setCopied] = useState(false);
-  const copy = async () => { try { await navigator.clipboard.writeText(r.url); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* the link is on screen */ } };
+  const [copied, setCopied] = useState<'join' | 'team' | null>(null);
+  const copy = (which: 'join' | 'team') => async () => { try { await navigator.clipboard.writeText(which === 'join' ? r.url : r.teamUrl); setCopied(which); setTimeout(() => setCopied(null), 2000); } catch { /* the link is on screen */ } };
   return (
-    <div class="teamlink">
-      <Qr text={r.url} label={`Hand-over QR for booth ${r.stationId}`} />
-      <div>
-        <p class="fine" style={{ margin: '0 0 6px' }}><b>{r.company} · Booth {r.stationId}</b> · {r.name}. Let them scan this QR with their phone camera, or send the link.</p>
-        <div class="reflink"><code>{r.url}</code></div>
-        <div class="stack two"><button type="button" class="btn primary big" onClick={copy}>{copied ? 'Link copied' : 'Copy link'}</button><a class="btn big" href={wa} target="_blank" rel="noopener">Send on WhatsApp</a></div>
+    <>
+      <div class="teamlink">
+        <Qr text={r.url} label={`Hand-over QR for booth ${r.stationId}`} />
+        <div>
+          <p class="fine" style={{ margin: '0 0 6px' }}><b>Their account</b> · {r.company} · Booth {r.stationId} · {r.name}. Let them scan this QR with their phone camera, or send the link. It makes the account theirs.</p>
+          <div class="reflink"><code>{r.url}</code></div>
+          <div class="stack two"><button type="button" class="btn primary big" onClick={copy('join')}>{copied === 'join' ? 'Link copied' : 'Copy their link'}</button><a class="btn big" href={wa} target="_blank" rel="noopener">Send both on WhatsApp</a></div>
+        </div>
       </div>
-    </div>
+      <div class="teamlink">
+        <Qr text={r.teamUrl} label={`Booth team QR for ${r.company}`} />
+        <div>
+          <p class="fine" style={{ margin: '0 0 6px' }}><b>Their booth team</b> · for colleagues working the {r.company} booth. Each opens it on their own phone, fills in their own card, and sees the same dashboard. Up to 20 people; only {r.name} can change the team.</p>
+          <div class="reflink"><code>{r.teamUrl}</code></div>
+          <div class="stack two"><button type="button" class="btn big" onClick={copy('team')}>{copied === 'team' ? 'Link copied' : 'Copy team link'}</button></div>
+        </div>
+      </div>
+    </>
   );
 }
 

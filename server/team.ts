@@ -36,6 +36,9 @@ export class BoothTeam {
     return code;
   }
 
+  /** The owner's invitation link: colleagues open it on their own phone and join the booth team. */
+  async inviteLink(ownerId: string): Promise<string> { return `${this.g.publicOrigin}/?team=${await this.code(ownerId)}`; }
+
   async view(id: string): Promise<TeamView> {
     const owner = await this.ownerFor(id), booths = await this.booths(owner);
     if (!booths.length) throw new GameError('no_booth', 'Bring your booth online first', 404);
@@ -44,7 +47,7 @@ export class BoothTeam {
       'SELECT t.member_id, p.name, p.phone, p.email, t.joined_at FROM booth_team t JOIN passports p ON p.player_id = t.member_id WHERE t.owner_id = ? ORDER BY t.joined_at', [owner]);
     return {
       owner: owner === id, company: booths[0]!.company, ownerName: lead?.name ?? '',
-      link: owner === id ? `${this.g.publicOrigin}/?team=${await this.code(owner)}` : null,
+      link: owner === id ? await this.inviteLink(owner) : null,
       members: members.map((m) => ({ key: m.member_id, name: m.name, phone: m.phone, email: m.email, joinedAt: m.joined_at })),
     };
   }

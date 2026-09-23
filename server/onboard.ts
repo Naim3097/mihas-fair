@@ -5,6 +5,7 @@
 import { Game, GameError, cleanText } from './game.js';
 import { shortCode } from './crypto.js';
 import type { Stations } from './stations.js';
+import type { BoothTeam } from './team.js';
 import type { CrewRegisterInput, HandoffPeek, HandoffRow } from '../shared/types.js';
 import { HANDOFF_TTL_MS } from '../shared/rules.js';
 
@@ -14,11 +15,12 @@ const ROWS = `SELECT h.station_id, h.owner_id, h.code, h.created_at, h.taken_at,
               LEFT JOIN stations s ON s.station_id = h.station_id AND s.owner_id = h.owner_id`;
 
 export class Onboarding {
-  constructor(private g: Game, private stations: Stations) {}
+  constructor(private g: Game, private stations: Stations, private team: BoothTeam) {}
 
   private url(code: string) { return `${this.g.publicOrigin}/?join=${code}`; }
-  private row(r: HandoffDb): HandoffRow {
-    return { stationId: r.station_id, company: r.company ?? '', name: r.name, phone: r.phone, email: r.email, code: r.code, url: this.url(r.code), createdAt: r.created_at, taken: r.taken_at != null, status: r.status === 'approved' || r.status === 'pending' || r.status === 'revoked' ? r.status : 'released' };
+  /** The crew hands out two links: the account (join) and, for colleagues, the booth team (team). */
+  private async row(r: HandoffDb): Promise<HandoffRow> {
+    return { stationId: r.station_id, company: r.company ?? '', name: r.name, phone: r.phone, email: r.email, code: r.code, url: this.url(r.code), teamUrl: await this.team.inviteLink(r.owner_id), createdAt: r.created_at, taken: r.taken_at != null, status: r.status === 'approved' || r.status === 'pending' || r.status === 'revoked' ? r.status : 'released' };
   }
 
   /** Crew: an exhibitor's card and booth in one go. The booth is approved — the crew has them in front of them. */
@@ -45,7 +47,9 @@ export class Onboarding {
 
   /** Crew: everyone registered this way, newest first, with their hand-over links. */
   async list(): Promise<HandoffRow[]> {
-    return (await this.g.db.all<HandoffDb>(`${ROWS} ORDER BY h.created_at DESC`)).map((r) => this.row(r));
+    const rows = await this.g.db.all<HandoffDb>(`${ROWS} ORDER BY h.created_at DESC`), out: HandoffRow[] = [];
+    for (const r of rows) out.push(await this.row(r));
+    return out;
   }
 
   private async byCode(rawCode: unknown): Promise<HandoffDb> {
