@@ -80,6 +80,9 @@ Status: everything below is pushed to GitHub `main` and live. The 23 September i
 - [x] Crew boleh upload logo dan backdrop untuk exhibitor yang didaftarkan, dari /crew.html — `75c1e63`
   - **Booths** tab: every booth has a Logo and a Booth photo cell with the thumbnail and an **Upload** chip. **Register**: after saving an exhibitor, two rows under the hand-over links, Upload logo and Upload booth photo. Both are on the booth in the game the moment they are saved; the exhibitor can still change them from their dashboard. Checked in Chrome on the isolated local copy.
 
+- [x] Booth QRs boleh print bulk — `9719265`
+  - **Booth QRs**: add booths to a print run with **All online booths**, **Hall 8 / 7 / 6**, a pasted list of booth numbers (e.g. `7C17, 7C19, 6A25`; numbers not on the plan are dropped), or **Add to print** on a search result. **Print N cards** prints one A4 card per booth, the same counter card the exhibitor's dashboard prints, with the company name once registered. Checked in Chrome on the isolated local copy.
+
 ## Still to do
 
 - Nothing on the list. Approve or register exhibitors so visitors have 3 checkpoints.
