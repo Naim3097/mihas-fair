@@ -71,6 +71,9 @@ Status: everything below is pushed to GitHub `main` and live. The 23 September i
 - [x] Dalam dashboard Roy tak ada QR untuk share pada teammate — `126efec`
   - It was there, on the dashboard below the QR and photo cards ("Your booth team": QR, link, WhatsApp), so on a phone it sits below the fold; the in-game **My booth** sheet had no team link at all. Now the sheet shows the same team QR, **Copy team link** and **Send on WhatsApp** under the booth QR, for the owner. Checked in Chrome on an isolated local copy: hand-over link → Continue as Roy → My booth shows the team QR; the dashboard shows the team card; a curl visitor sees Roy at his counter, labelled UOB.
 
+- [x] Visitor pun kekal di tempat terakhir dia berhenti, macam exhibitor — `ce36ea8`
+  - Anyone whose phone goes quiet (locked, another app, the dashboard closed) keeps standing where they stopped, still and out of any pose, for 12 hours (`PRESENCE_LINGER_MS` in `shared/rules.ts`): there all show day, gone by tomorrow. "N in the expo now" counts them. Coming back hours later lands wherever the game puts you. This also removes the dashboard caveat: an exhibitor stays at the counter after closing it.
+
 ## Still to do
 
 - Nothing on the list. Approve or register exhibitors so visitors have 3 checkpoints.
