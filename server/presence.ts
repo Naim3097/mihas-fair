@@ -1,8 +1,11 @@
 import type { Hologram } from '../shared/types.js';
-import { DECK_MAX_SPEED_MPS, MAX_SPEED_MPS } from '../shared/rules.js';
+import { DECK_MAX_SPEED_MPS, MAX_SPEED_MPS, PRESENCE_LINGER_MS } from '../shared/rules.js';
 import type { Db } from './db/types.js';
 
+/** A ping this recent means the person is live: their position is current and the speed check applies. */
 export const FRESH_MS = 15_000;
+/** Quiet longer than this and the avatar is gone; until then it stands where the person last was. */
+const LINGER_MS = PRESENCE_LINGER_MS;
 /** How long a position this instance saw itself stands in for a database read (a ping every 2 s, or 12 s off site). */
 const LAST_FRESH_MS = 13_000;
 type Dot = { x: number; y: number; cls: Hologram['cls']; deck: boolean };
@@ -12,7 +15,8 @@ export interface Presence {
   /** Returns the metres accepted, or null when the move is implausibly fast (the previous position is kept). */
   update(p: Hologram, now: number, isSpawn: boolean): Promise<number | null>;
   position(id: string, now: number): Promise<{ x: number; y: number } | null>;
-  /** Others never get a real person's exact spot: deck positions are snapped to a 1.5 m lattice. Hidden players are omitted. */
+  /** Everyone seen within LINGER_MS, nearest first: the live ones and the ones standing where they stopped.
+   *  Others never get a real person's exact spot: deck positions are snapped to a 1.5 m lattice. Hidden players are omitted. */
   near(id: string, x: number, y: number, now: number, hidden: ReadonlySet<string>, radius?: number, limit?: number): Promise<Hologram[]>;
   /** Every fresh position, for the booth's big screen: crew colour and whether the person is really there — nothing else. */
   all(now: number, hidden: ReadonlySet<string>): Promise<Dot[]>;
@@ -29,9 +33,10 @@ function tooFast(prev: { x: number; y: number; deck: boolean; sigma: number; t: 
   if (p.deck) return { moved, refuse: moved > DECK_MAX_SPEED_MPS * dt + Math.min(prev.sigma, p.sigma) };
   return { moved, refuse: moved / dt > MAX_SPEED_MPS };
 }
-function publicView(e: Hologram, d: number): Hologram & { d: number } {
+/** `live` is false for someone whose phone has gone quiet: they stand still, whatever pose their last ping carried. */
+function publicView(e: Hologram, d: number, live: boolean): Hologram & { d: number } {
   const q = e.deck ? 1.5 : 0;
-  return { id: e.id.slice(0, 8), callsign: e.callsign, cls: e.cls, x: q ? Math.round(e.x / q) * q : e.x, y: q ? Math.round(e.y / q) * q : e.y, h: e.h, av: e.av, pose: e.pose || undefined, deck: e.deck, sigma: e.sigma, d };
+  return { id: e.id.slice(0, 8), callsign: e.callsign, cls: e.cls, x: q ? Math.round(e.x / q) * q : e.x, y: q ? Math.round(e.y / q) * q : e.y, h: e.h, av: e.av, pose: live ? e.pose || undefined : undefined, deck: e.deck, sigma: e.sigma, d };
 }
 const nearest = (list: (Hologram & { d: number })[], limit: number) => list.sort((a, b) => a.d - b.d).slice(0, limit).map(({ d: _d, ...h }) => h);
 
@@ -53,19 +58,19 @@ export class PresenceStore implements Presence {
   async near(id: string, x: number, y: number, now: number, hidden: ReadonlySet<string>, radius = 90, limit = 60) {
     const out: (Hologram & { d: number })[] = [];
     for (const [k, e] of this.map) {
-      if (now - e.t > FRESH_MS) { this.map.delete(k); continue; }
+      if (now - e.t > LINGER_MS) { this.map.delete(k); continue; }
       if (k === id || hidden.has(k)) continue;
       const d = Math.hypot(e.x - x, e.y - y);
-      if (d <= radius) out.push(publicView(e, d));
+      if (d <= radius) out.push(publicView(e, d, now - e.t <= FRESH_MS));
     }
     return nearest(out, limit);
   }
   async all(now: number, hidden: ReadonlySet<string>) {
     const out: Dot[] = [];
-    for (const [k, e] of this.map) if (now - e.t <= FRESH_MS && !hidden.has(k)) out.push({ x: +e.x.toFixed(1), y: +e.y.toFixed(1), cls: e.cls, deck: e.deck });
+    for (const [k, e] of this.map) if (now - e.t <= LINGER_MS && !hidden.has(k)) out.push({ x: +e.x.toFixed(1), y: +e.y.toFixed(1), cls: e.cls, deck: e.deck });
     return out;
   }
-  async online(now: number) { let n = 0; for (const e of this.map.values()) if (now - e.t <= FRESH_MS) n++; return n; }
+  async online(now: number) { let n = 0; for (const e of this.map.values()) if (now - e.t <= LINGER_MS) n++; return n; }
 }
 
 interface Row { player_id: string; callsign: string; cls: Hologram['cls']; pose: string; av: string; x: number; y: number; h: number; deck: number; sigma: number; t: number }
@@ -114,16 +119,16 @@ export class DbPresence implements Presence {
     return e ? { x: e.x, y: e.y } : null;
   }
   async near(id: string, x: number, y: number, now: number, _hidden: ReadonlySet<string>, radius = 90, limit = 60) {
-    const rows = await this.db.all<Row>(`SELECT * FROM presence WHERE t >= ? AND player_id != ? AND x BETWEEN ? AND ? AND y BETWEEN ? AND ? AND ${NOT_HIDDEN} LIMIT 400`, [now - FRESH_MS, id, x - radius, x + radius, y - radius, y + radius]);
-    const out = rows.map((e) => publicView({ id: e.player_id, callsign: e.callsign, cls: e.cls, av: e.av, pose: (e.pose || undefined) as Hologram['pose'], x: e.x, y: e.y, h: e.h, deck: e.deck === 1, sigma: e.sigma }, Math.hypot(e.x - x, e.y - y))).filter((e) => e.d <= radius);
+    const rows = await this.db.all<Row>(`SELECT * FROM presence WHERE t >= ? AND player_id != ? AND x BETWEEN ? AND ? AND y BETWEEN ? AND ? AND ${NOT_HIDDEN} LIMIT 400`, [now - LINGER_MS, id, x - radius, x + radius, y - radius, y + radius]);
+    const out = rows.map((e) => publicView({ id: e.player_id, callsign: e.callsign, cls: e.cls, av: e.av, pose: (e.pose || undefined) as Hologram['pose'], x: e.x, y: e.y, h: e.h, deck: e.deck === 1, sigma: e.sigma }, Math.hypot(e.x - x, e.y - y), now - e.t <= FRESH_MS)).filter((e) => e.d <= radius);
     return nearest(out, limit);
   }
   async all(now: number, _hidden: ReadonlySet<string>) {
-    const rows = await this.db.all<Row>(`SELECT x, y, cls, deck FROM presence WHERE t >= ? AND ${NOT_HIDDEN} LIMIT 2000`, [now - FRESH_MS]);
+    const rows = await this.db.all<Row>(`SELECT x, y, cls, deck FROM presence WHERE t >= ? AND ${NOT_HIDDEN} LIMIT 2000`, [now - LINGER_MS]);
     return rows.map((e) => ({ x: +e.x.toFixed(1), y: +e.y.toFixed(1), cls: e.cls, deck: e.deck === 1 }));
   }
   async online(now: number) {
-    if (now - this.count.at > 8000) this.count = { at: now, n: (await this.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM presence WHERE t >= ?', [now - FRESH_MS]))?.n ?? 0 };
+    if (now - this.count.at > 8000) this.count = { at: now, n: (await this.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM presence WHERE t >= ?', [now - LINGER_MS]))?.n ?? 0 };
     return this.count.n;
   }
 }

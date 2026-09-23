@@ -1,8 +1,8 @@
 # Mission X · Nexova — the MIHAS 2026 expo as a fair in space
 
 Lean X Digital's expo game: the whole MIHAS 2026 show floor (MITEC, three levels, 1,599 booths from the organiser's
-floor plan) as a fair floating in space, walked in third person as Nexo. Visitors stamp booths, meet people and find
-the X at Booth 8H18A for a free digital business card; exhibitors put their booth in the game and collect leads.
+floor plan) as a fair floating in space, walked in third person as Nexo. Visitors make a free digital business card,
+scan the QR at the exhibitor booths on their list and claim a tote bag at Booth 8H18A; exhibitors put their booth in the game and collect leads.
 Unofficial — not affiliated with MATRADE or MIHAS.
 
 ## Run it
@@ -25,7 +25,7 @@ npm run live       # prints http://<your LAN address>:8787/
 
 - `/` — the fair. Tap or click to walk, WASD or arrows, Shift walks, Space jumps, C rolls, E does the thing in
   front of you, 1 2 3 wave / cheer / dance, M the map, drag to look, pinch or wheel to zoom.
-- `/crew.html` — booth staff (the crew PIN), `/screen.html` — the big screen for a stand.
+- `/crew.html` — booth staff (the crew PIN): prize codes, leads, booth approval, printed QRs, and **Register** for signing an exhibitor up at the counter (they get a `/?join=CODE` link that hands them the account). `/screen.html` — the big screen for a stand.
 - `/p/<slug>` — a visitor's card page.
 
 ## Deploy

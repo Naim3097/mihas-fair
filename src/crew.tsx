@@ -1,14 +1,18 @@
 // Crew console for booth staff: scan prize codes, see leads, check booths, print booth QRs.
 import { render } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { Camera } from './ui/common';
+import { Camera, Qr } from './ui/common';
+import { shrink } from './ui/images';
 import { OpsTab, ReviewTab } from './crew-ops';
 import qrcode from 'qrcode-generator';
 import './ui.css';
 import './crew.css';
 import './demo/demo.css';
 import { demo, demoState, ensureBackend } from './demo/client';
-import type { CrewStationRow, CrewTicketView, ReferralRow } from '../shared/types';
+import { waLink } from '../shared/rules';
+import type { CrewRegisterInput, CrewStationRow, CrewTicketView, HandoffRow, ReferralRow } from '../shared/types';
+
+const when = (t: number) => new Date(t).toLocaleString('en-MY', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 
 type Res<T> = { ok: true; data: T } | { ok: false; error: string; code: string };
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -27,17 +31,17 @@ function extractTicket(raw: string): string {
 
 function Crew() {
   const [authed, setAuthed] = useState<boolean | null>(null);
-  const [tab, setTab] = useState<'scan' | 'leads' | 'stations' | 'review' | 'ops' | 'beacons' | 'referrals'>('scan');
+  const [tab, setTab] = useState<'scan' | 'register' | 'leads' | 'stations' | 'review' | 'ops' | 'beacons' | 'referrals'>('scan');
   useEffect(() => { call('GET', '/api/crew/check').then(() => setAuthed(true), () => setAuthed(false)); }, []);
   if (authed === null) return <main class="console"><p>Loading…</p></main>;
   if (!authed) return <Login onDone={() => setAuthed(true)} />;
   return (
     <main class="console">
       <header><div class="brand"><span>lean<b>.x</b>digital</span><i /><span>Crew console</span></div>
-        <nav>{([['scan', 'Scan'], ['leads', 'Leads'], ['stations', 'Booths'], ['review', 'Review'], ['ops', 'Live'], ['beacons', 'Booth QRs'], ['referrals', 'Referrals']] as const).map(([t, label]) => <button key={t} class={'chip' + (tab === t ? ' on' : '')} onClick={() => setTab(t)}>{label}</button>)}
+        <nav>{([['scan', 'Scan'], ['register', 'Register'], ['leads', 'Leads'], ['stations', 'Booths'], ['review', 'Review'], ['ops', 'Live'], ['beacons', 'Booth QRs'], ['referrals', 'Referrals']] as const).map(([t, label]) => <button key={t} class={'chip' + (tab === t ? ' on' : '')} onClick={() => setTab(t)}>{label}</button>)}
           <button class="chip ghost" onClick={() => call('POST', '/api/crew/logout').finally(() => setAuthed(false))}>Sign out</button></nav></header>
       {demo.value && <p class="demobar"><b>Demo mode.</b> This console talks to the demo world inside this browser — the same one the game tab is playing in. Leads, stations and the accounts under review belong to a simulated cast; your own demo player is in there too.</p>}
-      {tab === 'scan' && <Scan />}{tab === 'leads' && <Leads />}{tab === 'stations' && <StationsTab />}{tab === 'review' && <ReviewTab />}{tab === 'ops' && <OpsTab />}{tab === 'beacons' && <Beacons />}{tab === 'referrals' && <Referrals />}
+      {tab === 'scan' && <Scan />}{tab === 'register' && <Register />}{tab === 'leads' && <Leads />}{tab === 'stations' && <StationsTab />}{tab === 'review' && <ReviewTab />}{tab === 'ops' && <OpsTab />}{tab === 'beacons' && <Beacons />}{tab === 'referrals' && <Referrals />}
     </main>
   );
 }
@@ -82,7 +86,9 @@ function Scan() {
         <div class="sheet wide">
           <div class="k gold">Prize code</div><h2>{ticket.view.name}</h2>
           <p class="lead">{[ticket.view.role, ticket.view.company].filter(Boolean).join(' · ')}<br /><small>{ticket.view.callsign}</small></p>
-          {ticket.view.checkpoints && <p class={'banner ' + (ticket.view.checkpoints.started && ticket.view.checkpoints.target > 0 && ticket.view.checkpoints.done >= ticket.view.checkpoints.target ? 'ok' : 'bad')}>{!ticket.view.checkpoints.started ? 'Has not started the mission (never scanned the Lean X QR)' : `Checkpoints: ${ticket.view.checkpoints.done} of ${ticket.view.checkpoints.target}`}</p>}
+          <p class="fine">{ticket.view.phone && <a href={waLink(ticket.view.phone)} target="_blank" rel="noopener">{ticket.view.phone}</a>}{ticket.view.phone && ticket.view.email ? ' · ' : ''}{ticket.view.email && <a href={`mailto:${ticket.view.email}`}>{ticket.view.email}</a>}{!ticket.view.phone && !ticket.view.email && 'No phone or email on the card'} · in the game as {ticket.view.callsign}</p>
+          {ticket.view.scans.length > 0 ? <ul class="scanlist">{ticket.view.scans.map((x) => <li key={x.stationId}><b>{x.company || 'Booth'}</b> <small>{x.stationId} · {when(x.at)}</small></li>)}</ul> : <p class="fine">They have not scanned any booth QR.</p>}
+          {ticket.view.checkpoints && <p class={'banner ' + (ticket.view.checkpoints.started && ticket.view.checkpoints.target > 0 && ticket.view.checkpoints.done >= ticket.view.checkpoints.target ? 'ok' : 'bad')}>{ticket.view.checkpoints.target === 0 ? 'No checkpoints yet (none were available when they registered)' : `Checkpoints: ${ticket.view.checkpoints.done} of ${ticket.view.checkpoints.target}`}</p>}
           {ticket.view.alreadyDocked ? <p class="banner bad">Already claimed — do not hand out a second gift.</p> : <button class="btn primary big" onClick={dock}>Confirm · +500 points and the gift</button>}
           <button class="btn big" style={{ marginTop: '8px' }} onClick={() => setTicket(null)}>Back</button>
         </div>
@@ -100,6 +106,100 @@ function Scan() {
   );
 }
 
+/** The second way in for exhibitors: the crew registers them at the counter — card and booth in one go, approved — and
+ *  hands them a link (or its QR). Opened on their phone, that account becomes theirs. */
+function Register() {
+  const blank: CrewRegisterInput = { stationId: '', company: '', name: '', role: '', phone: '', email: '', offer: '', link: '', consent: false };
+  const [f, setF] = useState(blank), [booths, setBooths] = useState<{ id: string; name: string }[]>([]), [rows, setRows] = useState<HandoffRow[] | null>(null);
+  const [done, setDone] = useState<HandoffRow | null>(null), [err, setErr] = useState(''), [busy, setBusy] = useState(false), [show, setShow] = useState<string | null>(null);
+  const load = () => call<HandoffRow[]>('GET', '/api/crew/registered').then(setRows, () => setRows([]));
+  useEffect(() => { void load(); call<{ id: string; name: string }[]>('GET', '/api/crew/beacons').then(setBooths, () => {}); }, []);
+  const set = (k: keyof CrewRegisterInput) => (e: Event) => { const t = e.target as HTMLInputElement; const v = t.type === 'checkbox' ? t.checked : t.value; setF((p) => ({ ...p, [k]: v })); };
+  const T = f.stationId.trim().toUpperCase().replace(/\s+/g, ''), hits = T && !booths.some((b) => b.id === T) ? booths.filter((b) => b.id.startsWith(T)).slice(0, 8) : [];
+  const submit = async (e: Event) => {
+    e.preventDefault(); setErr(''); setBusy(true);
+    try { const r = await call<HandoffRow>('POST', '/api/crew/register', { ...f, stationId: T }); setDone(r); setShow(r.stationId); setF(blank); await load(); }
+    catch (x) { setErr((x as Error).message); }
+    finally { setBusy(false); }
+  };
+  const wa = (r: HandoffRow) => waLink(r.phone, `Hi ${r.name}, your ${r.company} booth (${r.stationId}) is set up in Mission X for MIHAS 2026.\n\nOpen this link on your phone to take it over — your booth QR, your visitors and your dashboard are inside: ${r.url}\n\nColleagues working the booth? Send them this one; each joins on their own phone and sees the same dashboard: ${r.teamUrl}`);
+  return (
+    <section>
+      {done && (
+        <div class="sheet wide">
+          <p class="banner ok" role="status">{done.company} · Booth {done.stationId} is online and approved, with a card for {done.name}. Hand them the link:</p>
+          <HandoffCard r={done} wa={wa(done)} />
+          <div class="logo-row"><p class="fine" style={{ margin: 0 }}><b>Their logo</b> · on their counter and the sign over their booth in the game. A PNG with a transparent background looks best.</p><ImageUpload stationId={done.stationId} kind="logo" big /></div>
+          <div class="logo-row"><p class="fine" style={{ margin: 0 }}><b>Their booth photo</b> · the backdrop on the back wall of their virtual booth. Either can also be uploaded from their dashboard later.</p><ImageUpload stationId={done.stationId} kind="photo" big /></div>
+          <button class="btn big" style={{ marginTop: '8px' }} onClick={() => setDone(null)}>Register another</button>
+        </div>
+      )}
+      <form class="sheet wide" onSubmit={submit}>
+        <h2>Register an exhibitor</h2>
+        <p class="fine">For exhibitors who come to the counter rather than signing up in the game themselves. Fill in their booth and details; they get a link that makes the account theirs on their own phone. The booth is approved as you save it — you have them in front of you.</p>
+        <div class="frow">
+          <label>Booth number<input required maxLength={8} autocapitalize="characters" placeholder="e.g. 7C17" value={f.stationId} onInput={set('stationId')} />
+            {hits.length > 0 && <div class="hits">{hits.map((b) => <button type="button" key={b.id} class="chip" onClick={() => setF((p) => ({ ...p, stationId: b.id }))}>{b.id}</button>)}</div>}</label>
+          <label>Company name on the booth<input required maxLength={80} value={f.company} onInput={set('company')} /></label>
+        </div>
+        <div class="frow">
+          <label>Contact person<input required maxLength={80} autocomplete="off" value={f.name} onInput={set('name')} /></label>
+          <label>Their role <span class="opt">optional</span><input maxLength={80} autocomplete="off" value={f.role} onInput={set('role')} /></label>
+        </div>
+        <div class="frow">
+          <label>WhatsApp / phone<input required type="tel" inputMode="tel" autocomplete="off" placeholder="+60…" value={f.phone} onInput={set('phone')} /></label>
+          <label>Email<input required type="email" autocomplete="off" value={f.email} onInput={set('email')} /></label>
+        </div>
+        <div class="frow">
+          <label>One line for visitors <span class="opt">optional</span><input maxLength={120} placeholder="e.g. Free samples at 3 pm" value={f.offer} onInput={set('offer')} /></label>
+          <label>Website <span class="opt">optional</span><input maxLength={200} inputMode="url" placeholder="company.com" value={f.link} onInput={set('link')} /></label>
+        </div>
+        <label class="check"><input type="checkbox" checked={f.consent} onChange={set('consent')} /><span>The exhibitor has read the <a href="/privacy.html" target="_blank" rel="noopener">Privacy Notice</a> and agrees to Lean X Digital processing these details to run Mission X.</span></label>
+        {err && <p class="banner bad" role="alert">{err}</p>}
+        <button class="btn primary big" disabled={busy}>{busy ? 'Saving…' : 'Register and make their link'}</button>
+      </form>
+      <div class="sheet wide">
+        <div class="row"><h2>Registered at the counter {rows ? `(${rows.length})` : ''}</h2><button class="btn" onClick={load}>Refresh</button></div>
+        <p class="fine">“Taken” = the exhibitor has opened their link. A link works for 30 days; register the booth again after a Release to make a new one.</p>
+        {rows && rows.length === 0 && <p class="lead">Nobody yet.</p>}
+        {!!rows?.length && (
+          <div class="scroll"><table><thead><tr><th>Booth</th><th>Company</th><th>Contact</th><th>Status</th><th>Link</th><th></th></tr></thead>
+            <tbody>{rows.map((r) => (
+              <tr key={r.stationId}><td>{r.stationId}</td><td>{r.company || <small>released</small>}</td><td>{r.name}<br /><small>{r.phone} · {r.email}</small></td><td>{r.status}</td><td>{r.taken ? <span class="badge approved">Taken</span> : <small>not yet opened</small>}</td>
+                <td class="acts">{r.status !== 'released' && <button class="chip" onClick={() => setShow(show === r.stationId ? null : r.stationId)}>{show === r.stationId ? 'Hide link' : 'Show link'}</button>}</td></tr>
+            ))}</tbody></table></div>
+        )}
+        {rows?.filter((r) => r.stationId === show && r.status !== 'released').map((r) => <HandoffCard key={r.code} r={r} wa={wa(r)} />)}
+      </div>
+    </section>
+  );
+}
+/** Two links for the counter: the account for the person registered, and the booth team for their colleagues. */
+function HandoffCard({ r, wa }: { r: HandoffRow; wa: string }) {
+  const [copied, setCopied] = useState<'join' | 'team' | null>(null);
+  const copy = (which: 'join' | 'team') => async () => { try { await navigator.clipboard.writeText(which === 'join' ? r.url : r.teamUrl); setCopied(which); setTimeout(() => setCopied(null), 2000); } catch { /* the link is on screen */ } };
+  return (
+    <>
+      <div class="teamlink">
+        <Qr text={r.url} label={`Hand-over QR for booth ${r.stationId}`} />
+        <div>
+          <p class="fine" style={{ margin: '0 0 6px' }}><b>Their account</b> · {r.company} · Booth {r.stationId} · {r.name}. Let them scan this QR with their phone camera, or send the link. It makes the account theirs.</p>
+          <div class="reflink"><code>{r.url}</code></div>
+          <div class="stack two"><button type="button" class="btn primary big" onClick={copy('join')}>{copied === 'join' ? 'Link copied' : 'Copy their link'}</button><a class="btn big" href={wa} target="_blank" rel="noopener">Send both on WhatsApp</a></div>
+        </div>
+      </div>
+      <div class="teamlink">
+        <Qr text={r.teamUrl} label={`Booth team QR for ${r.company}`} />
+        <div>
+          <p class="fine" style={{ margin: '0 0 6px' }}><b>Their booth team</b> · for colleagues working the {r.company} booth. Each opens it on their own phone, fills in their own card, and sees the same dashboard. Up to 20 people; only {r.name} can change the team.</p>
+          <div class="reflink"><code>{r.teamUrl}</code></div>
+          <div class="stack two"><button type="button" class="btn big" onClick={copy('team')}>{copied === 'team' ? 'Link copied' : 'Copy team link'}</button></div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 type Lead = Record<string, string | number | null>;
 function Leads() {
   const [rows, setRows] = useState<Lead[] | null>(null);
@@ -114,6 +214,25 @@ function Leads() {
   );
 }
 
+/** The crew puts a logo or a booth photo (the backdrop) up for the exhibitor: on their booth in the game the moment it is saved. */
+function ImageUpload({ stationId, kind, onDone, big }: { stationId: string; kind: 'logo' | 'photo'; onDone?: () => void; big?: boolean }) {
+  const [busy, setBusy] = useState(false), [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const what = kind === 'logo' ? 'logo' : 'booth photo';
+  const upload = async (e: Event) => {
+    const t = e.target as HTMLInputElement, f = t.files?.[0]; if (!f) return;
+    setBusy(true); setMsg(null);
+    try { await call('POST', '/api/crew/stations/image', { stationId, kind, image: await shrink(f, kind) }); setMsg({ ok: true, text: `Saved: the ${what} is on their booth in the game now.` }); onDone?.(); }
+    catch (x) { setMsg({ ok: false, text: (x as Error).message }); }
+    finally { setBusy(false); t.value = ''; }
+  };
+  return (
+    <>
+      <label class={big ? 'btn big file' : 'chip file'}>{busy ? 'Uploading…' : `Upload ${what}`}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={upload} /></label>
+      {msg && <span class={'note ' + (msg.ok ? 'ok' : 'bad')} role="status">{msg.text}</span>}
+    </>
+  );
+}
+
 /** Anyone with a card can bring a booth online, so the crew checks them. */
 function StationsTab() {
   const [rows, setRows] = useState<CrewStationRow[] | null>(null), [err, setErr] = useState('');
@@ -123,11 +242,11 @@ function StationsTab() {
   return (
     <section class="sheet wide">
       <div class="row"><h2>Booths online {rows ? `(${rows.length})` : ''}</h2><button class="btn" onClick={load}>Refresh</button></div>
-      <p class="fine">Approve = “verified exhibitor” badge. Revoke = the booth goes dark and that person cannot take it again. Release = remove them so the real exhibitor can bring the booth online; their logo, photo and the visitors who scanned or left a card are cleared, so the next owner starts clean.</p>
+      <p class="fine">Approve = “verified exhibitor” badge. Revoke = the booth goes dark and that person cannot take it again. Release = remove them so the real exhibitor can bring the booth online; their logo, photo and the visitors who scanned or left a card are cleared, so the next owner starts clean. Logo and booth photo: upload them here for an exhibitor; they go on the booth in the game straight away, and the exhibitor can change them from their dashboard.</p>
       {err && <p class="banner bad">{err}</p>}
-      <div class="scroll"><table><thead><tr><th>Booth</th><th>Logo</th><th>Name shown</th><th>Brought online by</th><th>Their company</th><th>Status</th><th>Visits</th><th></th></tr></thead>
+      <div class="scroll"><table><thead><tr><th>Booth</th><th>Logo</th><th>Booth photo</th><th>Name shown</th><th>Brought online by</th><th>Their company</th><th>Status</th><th>Visits</th><th></th></tr></thead>
         <tbody>{(rows ?? []).map((r) => (
-          <tr key={r.id}><td>{r.id}</td><td>{r.logo ? <img class="thumb" src={r.logo} alt={`${r.company} logo`} /> : <small>none</small>}</td><td>{r.company}</td><td>{r.ownerName} <small>{r.ownerCallsign}</small></td><td>{r.ownerCompany}</td><td>{r.status}{r.hosted ? ' · at the counter' : ''}</td><td>{r.visits}</td>
+          <tr key={r.id}><td>{r.id}</td><td class="logo">{r.logo ? <img class="thumb" src={r.logo} alt={`${r.company} logo`} /> : <small>none</small>}<ImageUpload stationId={r.id} kind="logo" onDone={load} /></td><td class="logo">{r.photo ? <img class="thumb" src={r.photo} alt={`${r.company} booth`} /> : <small>none</small>}<ImageUpload stationId={r.id} kind="photo" onDone={load} /></td><td>{r.company}</td><td>{r.ownerName ? <>{r.ownerName} <small>{r.ownerCallsign}</small></> : <span class="badge revoked">No card — not a real exhibitor</span>}</td><td>{r.ownerCompany}</td><td>{r.status}{r.hosted ? ' · at the counter' : ''}</td><td>{r.visits}</td>
             <td class="acts">{r.status !== 'approved' && <button class="chip" onClick={() => set(r.id, 'approved')}>Approve</button>}{r.status !== 'revoked' && <button class="chip" onClick={() => set(r.id, 'revoked')}>Revoke</button>}<button class="chip" onClick={() => set(r.id, 'release')}>Release</button></td></tr>
         ))}</tbody></table></div>
     </section>
@@ -136,22 +255,62 @@ function StationsTab() {
 
 interface Beacon { id: string; name: string; url: string }
 function Beacons() {
-  const [all, setAll] = useState<Beacon[]>([]), [q, setQ] = useState('');
-  useEffect(() => { call<Beacon[]>('GET', '/api/crew/beacons').then(setAll, () => {}); }, []);
-  const hit = q.trim().toUpperCase(), list = hit ? all.filter((b) => b.id.includes(hit) || b.name.toUpperCase().includes(hit)).slice(0, 24) : [];
+  const [all, setAll] = useState<Beacon[]>([]), [online, setOnline] = useState<CrewStationRow[]>([]), [q, setQ] = useState(''), [picked, setPicked] = useState<string[]>([]);
+  useEffect(() => { call<Beacon[]>('GET', '/api/crew/beacons').then(setAll, () => {}); call<CrewStationRow[]>('GET', '/api/crew/stations').then((r) => setOnline(r.filter((x) => x.status !== 'revoked')), () => {}); }, []);
+  const company = new Map(online.map((r) => [r.id, r.company])), named = (x: Beacon): Beacon => ({ ...x, name: company.get(x.id) || x.name });
+  const byId = new Map(all.map((x) => [x.id, x]));
+  // the box takes one search, or a pasted list of booth numbers (commas, spaces or new lines)
+  const tokens = q.toUpperCase().split(/[\s,;]+/).filter(Boolean), pasted = tokens.length > 1 ? tokens.filter((t) => byId.has(t)) : [];
+  const hit = q.trim().toUpperCase(), list = hit && !pasted.length ? all.filter((x) => x.id.includes(hit) || named(x).name.toUpperCase().includes(hit)).slice(0, 24) : [];
+  const add = (ids: string[]) => setPicked((p) => [...p, ...ids.filter((id) => !p.includes(id) && byId.has(id))]);
+  const remove = (id: string) => setPicked((p) => p.filter((x) => x !== id));
+  const hall = (n: number) => all.filter((x) => x.id.startsWith(String(n))).map((x) => x.id);
+  const cards = picked.map((id) => byId.get(id)).filter((x): x is Beacon => !!x).map(named);
   return (
     <section class="sheet wide">
-      <div class="row"><h2>Printed booth QRs</h2><button class="btn" onClick={() => print()}>Print</button></div>
-      <p class="fine no-print"><b>The mission's start QR</b> is the one for Lean X Digital's own booth: search <b>8H18A</b> and print it for the counter. For exhibitors who will not keep a screen open: search a booth, print, and hand them the card for their counter. Each QR is signed for its booth. Scanned at MIHAS it scores +50; anywhere else, +10.</p>
-      <label class="no-print">Find booth<input value={q} placeholder="e.g. 7C17 or Mamee" onInput={(e) => setQ((e.target as HTMLInputElement).value)} /></label>
-      <div class="beacons">{list.map((b) => <BeaconCard key={b.id} b={b} />)}</div>
+      <div class="row"><h2>Printed booth QRs</h2><button class="btn primary" disabled={!cards.length} onClick={() => print()}>{cards.length ? `Print ${cards.length} ${cards.length === 1 ? 'card' : 'cards'}` : 'Print'}</button></div>
+      <p class="fine no-print"><b>Lean X Digital's own QR</b> (search <b>8H18A</b>) is worth printing for the counter: a visitor who scans it sees how many checkpoints they have left, or that their tote bag is here. The mission itself starts when they make their card — nobody has to come to us first. For exhibitors who will not keep a screen open: pick their booths, print, and hand them the card for their counter — one A4 card per booth, with the company name once they are registered. Each QR is signed for its booth. Scanned at MIHAS it scores +50; anywhere else, +10.</p>
+      <div class="picks no-print">
+        <span class="fine">Add at once:</span>
+        <button class="chip" onClick={() => add(online.map((r) => r.id))}>All online booths ({online.length})</button>
+        {[8, 7, 6].map((n) => <button key={n} class="chip" onClick={() => add(hall(n))}>Hall {n} ({hall(n).length})</button>)}
+        {picked.length > 0 && <button class="chip" onClick={() => setPicked([])}>Clear</button>}
+      </div>
+      <label class="no-print">Find booth, or paste a list of booth numbers<input value={q} placeholder="e.g. 7C17 or Mamee — or 7C17, 7C19, 6A25" onInput={(e) => setQ((e.target as HTMLInputElement).value)} /></label>
+      {pasted.length > 0 && <div class="picks no-print"><span class="fine">{pasted.length} of {tokens.length} are booths on the plan.</span><button class="chip" onClick={() => { add(pasted); setQ(''); }}>Add {pasted.length}</button></div>}
+      {list.length > 0 && <div class="beacons no-print">{list.map((x) => <BeaconCard key={x.id} b={named(x)} picked={picked.includes(x.id)} onToggle={() => (picked.includes(x.id) ? remove(x.id) : add([x.id]))} />)}</div>}
+      {cards.length > 0 && (
+        <div class="picked no-print">
+          <h3>To print ({cards.length})</h3>
+          <div class="hits">{cards.map((x) => <button key={x.id} class="chip on" onClick={() => remove(x.id)} title="Remove">{x.id}{x.name ? ` · ${x.name}` : ''} ×</button>)}</div>
+        </div>
+      )}
+      <div class="printsheet">{cards.map((x) => <PrintCard key={x.id} b={x} />)}</div>
     </section>
   );
 }
-function BeaconCard({ b }: { b: Beacon }) {
+
+function useQrSvg(text: string, cellSize: number) {
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => { const c = qrcode(0, 'M'); c.addData(b.url); c.make(); if (ref.current) ref.current.innerHTML = c.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); }, [b.url]);
-  return <div class="beacon"><div class="k">Mission X · Find the X</div><h3>{b.name || 'Booth'} <small>{b.id}</small></h3><div class="qr" ref={ref} /><p>Scan for +50 points</p></div>;
+  useEffect(() => { const c = qrcode(0, 'M'); c.addData(text); c.make(); if (ref.current) ref.current.innerHTML = c.createSvgTag({ cellSize, margin: 2, scalable: true }); }, [text, cellSize]);
+  return ref;
+}
+
+/** On screen: a small card that toggles in and out of the print run. */
+function BeaconCard({ b, picked, onToggle }: { b: Beacon; picked: boolean; onToggle: () => void }) {
+  const ref = useQrSvg(b.url, 4);
+  return (
+    <div class={'beacon' + (picked ? ' picked' : '')}>
+      <div class="k">Mission X · Find the X</div><h3>{b.name || 'Booth'} <small>{b.id}</small></h3><div class="qr" ref={ref} /><p>Scan for +50 points</p>
+      <button class={'chip' + (picked ? ' on' : '')} onClick={onToggle}>{picked ? 'Added ✓' : 'Add to print'}</button>
+    </div>
+  );
+}
+
+/** One A4 page per booth: the counter card the exhibitor's own dashboard prints, so every counter looks the same. */
+function PrintCard({ b }: { b: Beacon }) {
+  const ref = useQrSvg(b.url, 8);
+  return <div class="printqr page"><div class="k">Mission X · MIHAS 2026</div><h1>{b.name || `Booth ${b.id}`}</h1><p>Booth {b.id}</p><div class="qr" ref={ref} /><p class="big">Scan me for your checkpoint</p></div>;
 }
 
 /** Exhibitors who brought in other exhibitors: the ranking for the special prize. Points count approved booths only. */

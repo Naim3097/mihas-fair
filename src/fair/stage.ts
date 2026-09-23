@@ -92,7 +92,9 @@ export class Stage {
     const frame = (now: number) => {
       if (!this.running) return;
       if (document.hidden) { this.paused = true; return; }
-      const dt = Math.min(0.05, (now - this.last) / 1000); this.last = now;
+      // never below zero: a frame's timestamp can predate the moment the loop started, and a negative first step froze
+      // the camera's settle-in (it never finished) whenever play began during boot, as when a booth QR opens the game
+      const dt = Math.max(0, Math.min(0.05, (now - this.last) / 1000)); this.last = now;
       this.frame(now, dt); requestAnimationFrame(frame);
     };
     requestAnimationFrame(frame);

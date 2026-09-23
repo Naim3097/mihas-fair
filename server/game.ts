@@ -27,11 +27,13 @@ export interface GameHooks {
   onImplausible?(id: string, detail: string): Promise<void>;
   /** exhibitor player id → company, for the label over their hologram */
   companies?(): Promise<Map<string, string>>;
+  /** Is (x, y) where one of this player's booths stands its host (server/stations.ts)? A jump away from it is allowed. */
+  atCounter?(id: string, x: number, y: number): Promise<boolean>;
   /** Whose booths this player works: themselves, or the owner of the booth team they joined (server/team.ts). */
   teamOwner?(id: string): Promise<string>;
   /** The checkpoint mission (server/checkpoints.ts). */
   mission?: {
-    start(id: string, t: number): Promise<XpEvent[]>;
+    heroScan(id: string, t: number): Promise<XpEvent[]>;
     isExhibitorBooth(stationId: string): Promise<boolean>;
     scannedBefore(id: string, stationId: string): Promise<boolean>;
     onScan(id: string, stationId: string, proof: string, t: number): Promise<XpEvent[]>;
@@ -120,7 +122,7 @@ export class Game {
 
   async requirePassport(id: string): Promise<PassportRow> {
     const p = await this.passportOf(id);
-    if (!p) throw new GameError('need_passport', 'Get your digital business card first — it is free at the X, Booth 8H18A', 403);
+    if (!p) throw new GameError('need_passport', 'Make your free digital business card first', 403);
     return p;
   }
 
@@ -136,7 +138,7 @@ export class Game {
 
   async me(id: string): Promise<Me> {
     const p = await this.player(id), owner = (await this.hooks.teamOwner?.(id)) ?? id; // once: it is asked for twice below
-    const [stamps, pass, ticket, avatar, sharePrefs, links, shared, verified, hosting] = await Promise.all([
+    const [stamps, pass, ticket, avatar, sharePrefs, links, shared, verified, hosting, scanned] = await Promise.all([
       this.db.all<{ station_id: string }>('SELECT station_id FROM stamps WHERE player_id = ?', [id]),
       this.passportOf(id),
       this.db.get<{ id: string; code: string; redeemed_at: number | null }>('SELECT id, code, redeemed_at FROM tickets WHERE player_id = ?', [id]),
@@ -146,6 +148,7 @@ export class Game {
       this.db.all<{ to_station: string }>('SELECT to_station FROM card_shares WHERE from_player = ? AND to_station IS NOT NULL AND revoked_at IS NULL', [id]),
       this.db.all<{ station_id: string }>('SELECT station_id FROM verified_contacts WHERE player_id = ?', [id]),
       this.db.all<{ station_id: string }>("SELECT station_id FROM stations WHERE owner_id = ? AND status != 'revoked'", [owner]),
+      this.db.all<{ station_id: string }>('SELECT station_id FROM booth_scans WHERE player_id = ?', [id]),
     ]);
     const docked = p.docked_at != null;
     const t = this.now(), anchor = (await this.hooks.anchorOf?.(id)) ?? null;
@@ -166,6 +169,7 @@ export class Game {
       links: links?.n ?? 0,
       shared: shared.map((s) => s.to_station),
       verified: verified.map((s) => s.station_id),
+      scanned: scanned.map((s) => s.station_id),
       hosting: hosting.map((s) => s.station_id),
       teamMember: owner !== id,
       mission: (await this.hooks.mission?.view(id)) ?? { started: false, target: 0, checkpoints: [] },
@@ -228,11 +232,17 @@ export class Game {
 
   async ping(id: string, pos: PresencePing, isSpawn: boolean): Promise<{ holograms: Hologram[]; events: XpEvent[]; online: number; deck: boolean }> {
     if (![pos.x, pos.y, pos.h].every(Number.isFinite)) throw new GameError('bad_pos', 'Bad position');
-    if (isSpawn && ![...Object.values(this.level.spawns), ...this.level.lifts].some((s) => Math.hypot(s.x - pos.x, s.y - pos.y) < 4)) isSpawn = false;
+    // a spawn is only honoured next to a lift or a gate (the player chose which entrance to start from)
+    if (isSpawn && ![...Object.values(this.level.spawns), ...this.level.lifts].some((s) => Math.hypot(s.x - pos.x, s.y - pos.y) < 4) && !this.level.gates.some((g) => Math.hypot(g.x - pos.x, g.y - pos.y) < 16)) isSpawn = false;
     const t = this.now();
     const deck = false, sigma = 0; // no GPS: every avatar is walked in the virtual hall, none follows a real person's steps
     const pose = (POSES as readonly string[]).includes(pos.pose ?? '') ? pos.pose : '';
-    const moved = await this.presence.update(await this.hologramOf(id, { x: pos.x, y: pos.y, h: pos.h, deck, sigma, pose }), t, isSpawn);
+    const holo = await this.hologramOf(id, { x: pos.x, y: pos.y, h: pos.h, deck, sigma, pose });
+    let moved = await this.presence.update(holo, t, isSpawn);
+    if (moved == null) { // too fast: unless they were standing at their own counter (the dashboard put them there) and are now back in the game
+      const prev = await this.presence.position(id, t);
+      if (prev && (await this.hooks.atCounter?.(id, prev.x, prev.y))) moved = await this.presence.update(holo, t, true);
+    }
     const events: XpEvent[] = [];
     if (moved != null) {
       events.push(...(await this.discover(id, pos.x, pos.y, t, deck ? 'onsite' : 'remote')));
@@ -340,15 +350,15 @@ export class Game {
       throw new GameError('bad_proof', 'Unknown proof');
     }
 
-    // the Lean X Digital QR, scanned at 8H18A: the start of the mission, not a stamp
+    // the Lean X Digital QR, scanned at 8H18A: where you stand, and the tote bag once the checkpoints are done — not a stamp
     if (req.proof !== 'virtual' && station.id === this.level.hero.id && this.hooks.mission) {
-      const ev = await this.hooks.mission.start(id, t);
+      const ev = await this.hooks.mission.heroScan(id, t);
       if (presence === 'onsite') await this.hooks.onOnsiteProof?.(id, station.id, t);
       return ev;
     }
     // a QR at an exhibitor's booth hands the visitor's card to the exhibitor, so it needs a card
     const boothQr = req.proof !== 'virtual' && !!(await this.hooks.mission?.isExhibitorBooth(station.id));
-    if (boothQr && !(await this.passportOf(id))) throw new GameError('card', 'Register first at the Lean X Digital booth (8H18A) — then scan this booth again');
+    if (boothQr && !(await this.passportOf(id))) throw new GameError('card', 'Make your free card first — then scan this booth again');
     const scannedBefore = boothQr && !!(await this.hooks.mission?.scannedBefore(id, station.id));
 
     const events: XpEvent[] = [];
@@ -451,11 +461,13 @@ export class Game {
 
   async crewTicket(tokenOrCode: string): Promise<CrewTicketView> {
     const tk = await this.resolveTicket(tokenOrCode);
-    const v = await this.db.get<{ callsign: string; name: string; company: string; role: string }>(
-      'SELECT pl.callsign, p.name, p.company, p.role FROM players pl JOIN passports p ON p.player_id = pl.id WHERE pl.id = ?', [tk.player_id]);
+    const v = await this.db.get<{ callsign: string; name: string; company: string; role: string; phone: string; email: string }>(
+      'SELECT pl.callsign, p.name, p.company, p.role, p.phone, p.email FROM players pl JOIN passports p ON p.player_id = pl.id WHERE pl.id = ?', [tk.player_id]);
     if (!v) throw new GameError('no_passport', 'No card behind this prize code', 404);
     const m = await this.hooks.mission?.view(tk.player_id);
-    return { ...v, alreadyDocked: tk.redeemed_at != null, checkpoints: m && { started: m.started, done: m.checkpoints.filter((c) => c.done).length, target: m.target } };
+    const scans = await this.db.all<{ station_id: string; company: string | null; at: number }>(
+      'SELECT b.station_id, s.company, b.created_at AS at FROM booth_scans b LEFT JOIN stations s ON s.station_id = b.station_id WHERE b.player_id = ? ORDER BY b.created_at DESC', [tk.player_id]);
+    return { ...v, alreadyDocked: tk.redeemed_at != null, scans: scans.map((r) => ({ stationId: r.station_id, company: r.company ?? '', at: r.at })), checkpoints: m && { started: m.started, done: m.checkpoints.filter((c) => c.done).length, target: m.target } };
   }
 
   async crewDock(tokenOrCode: string): Promise<CrewTicketView> {

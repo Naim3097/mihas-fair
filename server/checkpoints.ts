@@ -1,11 +1,11 @@
-// The MIHAS mission: register at Lean X Digital (8H18A) and scan its QR to start; then scan the QR at the exhibitor
-// booths you were given. Checkpoints are drawn at random from the booths the crew has approved, up to CHECKPOINTS each,
+// The MIHAS mission: make your card (that is the start — no need to come to Lean X first), scan the QR at the exhibitor
+// booths you were given, then claim your tote bag at Lean X Digital (8H18A). Checkpoints are drawn at random from the booths the crew has approved, up to CHECKPOINTS each,
 // and topped up as more exhibitors are approved. Every QR scan at an exhibitor's booth lands on that exhibitor's
 // dashboard with the visitor's name, phone and email: agreeing to that is part of registering.
 import { Game, GameError } from './game.js';
 import type { BoothTeam } from './team.js';
 import type { BoothScan, CheckpointMission, XpEvent } from '../shared/types.js';
-import { CHECKPOINTS } from '../shared/rules.js';
+import { CHECKPOINTS, checkpointRank } from '../shared/rules.js';
 
 const IMAGE_MAX_BYTES = { logo: 400_000, photo: 900_000 } as const;
 const IMAGE_TABLE = { logo: 'station_logos', photo: 'station_photos' } as const;
@@ -16,29 +16,34 @@ export class Checkpoints {
   private approved: { at: number; rows: { station_id: string; company: string; owner_id: string }[] } = { at: -1e9, rows: [] };
   constructor(private g: Game, private team: BoothTeam) {}
 
-  /** Booths the crew has approved, Lean X's own excepted. Cached briefly: every /me asks. */
+  /** Booths the crew has approved, Lean X's own excepted, and only ones a real exhibitor stands behind (their owner has a
+   *  card): a row that got in some other way must never send a visitor to a counter with no Mission X QR. Cached briefly: every /me asks. */
   private async approvedBooths(): Promise<{ station_id: string; company: string; owner_id: string }[]> {
     const t = this.g.now();
     if (t - this.approved.at < 10_000) return this.approved.rows;
-    const rows = await this.g.db.all<{ station_id: string; company: string; owner_id: string }>("SELECT station_id, company, owner_id FROM stations WHERE status = 'approved' AND station_id != ?", [this.g.level.hero.id]);
+    const rows = await this.g.db.all<{ station_id: string; company: string; owner_id: string }>(
+      "SELECT s.station_id, s.company, s.owner_id FROM stations s WHERE s.status = 'approved' AND s.station_id != ? AND EXISTS (SELECT 1 FROM passports p WHERE p.player_id = s.owner_id)", [this.g.level.hero.id]);
     this.approved = { at: t, rows };
     return rows;
   }
   forget() { this.approved.at = -1e9; }
 
+  /** The mission is on from the moment a visitor has their card. Exhibitors (a booth of their own, or on a booth team)
+   *  are here to collect visitors, not to be one. */
   async started(id: string): Promise<boolean> {
-    return !!(await this.g.db.get('SELECT 1 AS x FROM mission_starts WHERE player_id = ?', [id]));
+    const p = await this.g.db.get<{ cls: string | null }>('SELECT pl.cls FROM players pl JOIN passports p ON p.player_id = pl.id WHERE pl.id = ?', [id]);
+    if (!p || p.cls === 'exhibitor') return false;
+    return !(await this.team.isExhibitor(id));
   }
 
-  /** The Lean X Digital QR, scanned at the booth. Registering comes first: the card is what exhibitors receive. */
-  async start(id: string, t: number): Promise<XpEvent[]> {
+  /** The Lean X Digital QR at the booth. It starts nothing any more: it tells the visitor where they stand, and when
+   *  every checkpoint is done, that this is where the tote bag is. */
+  async heroScan(id: string, _t: number): Promise<XpEvent[]> {
     if (await this.team.isExhibitor(id)) throw new GameError('exhibitor', 'The mission is for visitors — you are here with a booth. Your visitors show up on your dashboard.');
-    await this.g.requirePassport(id).catch(() => { throw new GameError('card', 'Register first: fill in your free card here at the booth, then scan the QR again'); });
-    if (await this.started(id)) throw new GameError('dup', 'Your mission has already started — head to your checkpoints');
-    await this.g.db.run('INSERT INTO mission_starts (player_id, started_at) VALUES (?,?) ON CONFLICT DO NOTHING', [id, t]);
-    await this.topUp(id, t);
-    const n = (await this.g.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM checkpoints WHERE player_id = ?', [id]))!.n;
-    return [{ action: 'mission_start', xp: 0, target: 'Lean X Digital', note: n ? `${n} checkpoint${n > 1 ? 's are' : ' is'} on your map` : 'Checkpoints will appear as exhibitors join' }];
+    await this.g.requirePassport(id).catch(() => { throw new GameError('card', 'Make your free card first — then scan again'); });
+    const m = await this.view(id), done = m.checkpoints.filter((c) => c.done).length;
+    if (m.target > 0 && done >= m.target) return [{ action: 'prize', xp: 0, target: 'Lean X Digital', note: 'All checkpoints done — show your prize code to our crew for your tote bag' }];
+    return [{ action: 'progress', xp: 0, target: 'Lean X Digital', note: m.target ? `${done} of ${m.target} checkpoints done — come back with all of them for your tote bag` : 'Your checkpoints appear as exhibitors join — come back with all of them for your tote bag' }];
   }
 
   /** Give this player more checkpoints, at random, until they have CHECKPOINTS or there are no more approved booths. */
@@ -57,7 +62,9 @@ export class Checkpoints {
     const rows = await this.g.db.all<{ station_id: string; company: string | null; scanned_at: number | null }>(
       `SELECT c.station_id, s.company, c.scanned_at FROM checkpoints c LEFT JOIN stations s ON s.station_id = c.station_id
        WHERE c.player_id = ? AND (s.status IS NULL OR s.status != 'revoked') ORDER BY c.assigned_at, c.station_id`, [id]);
-    const checkpoints = rows.map((r) => ({ stationId: r.station_id, company: r.company || this.g.stations.get(r.station_id)?.name || `Booth ${r.station_id}`, done: r.scanned_at != null }));
+    // the fixed route first, in its order; the rest as they were handed out
+    const checkpoints = rows.map((r, i) => ({ stationId: r.station_id, company: r.company || this.g.stations.get(r.station_id)?.name || `Booth ${r.station_id}`, done: r.scanned_at != null, i }))
+      .sort((a, b) => checkpointRank(a.stationId) - checkpointRank(b.stationId) || a.i - b.i).map(({ i: _i, ...c }) => c);
     return { started: true, target: Math.min(CHECKPOINTS, checkpoints.length), checkpoints };
   }
 
@@ -102,10 +109,21 @@ export class Checkpoints {
     return { stationId, url: `${this.g.publicOrigin}/?b=${encodeURIComponent(await this.g.beaconToken(stationId))}` };
   }
 
-  /** The logo, or a photo of the real booth, as a data URL (the browser resizes it first). Shown in the world once the
-   *  crew approves the booth: the logo on the counter and a sign over it, the photo on the back wall. */
+  /** The logo, or a photo of the real booth, as a data URL (the browser resizes it first). In the world straight away,
+   *  no approval needed: the logo on the counter and a sign over it, the photo on the back wall. */
   async setImage(ownerId: string, stationId: string, kind: BoothImage, dataUrl: unknown): Promise<void> {
     await this.owner(ownerId, stationId);
+    await this.store(stationId, kind, dataUrl);
+  }
+
+  /** The crew, at the counter: the logo or photo for any booth that is online, whoever brought it online. */
+  async crewSetImage(stationId: string, kind: BoothImage, dataUrl: unknown): Promise<void> {
+    const r = await this.g.db.get<{ status: string }>('SELECT status FROM stations WHERE station_id = ?', [stationId]);
+    if (!r || r.status === 'revoked') throw new GameError('not_hosted', 'This booth is not online');
+    await this.store(stationId, kind, dataUrl);
+  }
+
+  private async store(stationId: string, kind: BoothImage, dataUrl: unknown): Promise<void> {
     const m = /^data:(image\/[a-z]+);base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl ?? ''));
     if (!m || !LOGO_TYPES.includes(m[1]!)) throw new GameError(kind, 'Upload a PNG, JPG or WebP image');
     if (m[2]!.length * 0.75 > IMAGE_MAX_BYTES[kind]) throw new GameError(kind, 'That image is too large — try a smaller one');

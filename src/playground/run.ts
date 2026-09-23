@@ -1,8 +1,9 @@
 // The run's rules, as a state machine on simulation time: oxygen down, stars and their combo up, the rings that
 // set where a fall returns you, the gate that ends it with a bonus, oxygen at zero that ends it where you stand.
 // No screen, no world: the engine feeds it what happened and reads what it says. The numbers are the rules.
-export const O2_START = 40, O2_CAP = 60, O2_BUBBLE = 6, O2_FALL = 4;
-export const STAR = 10, COMBO_WINDOW = 1.2, COMBO_MAX = 4, DIAMOND = 300, DIAMOND_STARS = 25, GATE_BONUS_PER_S = 10;
+// The numbers themselves live in shared/, where the server reads them too.
+import { COMBO_MAX, COMBO_WINDOW, DIAMOND, DIAMOND_STARS, GATE_BONUS_PER_S, O2_BUBBLE, O2_CAP, O2_FALL, O2_START, STAR } from '../../shared/playground';
+export { COMBO_MAX, COMBO_WINDOW, DIAMOND, DIAMOND_STARS, GATE_BONUS_PER_S, O2_BUBBLE, O2_CAP, O2_FALL, O2_START, STAR };
 
 export type EndReason = 'gate' | 'o2' | 'left';
 export type RunEvent =

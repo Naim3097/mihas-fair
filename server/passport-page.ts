@@ -1,12 +1,14 @@
 // Public card page + vCard. This is the local stand-in for a nexova-hosted card page:
 // swap `renderPassport` for a redirect to the nexova URL once that API exists.
 
+import { waLink } from '../shared/rules.js';
+
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
 export interface PassportPageData { slug: string; name: string; company: string; role: string; phone: string; email: string; callsign: string }
 
 export function renderPassport(p: PassportPageData, origin: string): string {
-  const wa = p.phone ? `https://wa.me/${p.phone.replace(/\D/g, '')}` : '';
+  const wa = p.phone ? waLink(p.phone) : '';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(p.name)} — digital business card</title><meta name="robots" content="noindex">
 <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;600;800&display=swap" rel="stylesheet">

@@ -1,5 +1,6 @@
 // The Playground's interface: the run card (air, score, stars, combo), the Jump button, the summary sheet, the
 // first-run hint, the portal chip, the fade of a fall. Everything reads the engine's signals; nothing is per frame.
+import type { ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { GEAR } from '../playground/gear';
 import { pgBalance, pgBest, pgCombo, pgControls, pgFade, pgFuel, pgGear, pgHint, pgMode, pgNearPortal, pgO2, pgRunStars, pgScore, pgStandNote, pgStore, pgSummary, pgUnlocks } from '../playground/state';
@@ -21,11 +22,13 @@ function useRolling(value: number, ms = 500): number {
   return shown;
 }
 
-export function PlaygroundHud() {
+/** notices: the toasts and the connection line, shown in the column under the run card as the fair shows them under its card. */
+export function PlaygroundHud({ notices }: { notices?: ComponentChildren }) {
   const mode = pgMode.value, c = pgControls.value, score = useRolling(pgScore.value), gear = GEAR[pgGear.value];
   const next = (['skates', 'jetpack'] as const).find((g) => !pgUnlocks.value.includes(g));
   return (
     <>
+      <div class="topstack">
       <div class={'objective runcard' + (mode === 'run' ? ' live' : '')}>
         {mode === 'run' ? (
           <>
@@ -41,6 +44,8 @@ export function PlaygroundHud() {
             {mode === 'pad' && <p>{next ? `${GEAR[next].name} at ${GEAR[next].price} stars · ${gear.name} on` : `${gear.name} on`}{pgBest.value != null ? ` · best ${pgBest.value.toLocaleString()}` : ''}</p>}
           </>
         )}
+      </div>
+      {notices}
       </div>
 
       {pgHint.value && mode !== 'summary' && <p class="hint pghint" role="status">{pgGear.value === 'jetpack' ? (FINE_POINTER ? <>Walk with <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>, hold <kbd>Space</kbd> to climb and let go to drop.</> : 'Drag the lower left to walk. Hold the button to climb, let go to drop.') : FINE_POINTER ? <>Walk with <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>, jump with <kbd>Space</kbd>: once more in the air for the long gaps.</> : 'Drag the lower left to walk. Tap anywhere, or the button, to jump: once more in the air for the long gaps.'}</p>}

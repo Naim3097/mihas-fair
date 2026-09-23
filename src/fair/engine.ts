@@ -17,14 +17,14 @@ import { NavGrid, dotsAlong, nearestOnPath, pathLength, type P2 } from '../game/
 import { BoothPicker } from '../game/pick';
 import { placeAt, type Seat } from '../game/places';
 import { RemoteTrack } from '../game/remote';
-import { atLaunchPad, boothAction, currentDeck, distToGoal, goalVia, guideOn, guideTarget, herePlace, markSeen, me, modal, moveHint, myBooths, nearLift, nearStation, online, panelStation, photoShot, routing, seated, seen, stampedSet, stationMap, stations, toast } from '../state';
+import { atLaunchPad, autoWalk, boothAction, currentCp, currentDeck, REACHED_RESET_M, unreachCheckpoint, distToGoal, goalVia, guideOn, guideTarget, herePlace, markSeen, me, modal, moveHint, myBooths, nearLift, nearStation, online, panelStation, photoShot, reachCheckpoint, reachedCps, seated, seen, stampedSet, stationMap, stations, toast, trailCheckpoint } from '../state';
 import type { Library } from '../ceritera/game/anim';
 import { CameraRig } from '../ceritera/game/camera';
 import type { Intent } from '../ceritera/game/controller';
 import { loop, oneShot } from '../ceritera/game/entities';
 import { Sfx } from '../ceritera/game/sfx';
 import { Sim } from '../ceritera/game/sim';
-import { angleDiff, lenXZ, v3 } from '../ceritera/game/v3';
+import { angleDiff, fromYaw, lenXZ, v3 } from '../ceritera/game/v3';
 import type { FairInput, FairSink } from './input';
 import type { Quality, Scene, Stage } from './stage';
 import { FAIR_KITS, FLY_CEILING, nextKit } from './kits';
@@ -37,18 +37,18 @@ import { CX, CY, buildFairLevel, fixY, toPlan, toWorld, type FairLevel } from '.
 import { NexoActor, loadKit, loadNexo, loadNexoLibrary, loadNexoLod, type NexoRole } from './nexo';
 import { FAIR_MOVEMENT } from './movement';
 import { Reach } from './reach';
-import { RouteFollower } from './route';
 import { FAIR, FairWorld } from './world';
 
 /** Players at MIHAS meet each other, so their position goes out every 2 s. A player from elsewhere is seen by nobody:
  *  every 12 s keeps them in the "here now" count (15 s window) at a sixth of the load; a stamp still sends its own. */
 /** Everyone sees everyone, so everyone reports where they are this often (~330 req/s for 1,000 players). */
 const PING_MS = 3000, TRAIL_STEP = 1.5, TRAIL_MAX = 220, BOOTH_LABELS = 6, BOOTH_LABEL_RANGE = 12, ARRIVAL_FRESH_MS = 10 * 60_000;
-const CAM = { dist: 4.6, min: 2.4, max: 12, pitch: 0.3 };
+const CAM = { dist: 6.4, min: 2.4, max: 12, pitch: 0.38 }; // a step back and up from 4.6 / 0.3: more of the hall, the avatar a third of the height, still over the partitions
+const CAM_SEES_PAST = new Set(['wall', 'furniture', 'booth', 'island']);
 /** The camera settles in from above over this long at the start. */
 const INTRO = { dist: 30, pitch: 0.6, s: 1.6 };
-/** A finger's tolerance when picking a booth (CSS px), and how long after a drag the camera leaves the view alone. */
-const TAP_TOL = 14, ORBIT_HOLD_MS = 1500;
+/** A finger's tolerance when picking a booth (CSS px). */
+const TAP_TOL = 14;
 const EMOTE = { wave: { clip: 'wave', ms: 2600 }, cheer: { clip: 'victory', ms: 2600 }, dance: { clip: 'dance', ms: 5200 } } as const;
 
 interface Holo { actor: NexoActor; cls: Hologram['cls']; track: RemoteTrack; label: HTMLDivElement; seen: number; pose: string; tx: number; ty: number }
@@ -67,7 +67,6 @@ export class FairEngine implements EngineApi, Scene {
   private nav: NavGrid;
   private picker: BoothPicker;
   private reach: Reach;
-  private follower: RouteFollower;
   private input: FairInput;
   private steps = new Sfx();
   private gltf: GLTF | null = null;
@@ -91,11 +90,16 @@ export class FairEngine implements EngineApi, Scene {
   private trailAt = 0;
   private dots: P2[] = Array.from({ length: TRAIL_MAX }, () => ({ x: 0, y: 0 })); private trailM = new THREE.Matrix4();
   private ping: { mesh: THREE.Mesh; t: number };
+  private route: P2[] = [];
+  /** The route is the trail's ("Take me there"), not a tap's: jogging pace, and it can be paused. */
+  private auto = false;
+  private stall = 0;
+  private replans = 0;
   private disposed = false; private pingAt = 0; private proxAt = 0; private firstPing = true; private arrivalSeen = 0;
   private pose: Pose = ''; private poseUntil = 0;
   private seat: Seat | null = null; private seatGoal: Seat | null = null; private wantBeforeSit = CAM.dist;
   private liftT = 1; private hallNow: number | null = null; private walked = 0; private picked: Booth | null = null;
-  private stepAcc = 0; private introT = -1; private orbit = 0.6; private orbitAt = 0;
+  private stepAcc = 0; private introT = -1; private orbit = 0.6;
   /** the kit worn: the Playground's gear on the fair's floor, from the store both worlds share */
   private kit: Gear = 'boots'; private kits: PlaygroundStore | null = null;
   private ribbons: [Ribbon, Ribbon]; private exhaust: Ribbon; private feet: [THREE.Vector3, THREE.Vector3] = [new THREE.Vector3(), new THREE.Vector3()];
@@ -112,13 +116,14 @@ export class FairEngine implements EngineApi, Scene {
     this.sim = new Sim('pengembara', classByKey('pengembara')!.base, this.fair.def, 1, FAIR_MOVEMENT);
     this.world = new FairWorld(level, this.fair, quality === 'low', stage.shadowsWanted);
     // the camera collides with what the body does (partitions, counters, glass): in a 2.5 m aisle it rides over the wall tops
-    this.rig = new CameraRig(this.camera, this.sim.world);
+    // the camera is pushed in only by the hall itself (glass, floors, platforms): a 2.5 m partition or a counter
+    // beside the aisle used to yank it in and let it drift back out at every stand, which read as zooming in and out
+    this.rig = new CameraRig(this.camera, this.sim.world, (b) => !CAM_SEES_PAST.has(b.tag ?? ''));
     this.rig.dist = CAM.dist; this.rig.pitch = CAM.pitch;
     this.halls = hallCards(level);
     this.nav = new NavGrid(level);
     this.picker = new BoothPicker(level, fixY); // rays come in world-derived y, the space level 2 is drawn in
     this.reach = new Reach(level, this.fair.stands);
-    this.follower = new RouteFollower(this.nav);
     for (const b of level.booths) { const k = `${Math.floor(b.x / 6)},${Math.floor(b.y / 6)}`; (this.buckets.get(k) ?? this.buckets.set(k, []).get(k)!).push(b); }
 
     const onFloor = { depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 } as const;
@@ -132,7 +137,7 @@ export class FairEngine implements EngineApi, Scene {
     this.input = stage.input;
     this.sink = {
       onTap: (x, y, coarse) => this.tapMove(x, y, coarse),
-      onOrbit: (dx, dy) => { this.orbitAt = performance.now(); this.rig.turn(dx * 2.2, dy * 1.6); },
+      onOrbit: (dx, dy) => this.rig.turn(dx * 2.2, dy * 1.6),
       onZoom: (f) => { if (this.introT >= 0) { this.introT = -1; this.rig.pitch = CAM.pitch; this.rig.dist = CAM.dist; } this.rig.dist = THREE.MathUtils.clamp(this.rig.dist * f, CAM.min, CAM.max); },
       onHover: (at) => this.hover(at),
       onKey: (a) => { if (a === 'interact') void this.interact(); else if (a === 'map') modal.value = 'map'; else this.emote(a); },
@@ -150,7 +155,8 @@ export class FairEngine implements EngineApi, Scene {
 
     this.stops.push(effect(() => { const v = stampedSet.value; if (this.stage.scene && this.stage.scene !== this) this.behind = true; else this.world.setStamped(v); }));
     this.stops.push(effect(() => { const v = stations.value; if (this.stage.scene && this.stage.scene !== this) this.behind = true; else this.world.setStations(v); }));
-    this.stops.push(effect(() => { void guideTarget.value; this.trailAt = 0; }));
+    this.stops.push(effect(() => { const m = me.value, cur = currentCp.value; this.world.setBeams(m && m.cls !== 'exhibitor' ? m.mission.checkpoints.filter((c) => !c.done).map((c) => ({ id: c.stationId, next: c.stationId === cur?.stationId })) : []); }));
+    this.stops.push(effect(() => { void guideTarget.value; void reachedCps.value; void me.value?.mission; this.trailAt = 0; }));
     this.stops.push(effect(() => { const a = me.value?.anchor; if (a && this.started && a.at > this.arrivalSeen) this.arriveAt(a.stationId, a.at); }));
     this.stops.push(effect(() => { const role = this.role(); void me.value; this.player?.setRole(role); }));
     // the sky video and sounds may wait for the first gesture
@@ -166,7 +172,7 @@ export class FairEngine implements EngineApi, Scene {
   }
 
   /** The stage is back with the fair: say where we are at once, look around afresh. */
-  resume() { this.pingAt = 0; this.proxAt = 0; this.hover(null); this.orbitAt = 0; if (this.behind) { this.behind = false; this.world.setStamped(stampedSet.value); this.world.setStations(stations.value); } }
+  resume() { this.pingAt = 0; this.proxAt = 0; this.hover(null); if (this.behind) { this.behind = false; this.world.setStamped(stampedSet.value); this.world.setStations(stations.value); } }
 
   /* ---------------- the kits: the Playground's gear, worn here ---------------- */
 
@@ -206,8 +212,7 @@ export class FairEngine implements EngineApi, Scene {
   }
 
   resize(w: number, h: number) {
-    this.camera.aspect = w / h; this.rig.baseFov = w < h ? 58 : 50;
-    if (!this.started) this.camera.fov = this.rig.baseFov; // in play the rig eases the lens to it
+    this.camera.aspect = w / h; this.rig.baseFov = w < h ? 58 : 50; // the rig eases the FOV there itself
     this.camera.updateProjectionMatrix();
   }
 
@@ -217,16 +222,29 @@ export class FairEngine implements EngineApi, Scene {
     p.body.pos.x = w.x; p.body.pos.y = 0.05; p.body.pos.z = w.z; p.body.vel = v3(); p.body.grounded = false; p.yaw = yaw; p.peak = 0;
     p.action = null; p.dodge = null; p.airDash = null; p.slamming = false; p.fuel = this.sim.movement.thrust?.fuel ?? 0;
     for (const r of [...this.ribbons, this.exhaust]) r.clear();
-    this.stopRoute(); loop(p, 'idle');
+    this.dropRoute(); loop(p, 'idle');
+  }
+  private dropRoute() { this.route = []; this.world.mark('goal', null); this.setAuto(false); }
+  private setAuto(on: boolean) { this.auto = on; const v = on ? 'going' : 'off'; if (autoWalk.value !== v) autoWalk.value = v; }
+
+  /** Where walking in by a gate puts you: the plan's spawn for that gate, or a spot just outside it, facing the hall. */
+  private spawnAt(gateId: string): { x: number; y: number; yaw: number } {
+    const g = this.level.gates.find((x) => x.id === gateId) ?? this.level.gates[0]!;
+    const s = Object.values(this.level.spawns).find((x) => x.gate === g.id);
+    if (s) return { x: s.x, y: s.y, yaw: g.axis === 'x' ? Math.PI : -Math.PI / 2 };
+    // the halls lie north of the entrance gates and west of the main one
+    const want = g.axis === 'x' ? { x: g.x, y: g.y - 4.8 } : { x: g.x + 6, y: g.y };
+    const at = this.nav.nearestWalkable(want.x, want.y, 14) ?? want;
+    return { x: at.x, y: at.y, yaw: g.axis === 'x' ? Math.PI : -Math.PI / 2 };
   }
 
-  /** Drop the player in at the Hall 8 entrance and hand over control. The camera settles in from above. */
-  start(spawn: 'short' | 'epic') {
-    const s = this.level.spawns[spawn], yaw = spawn === 'short' ? Math.PI : -Math.PI / 2;
-    this.teleport(s.x, s.y, yaw);
+  /** Drop the player in at the entrance they chose and hand over control. The camera settles in from above. */
+  start(gate: string) {
+    const { x, y, yaw } = this.spawnAt(gate);
+    this.teleport(x, y, yaw);
     if (!this.player) this.player = this.makeActor(this.role(), true);
     this.started = true;
-    this.rig.dist = INTRO.dist; this.rig.pitch = INTRO.pitch; this.rig.snapBehind(yaw); this.introT = 0; this.orbitAt = 0;
+    this.rig.dist = INTRO.dist; this.rig.pitch = INTRO.pitch; this.rig.snapBehind(yaw); this.introT = 0;
     this.walked = 0; if (!seen.value.has('hint:move')) moveHint.value = true;
     this.firstPing = true; this.pingAt = 0; this.trailAt = 0;
     const a = me.value?.anchor;
@@ -255,7 +273,7 @@ export class FairEngine implements EngineApi, Scene {
       }
       const p = this.sim.player, it = this.intent(dt);
       if (this.seat) {
-        if (it.move.x || it.move.y || it.jump || it.thrust || this.follower.active) this.stand();
+        if (it.move.x || it.move.y || it.jump || it.thrust || this.route.length) this.stand();
         else { const w = toWorld(this.seat.x, this.seat.y, this.seat.z); p.body.pos.x = w.x; p.body.pos.y = w.y; p.body.pos.z = w.z; p.yaw = this.seat.h; }
       }
       if (!this.seat) {
@@ -279,7 +297,7 @@ export class FairEngine implements EngineApi, Scene {
       for (const r of this.ribbons) r.update(dt); this.exhaust.update(dt);
       if (this.kit === 'jetpack' && now - this.fuelAt > 100) { this.fuelAt = now; const f = Math.round(p.fuel); if (pgFuel.value !== f) pgFuel.value = f; }
       this.sounds(sp, b.grounded, dt);
-      this.updateCamera(dt, it);
+      this.updateCamera(dt);
       this.world.followSun(b.pos.x, b.pos.z);
     }
     this.updatePing(dt); this.updateLabels();
@@ -290,22 +308,27 @@ export class FairEngine implements EngineApi, Scene {
 
   private intent(dt: number): Intent {
     const it = this.input.poll();
-    if (it.move.x || it.move.y) { if (this.follower.active) this.stopRoute(); this.seatGoal = null; return it; } // the thumb wins
-    const r = this.follower.step(it, this.position, this.rig.yaw, lenXZ(this.sim.player.body.vel), dt);
-    if (r === 'arrived') { this.setRouting(false); if (this.seatGoal) this.takeSeat(this.seatGoal); }
-    else if (r === 'lost') this.stopRoute(); // pressed against something three plans could not get round: let the player take it from here
+    if (it.move.x || it.move.y) { if (this.route.length) this.dropRoute(); this.seatGoal = null; return it; }
+    if (!this.route.length) { if (this.auto) this.setAuto(false); return it; }
+    if (autoWalk.value === 'paused') return it; // standing still on the trail, the route kept for "Resume"
+    const pos = this.position, n = this.route[0]!, dx = n.x - pos.x, dy = n.y - pos.y, l = Math.hypot(dx, dy);
+    if (l < 0.5) { this.route.shift(); this.stall = 0; if (!this.route.length) { if (this.seatGoal) this.takeSeat(this.seatGoal); this.setAuto(false); } return it; }
+    // plan (x east, y north) → world (x, −z) → screen (x right, y forward) for the controller
+    const wx = dx / l, wz = -dy / l, f = fromYaw(this.rig.yaw), r = fromYaw(this.rig.yaw - Math.PI / 2);
+    it.move.x = wx * r.x + wz * r.z; it.move.y = wx * f.x + wz * f.z;
+    // a tap runs; the guide jogs, so the halls it passes can be read and the walk can be followed
+    it.sprint = !this.auto && (l > 5 || this.route.length > 2);
+    // pressed against something the grid did not know about: plan again from here, then give up
+    if (lenXZ(this.sim.player.body.vel) < 0.3) {
+      this.stall += dt;
+      if (this.stall > 0.6) {
+        this.stall = 0;
+        if (++this.replans > 3) { this.replans = 0; this.dropRoute(); }
+        else { const path = this.nav.path(pos, this.route[this.route.length - 1]!); this.route = path ? path.slice(1) : []; }
+      }
+    } else this.stall = 0;
     return it;
   }
-
-  /** The body sets off along a path, or does not (none): the ping, the sound and the Stop button follow. */
-  private setRoute(path: P2[] | null): boolean {
-    if (!this.follower.set(path)) { this.setRouting(false); return false; }
-    const end = path![path!.length - 1]!, w = toWorld(end.x, end.y, 0.04); this.ping.mesh.position.set(w.x, w.y, w.z); this.ping.t = 0; sfx('go');
-    this.setRouting(true);
-    return true;
-  }
-  private stopRoute() { this.follower.clear(); this.seatGoal = null; this.world.mark('goal', null); this.setRouting(false); }
-  private setRouting(v: boolean) { if (routing.value !== v) routing.value = v; }
 
   private afterMove(now: number, dt: number) {
     const p = this.sim.player;
@@ -349,13 +372,13 @@ export class FairEngine implements EngineApi, Scene {
     const pos = this.position, d = (s: Seat) => Math.hypot(s.x - pos.x, s.y - pos.y), s = this.freeSeats(pl).reduce<Seat | null>((best, x) => (!best || d(x) < d(best) ? x : best), null);
     if (!s) { toast('Every seat is taken', 'Try again in a moment'); return; }
     if (d(s) < 1.6) return this.takeSeat(s);
-    if (!this.setRoute(this.nav.path(pos, s))) return this.takeSeat(s);
-    this.seatGoal = s;
+    const path = this.nav.path(pos, s); if (!path) return this.takeSeat(s);
+    this.route = path.slice(1); this.replans = 0; this.seatGoal = s;
   }
   private takeSeat(s: Seat) {
     this.seatGoal = null;
     const pl = herePlace.value; if (pl && !this.freeSeats(pl).includes(s)) { this.sit(); return; }
-    this.seat = s; this.follower.clear(); this.setRouting(false);
+    this.seat = s; this.route = [];
     const p = this.sim.player, w = toWorld(s.x, s.y, s.z); p.body.pos.x = w.x; p.body.pos.y = w.y; p.body.pos.z = w.z; p.body.vel = v3(); p.yaw = s.h;
     loop(p, 'idle');
     this.pose = 'sit'; sfx('sit'); seated.value = true; this.wantBeforeSit = this.rig.dist; this.rig.dist = Math.min(this.rig.dist, 4);
@@ -450,18 +473,19 @@ export class FairEngine implements EngineApi, Scene {
   private walkTo(to: P2): boolean {
     if (this.seat) this.stand();
     this.seatGoal = null;
-    return this.setRoute(this.nav.path(this.position, to));
+    const path = this.nav.path(this.position, to); if (!path) return false;
+    this.route = path.slice(1); this.replans = 0; this.stall = 0; this.setAuto(false);
+    const end = path[path.length - 1]!, w = toWorld(end.x, end.y, 0.04); this.ping.mesh.position.set(w.x, w.y, w.z); this.ping.t = 0; sfx('go');
+    return true;
   }
   private pick(b: Booth | null) { this.picked = b; this.world.mark('goal', b); }
   /** Press a booth: walk to the front of it (its open side), or, standing at it already, open its sheet. */
   private goToBooth(b: Booth) {
     if (b.id === this.level.hero.id) { this.pick(null); this.walkTo(this.level.hero.dock); return; }
-    if (nearStation.value?.id === b.id && !this.follower.active) { panelStation.value = b; modal.value = 'booth'; return; }
-    const to = this.reach.approach(b, this.position, this.nav); if (!to) return;
+    if (nearStation.value?.id === b.id && !this.route.length) { panelStation.value = b; modal.value = 'booth'; return; }
+    const to = this.reach.approach(b, this.position, this.nav) ?? this.nav.nearestWalkable(b.x, b.y, 10); if (!to) return;
     if (this.walkTo(to)) this.pick(b);
   }
-  /** The booth a trail target is, when it is one (the sheets and the map hand over a booth's own centre). */
-  private boothAtPoint(p: P2): Booth | null { return this.level.booths.find((b) => Math.abs(b.x - p.x) < 0.01 && Math.abs(b.y - p.y) < 0.01) ?? null; }
 
   private updatePing(dt: number) {
     const p = this.ping; if (p.t >= 1) { p.mesh.visible = false; return; }
@@ -472,19 +496,18 @@ export class FairEngine implements EngineApi, Scene {
   get position(): P2 { return toPlan(this.sim.player.body.pos); }
   levelOf(p: P2): number { const d = this.level.decks; return (d.find((k) => p.y >= k.y0 - 15 && p.y <= k.y1 + 15) ?? d[0]!).level; }
 
-  /** Where the trail leads: the place the player chose, or Lean X Digital until the mission starts. Null: nowhere. */
-  private get target(): { x: number; y: number; label: string } | null {
+  /** What the trail leads to: the place the player picked; else the next checkpoint; else, with every checkpoint done and
+   *  the tote bag not yet claimed, Lean X. Nothing before the card (the mission starts with it) or after the claim. */
+  private missionGoal(): { x: number; y: number; label: string; stationId?: string } | null {
     const t = guideTarget.value; if (t) return t;
-    const m = me.value; if (m && !m.mission.started && m.cls !== 'exhibitor') return { ...this.level.hero.dock, label: 'Lean X Digital · Booth ' + this.level.hero.id };
-    return null;
+    const m = me.value; if (!m || m.cls === 'exhibitor' || !m.mission.started) return null;
+    const cp = trailCheckpoint(this.position); if (cp) return cp;
+    const done = m.mission.target > 0 && m.mission.checkpoints.filter((c) => c.done).length >= m.mission.target;
+    return done && !m.docked ? { ...this.level.hero.dock, label: 'Lean X Digital · Booth ' + this.level.hero.id + ' · your tote bag' } : null;
   }
-  /** Where to walk for a target: the front of the booth when it is one, the point itself otherwise; on another level, the nearest lift first. */
-  private goalFor(t: P2): P2 {
-    const pos = this.position, here = this.levelOf(pos), there = this.levelOf(t);
-    if (here === there) {
-      if (goalVia.value) goalVia.value = null;
-      const b = this.boothAtPoint(t); return b && b.id !== this.level.hero.id ? this.reach.approach(b, pos, this.nav) ?? t : t;
-    }
+  private get goal(): P2 {
+    const target = this.missionGoal() ?? this.level.hero.dock, pos = this.position, here = this.levelOf(pos), there = this.levelOf(target);
+    if (here === there) { if (goalVia.value) goalVia.value = null; return target; }
     const lifts = this.level.lifts.filter((l) => l.deck === here), lift = lifts.reduce((a, b) => (Math.hypot(b.x - pos.x, b.y - pos.y) < Math.hypot(a.x - pos.x, a.y - pos.y) ? b : a), lifts[0]!);
     const via = `Take the ${lift.label.toLowerCase()} to Level ${there}`; if (goalVia.value !== via) goalVia.value = via;
     return lift;
@@ -501,24 +524,20 @@ export class FairEngine implements EngineApi, Scene {
   }
 
   autopilot() {
-    const t = this.target; if (!t || !this.started) return;
-    if (this.walkTo(this.goalFor(t))) this.pick(goalVia.value ? null : this.boothAtPoint(t));
+    if (this.seat) this.stand(); this.seatGoal = null;
+    const p = this.nav.path(this.position, this.goal); if (!p) { toast('No way through from here', 'Tap somewhere on the floor and try again', 'warn'); return; }
+    this.route = p.slice(1); this.replans = 0; this.stall = 0; this.setAuto(true);
   }
-  stop() { if (this.follower.active) this.stopRoute(); }
+  pauseWalk() { if (this.auto && this.route.length) autoWalk.value = 'paused'; }
+  resumeWalk() { if (this.auto && this.route.length) autoWalk.value = 'going'; }
+  stopWalk() { this.dropRoute(); }
 
   /* ---------------- camera ---------------- */
 
-  private updateCamera(dt: number, it: Intent) {
+  private updateCamera(dt: number) {
     if (this.liftT < 1) { this.liftT = Math.min(1, this.liftT + dt / 1.5); this.rig.dist = CAM.dist + 26 * Math.sin(Math.PI * this.liftT); }
     const p = this.sim.player;
-    // The view comes round behind the body on its own: briskly along a route, gently while a thumb holds the stick
-    // (more the further forward it is pushed, not at all pulling back toward the camera). Never within a moment of a
-    // drag, and never for the keys: a mouse is there to look around with.
-    if (!this.seat && this.introT < 0 && performance.now() - this.orbitAt > ORBIT_HOLD_MS && lenXZ(p.body.vel) > 0.5) {
-      const k = this.follower.active ? 1.5 : this.input.stickHeld ? 0.8 * Math.max(0, (1 + it.move.y) / 2) : 0;
-      if (k > 0) this.rig.yaw += angleDiff(this.rig.yaw, p.yaw) * (1 - Math.exp(-k * dt));
-    }
-    this.rig.update(dt, p.body.pos, p.body.vel, null, p.gait === 'sprint');
+    this.rig.update(dt, p.body.pos, p.body.vel, null, false); // no wider view on a run: it read as a zoom every time a tap set off
   }
 
   /* ---------------- what is next to the player: a booth, the X, a lift; and which booth names to show ---------------- */
@@ -531,8 +550,13 @@ export class FairEngine implements EngineApi, Scene {
       const d = Math.hypot(b.x - pos.x, b.y - pos.y); if (d < BOOTH_LABEL_RANGE) around.push({ b, d });
     }
     around.sort((a, b) => a.d - b.d);
-    const pk = this.picked, best = this.reach.atBooth(around.map((x) => x.b), pos, nearStation.value, pk);
-    if (pk && !this.follower.active) { this.world.mark('goal', null); if (Math.hypot(pk.x - pos.x, pk.y - pos.y) > STAMP_RADIUS_M + 2) this.picked = null; } // the frame stays until you arrive
+    let best = around[0] && around[0].d < STAMP_RADIUS_M - 0.6 ? around[0].b : null;
+    const pk = this.picked;
+    if (pk) {
+      const d = Math.hypot(pk.x - pos.x, pk.y - pos.y);
+      if (d < STAMP_RADIUS_M - 0.6) best = pk;
+      if (!this.route.length) { this.world.mark('goal', null); if (d > STAMP_RADIUS_M + 2) this.picked = null; }
+    }
     if (nearStation.value?.id !== best?.id) nearStation.value = best;
 
     const sm = stationMap.value, named = around.filter((x) => sm.has(x.b.id)).slice(0, BOOTH_LABELS);
@@ -555,25 +579,29 @@ export class FairEngine implements EngineApi, Scene {
   }
 
   /** The server checks distance against the position it last saw, so report position first. */
+  /** "Swap card" at a booth in the game: the stamp for walking up, and the card left with the exhibitor, in one press. */
   async stamp(b: Booth) {
-    const pos = this.position;
-    try { await api.presence({ x: pos.x, y: pos.y, h: this.sim.player.yaw }); await api.stamp({ stationId: b.id, proof: 'virtual' }); this.emote('cheer', 1300); }
-    catch (e) { toast(e instanceof ApiError ? e.message : 'Could not stamp', undefined, 'warn'); }
+    const pos = this.position, m = me.value, st = stationMap.value.get(b.id);
+    try {
+      await api.presence({ x: pos.x, y: pos.y, h: this.sim.player.yaw }); await api.stamp({ stationId: b.id, proof: 'virtual' }); this.emote('cheer', 1300);
+      if (st && m?.passport && !m.shared.includes(b.id)) { await api.leaveCard(b.id, m.sharePrefs); toast(`Cards swapped with ${st.company}`, 'Scan the Mission X QR on their counter for your checkpoint', 'xp', 5000); }
+    } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not swap cards', undefined, 'warn'); }
   }
 
   /* ---------------- guide trail ---------------- */
 
   private updateTrail(now: number, t: number) {
-    const target = this.target, wanted = guideOn.value && target != null;
-    if (!wanted) { this.trail.count = 0; if (distToGoal.value != null) distToGoal.value = null; if (goalVia.value) goalVia.value = null; return; }
+    const target = guideOn.value ? this.missionGoal() : null; // Lean X until the mission starts, then checkpoint after checkpoint
+    if (!target) { if (this.trail.count || distToGoal.value != null) { this.trail.count = 0; distToGoal.value = null; } return; }
     if (now - this.trailAt > 1200) {
-      this.trailAt = now; this.trailPath = this.nav.path(this.position, this.goalFor(target)) ?? [];
+      // a checkpoint the trail delivered you to, left behind without a scan: it can be pointed to again
+      for (const id of reachedCps.value) { const b = this.level.booths.find((x) => x.id === id); if (b && Math.hypot(b.x - this.position.x, b.y - this.position.y) > REACHED_RESET_M) unreachCheckpoint(id); }
+      this.trailAt = now; this.trailPath = this.nav.path(this.position, this.goal) ?? [];
       const d = this.trailPath.length ? Math.round(pathLength(this.trailPath)) : null;
-      if (distToGoal.value !== d) distToGoal.value = d;
-      // arrived: standing at the booth (the chip is up), or on the spot when it is not a booth. Not while still walking there.
-      if (guideTarget.value && !goalVia.value && !this.follower.active) {
-        const b = this.boothAtPoint(target), here = b ? nearStation.value?.id === b.id : d != null && d < 2;
-        if (here) { toast('You have arrived', target.label); guideTarget.value = null; }
+      distToGoal.value = d;
+      if (!goalVia.value && d != null && d < 6) {
+        if (guideTarget.value) { toast('You have arrived', target.label); guideTarget.value = null; }
+        else if (target.stationId) { toast(`You are at ${target.label}`, 'Scan the Mission X QR on their counter', 'info', 5000); reachCheckpoint(target.stationId); }
       }
     }
     // laid from where the body is now, not from where the route was planned: the first dot a metre ahead of the feet, nothing behind

@@ -10,6 +10,7 @@ import { v3 } from '../ceritera/game/v3';
 import { JUMP_PAD, PICKUP_R, PickupIndex, SLAB, buildCourse, courseBoxes, crossed, laneTopAt, platformUnder, sectionAt, type Platform } from './course';
 import type { MovementDef } from '../../content';
 import { BOOTS, JETPACK, SKATES, boostBody, jumpReach } from './gear';
+import { COURSE_DIAMONDS, COURSE_STARS } from '../../shared/playground';
 
 const course = buildCourse(), boxes = courseBoxes(course);
 const newSim = (M: MovementDef = BOOTS) => new Sim('pengembara', classByKey('pengembara')!.base, { size: 200, boxes, props: [], spawn: { pos: v3(course.spawn.x, course.spawn.y, course.spawn.z), yaw: course.spawn.yaw }, enemies: [], lanterns: [] }, 1, M);
@@ -200,4 +201,10 @@ test('the sky line is flown as meant: hold from the edge to the crest, let go, l
   assert.ok(thrustFor > 4 && fuelMin > 0, `the tank held: ${thrustFor.toFixed(1)} s of thrust, never below ${fuelMin.toFixed(0)}`);
   const sky = course.pickups.map((k, i) => ({ k, i })).filter(({ k }) => k.line === 'jetpack' && k.z === 20);
   assert.deepEqual(sky.filter(({ i }) => !got.has(i)).map(({ k }) => `${k.kind}@${k.x.toFixed(1)}`), [], 'missed on the sky line');
+});
+
+test('the course holds what the server believes it holds (shared/playground.ts): its stars and its diamonds', () => {
+  const c = buildCourse();
+  assert.equal(c.pickups.filter((k) => k.kind === 'star').length, COURSE_STARS, 'stars: update COURSE_STARS in shared/playground.ts with the course');
+  assert.equal(c.pickups.filter((k) => k.kind === 'diamond').length, COURSE_DIAMONDS, 'diamonds: update COURSE_DIAMONDS in shared/playground.ts with the course');
 });

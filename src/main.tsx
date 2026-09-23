@@ -12,7 +12,7 @@ import { handleScan } from './scan';
 import { ensureBackend } from './demo/client';
 import { installBack } from './ui/back';
 import { installSfx } from './sfx';
-import { atLaunchPad, bootError, bootNote, drop, level, me, modal, myBooths, online, phase, setReferral, stations, teamInvite, world } from './state';
+import { atLaunchPad, bootError, bootNote, drop, gate, handoff, level, me, modal, myBooths, online, phase, setReferral, stations, teamInvite, world } from './state';
 import type { PlaygroundEngine } from './playground/engine';
 import { ApiStore, LocalStore, type PlaygroundStore } from './playground/store';
 import { pgStore } from './playground/state';
@@ -79,17 +79,20 @@ async function boot() {
     // a colleague's booth team link: offer to join once the page is up
     const team = new URLSearchParams(location.search).get('team');
     if (team && /^[A-Za-z0-9]{6,10}$/.test(team)) { teamInvite.value = team.toUpperCase(); history.replaceState(null, '', location.pathname); }
+    // the crew registered this exhibitor at the counter: the link hands them the account
+    const join = new URLSearchParams(location.search).get('join');
+    if (join && /^[A-Za-z0-9]{6,10}$/.test(join)) { handoff.value = join.toUpperCase(); history.replaceState(null, '', location.pathname); }
     const query = location.search;
     if (/[?&](b|h|l)=/.test(query)) {
       history.replaceState(null, '', location.pathname);
       const returning = !!me.value?.cls && !!me.value.passport; // everyone in the world has a card
-      if (returning) { engine.start('short'); phase.value = 'play'; }
+      if (returning) { engine.start(gate.value); phase.value = 'play'; }
       await handleScan(query);
       if (returning) { api.track('boot', { via: 'scan', world: 'nexova' }); return; }
     }
     phase.value = 'start';
     if (import.meta.env.DEV && new URLSearchParams(location.search).has('pg')) { let once = true; effect(() => { if (once && phase.value === 'play') { once = false; world.value = 'playground'; } }); } // ?pg: straight into the Playground once, for working on it
-    if (teamInvite.value) modal.value = 'jointeam';
+    if (handoff.value) modal.value = 'handoff'; else if (teamInvite.value) modal.value = 'jointeam';
     api.track('boot', { q: stage.quality, world: 'nexova', returning: (me.value?.xp ?? 0) > 0 });
   } catch (e) {
     bootError.value = e instanceof ApiError || (e instanceof Error && /demo/i.test(e.message)) ? e.message : 'Could not reach the fair. Check your connection.';

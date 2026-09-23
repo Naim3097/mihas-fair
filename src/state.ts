@@ -1,6 +1,6 @@
 import { signal, computed } from '@preact/signals';
 import type { Booth, DailyDrop, HostStation, LevelData, Lift, Me, StationView, XpEvent } from '../shared/types';
-import { boothSteps, chapters, type Chapter } from '../shared/rules';
+import { boothSteps, chapters, checkpointRank, type Chapter } from '../shared/rules';
 import type { Place } from './game/places';
 import { buzz, sfx } from './sfx';
 
@@ -8,7 +8,7 @@ export type Phase = 'boot' | 'start' | 'play' | 'error';
 /** Which world has the stage: the fair, or the Playground beside it. */
 export type World = 'fair' | 'playground';
 export const world = signal<World>('fair');
-export type Modal = null | 'card' | 'prize' | 'claimed' | 'complete' | 'booth' | 'claim' | 'mybooth' | 'swap' | 'contacts' | 'map' | 'photo' | 'menu' | 'rules' | 'tour' | 'scan' | 'jointeam' | 'pgboards';
+export type Modal = null | 'card' | 'prize' | 'claimed' | 'complete' | 'booth' | 'claim' | 'mybooth' | 'swap' | 'contacts' | 'map' | 'photo' | 'menu' | 'rules' | 'tour' | 'scan' | 'jointeam' | 'handoff' | 'pgboards';
 
 export const phase = signal<Phase>('boot');
 export const level = signal<LevelData | null>(null);
@@ -27,11 +27,51 @@ export const nearLift = signal<{ here: Lift; others: Lift[] } | null>(null);
 export const goalVia = signal<string | null>(null);
 export const currentDeck = signal(2);
 export const distToGoal = signal<number | null>(null);
-/** The body is walking somewhere on its own (a tap, "Take me there"): the card offers Stop. */
-export const routing = signal(false);
 export const guideOn = signal(true);
-/** Where the trail leads. null = the X, until the player has their card; after that, nowhere until they pick a place. */
+/** Where the trail leads when the player picked a place. null = wherever the mission points: the next checkpoint
+ *  (nextCheckpoint), then Lean X for the tote bag. */
 export const guideTarget = signal<{ x: number; y: number; label: string } | null>(null);
+/** "Take me there": walking the trail on its own — going, or paused with the route kept. */
+export const autoWalk = signal<'off' | 'going' | 'paused'>('off');
+/** Checkpoints the trail has already delivered the player to this session, so the next one comes up before the QR is scanned. */
+export const reachedCps = signal<Set<string>>(new Set());
+export interface NextCheckpoint { stationId: string; company: string; x: number; y: number; label: string }
+/** The checkpoint the mission points to now: the first on the fixed route (CHECKPOINT_ORDER) not scanned and not yet
+ *  walked to; booths off the route come after, nearest first. Nothing when the mission has not started, is done, or every
+ *  open checkpoint has been reached (the player is meant to be scanning). */
+export function nextCheckpoint(from: { x: number; y: number } | null): NextCheckpoint | null {
+  const m = me.value, lv = level.value; if (!m?.mission.started || !lv) return null;
+  const open = m.mission.checkpoints.filter((c) => !c.done && !reachedCps.value.has(c.stationId))
+    .map((c) => ({ c, b: lv.booths.find((b) => b.id === c.stationId) })).filter((x): x is { c: typeof x.c; b: Booth } => !!x.b);
+  const d = (b: Booth) => (from ? Math.hypot(b.x - from.x, b.y - from.y) : 0);
+  const best = open.sort((p, q) => checkpointRank(p.b.id) - checkpointRank(q.b.id) || d(p.b) - d(q.b))[0]; if (!best) return null;
+  return { stationId: best.b.id, company: best.c.company, x: best.b.x, y: best.b.y, label: `${best.c.company} · Booth ${best.b.id}` };
+}
+/** The trail delivered the player to this checkpoint: on to the next one. */
+export function reachCheckpoint(stationId: string) { reachedCps.value = new Set([...reachedCps.value, stationId]); }
+/** Walked off without scanning (or asked for it again): the trail may point there once more. */
+export function unreachCheckpoint(stationId: string) { if (reachedCps.value.has(stationId)) reachedCps.value = new Set([...reachedCps.value].filter((x) => x !== stationId)); }
+/** How far from a delivered checkpoint counts as having walked off. */
+export const REACHED_RESET_M = 15;
+/** The checkpoint the trail leads to now, as the engine last chose it; the mission card shows the same one. */
+export const currentCp = signal<NextCheckpoint | null>(null);
+/** The engine asks every second: keep the checkpoint it has until that one is scanned or reached, so the trail never
+ *  flips between two booths mid-walk; only then pick the nearest open one. */
+export function trailCheckpoint(from: { x: number; y: number } | null): NextCheckpoint | null {
+  const m = me.value, cur = currentCp.value;
+  const open = !!cur && !!m?.mission.started && m.mission.checkpoints.some((c) => c.stationId === cur.stationId && !c.done) && !reachedCps.value.has(cur.stationId);
+  const next = open ? cur : nextCheckpoint(from);
+  if (next?.stationId !== cur?.stationId) currentCp.value = next;
+  return next;
+}
+
+/** Which entrance the player walks in by. Remembered on this phone. */
+const GATE_KEY = 'mx_gate';
+export const gate = signal<string>((() => { try { return localStorage.getItem(GATE_KEY) ?? 'hall8'; } catch { return 'hall8'; } })());
+export function setGate(id: string) { gate.value = id; try { localStorage.setItem(GATE_KEY, id); } catch { /* private mode */ } }
+
+/** A hand-over link from the crew (…/?join=CODE): the account they made for this exhibitor, until it is taken. */
+export const handoff = signal<string | null>(null);
 export const online = signal(0);
 /** The last request did not get through: a chip says so until one does. */
 export const offline = signal(false);
@@ -98,9 +138,9 @@ export function toast(title: string, sub?: string, tone: Toast['tone'] = 'info',
 const ACTION_LABEL: Record<string, string> = {
   passport: 'Your card is ready', dock: 'Claimed at Booth 8H18A', stamp: 'Stamped', scan: 'Scanned at the real booth', verified_contact: 'Met in person',
   share_station: 'Card left', link: 'Cards swapped', station_claim: 'Your booth is online', daily_drop: 'Booth of the day',
-  mission_start: 'Mission started', checkpoint: 'Checkpoint',
+  mission_start: 'Mission started', checkpoint: 'Checkpoint', prize: 'Your tote bag is here', progress: 'Lean X Digital',
 };
-const BIG = new Set(['passport', 'dock', 'station_claim', 'link', 'mission_start', 'checkpoint']);
+const BIG = new Set(['passport', 'dock', 'station_claim', 'link', 'mission_start', 'checkpoint', 'prize']);
 /** One action can pay several ways at once (a scan that is also the booth of the day). It is still one moment: one toast, one total. */
 export function showEvents(events: XpEvent[] | undefined) {
   const list = events ?? []; if (!list.length) return;

@@ -169,10 +169,12 @@ export function moveBody(world: World, b: Body, dt: number, o: MoveOptions): voi
 }
 
 /** The first box along a ray, with the face it entered. `dir` is unit length. */
-export function raycast(world: World, from: V3, dir: V3, maxDist: number): RayHit | null {
+/** `solid` narrows which boxes the ray can hit (the camera, say, sees past booth partitions); omitted, everything is solid. */
+export function raycast(world: World, from: V3, dir: V3, maxDist: number, solid?: (b: Box) => boolean): RayHit | null {
   let best: RayHit | null = null, tBest = maxDist;
   const ex = from.x + dir.x * maxDist, ez = from.z + dir.z * maxDist;
   for (const bx of near(world, Math.min(from.x, ex), Math.min(from.z, ez), Math.max(from.x, ex), Math.max(from.z, ez))) {
+    if (solid && !solid(bx)) continue;
     let tmin = 0, tmax = tBest, nAxis: Axis = 'x', nSign = 0, miss = false;
     for (const axis of ['x', 'y', 'z'] as const) {
       const o = from[axis], dd = dir[axis];

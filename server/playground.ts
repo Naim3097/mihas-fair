@@ -5,9 +5,7 @@
 import { Game, GameError, dayStart } from './game.js';
 import type { Stmt } from './db/types.js';
 import type { PlaygroundBest, PlaygroundBoardRow, PlaygroundGear, PlaygroundMe, PlaygroundRunInput, PlaygroundRunResult, XpEvent } from '../shared/types.js';
-import { buildCourse } from '../src/playground/course.js';
-import { GEAR } from '../src/playground/gear.js';
-import { COMBO_MAX, DIAMOND, DIAMOND_STARS, GATE_BONUS_PER_S, O2_CAP, STAR } from '../src/playground/run.js';
+import { COMBO_MAX, COURSE_DIAMONDS, COURSE_STARS, DIAMOND, DIAMOND_STARS, GATE_BONUS_PER_S, KIT_NAME, KIT_PRICE, O2_CAP, STAR } from '../shared/playground.js';
 
 const GEARS: PlaygroundGear[] = ['boots', 'skates', 'jetpack'];
 /** A token opens one run; another is not issued within this gap (Again after a short run must still work), and one
@@ -17,12 +15,10 @@ export const TOKEN_GAP_MS = 15_000, TOKEN_TTL_MS = 10 * 60_000;
 export const MIN_FINISH_S = 20, MAX_RUN_S = 3600;
 /** What the first finished run of a day pays into the fair's ledger, when the bridge is on. */
 export const DAILY_XP = 50, DAILY_ACTION = 'playground_daily';
-const course = buildCourse();
-const DIAMONDS = course.pickups.filter((k) => k.kind === 'diamond').length;
 /** What the course holds: every star on every line, and the diamonds' stars. */
-export const MAX_STARS = course.pickups.filter((k) => k.kind === 'star').length + DIAMONDS * DIAMOND_STARS;
+export const MAX_STARS = COURSE_STARS + COURSE_DIAMONDS * DIAMOND_STARS;
 /** The most `stars` can pay: every star at the top combo, every diamond, a full tank of air at the gate. */
-export const maxScore = (stars: number): number => stars * STAR * COMBO_MAX + DIAMONDS * DIAMOND + O2_CAP * GATE_BONUS_PER_S;
+export const maxScore = (stars: number): number => stars * STAR * COMBO_MAX + COURSE_DIAMONDS * DIAMOND + O2_CAP * GATE_BONUS_PER_S;
 const BOARD_TTL_MS = 15_000, BOARD_SIZE = 10;
 
 interface StateRow { stars: number; unlocks: string; gear: string }
@@ -91,9 +87,9 @@ export class Playground {
   /** Buy a gear with stars: refused when short, kept once bought. */
   async unlock(id: string, gear: string): Promise<PlaygroundMe> {
     if (!GEARS.includes(gear as PlaygroundGear) || gear === 'boots') throw new GameError('gear', 'No such gear');
-    const g = gear as PlaygroundGear, s = await this.state(id), price = GEAR[g].price;
+    const g = gear as PlaygroundGear, s = await this.state(id), price = KIT_PRICE[g];
     if (s.unlocks.includes(g)) return this.me(id);
-    if (s.stars < price) throw new GameError('short', `${price - s.stars} more stars for ${GEAR[g].name}`);
+    if (s.stars < price) throw new GameError('short', `${price - s.stars} more stars for ${KIT_NAME[g]}`);
     await this.g.db.run('INSERT INTO playground_state (player_id, stars, unlocks, gear, updated_at) VALUES (?,?,?,?,?) ON CONFLICT(player_id) DO UPDATE SET stars = excluded.stars, unlocks = excluded.unlocks, gear = excluded.gear, updated_at = excluded.updated_at', [id, s.stars - price, [...s.unlocks, g].join(','), g, this.g.now()]);
     return this.me(id);
   }

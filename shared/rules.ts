@@ -42,21 +42,23 @@ export const stampPoints = (presence: Presence) => (presence === 'onsite' ? POIN
 
 /* ---------------- the mission: one journey, three chapters ---------------- */
 
+/** Free-play stamps in the server's walkthrough test; not a rule anyone meets. */
 export const MISSION_STAMPS = 5;
 /** Exhibitor booths each visitor is sent to. Fewer while fewer exhibitors are approved; topped up as more join. */
-export const CHECKPOINTS = 5;
+export const CHECKPOINTS = 3;
 /** How many colleagues one company's booth team can have, besides the owner. */
 export const BOOTH_TEAM_MAX = 20;
 /** Points an exhibitor earns for each exhibitor they bring into the game (counted once that booth is approved). */
 export const REFERRAL_POINTS = 10;
 export interface MissionFacts { started: boolean; card: boolean; checkpoints: number; target: number; claimed: boolean }
 export interface Chapter { n: number; title: string; todo: string; done: boolean }
-/** Chapters 3 and 4 can be finished in either order, and someone standing at the booth may finish 5 early. */
+/** Three chapters, in order: the card, the checkpoints, then the tote bag at Lean X. The mission starts the moment the
+ *  card is made (`started` is that, for a visitor): nobody has to come to Lean X first. */
 export function chapters(f: MissionFacts): Chapter[] {
   return [
     { n: 1, title: 'Your card', todo: 'Make your free digital business card.', done: f.card },
-    { n: 2, title: 'Find Lean X Digital', todo: 'Go to Booth 8H18A in Hall 8 and scan the Lean X Digital QR to start.', done: f.started },
-    { n: 3, title: 'Checkpoints', todo: `Find your ${f.target || CHECKPOINTS} checkpoint booths and scan the QR at each one.`, done: f.target > 0 && f.checkpoints >= f.target },
+    { n: 2, title: 'Checkpoints', todo: `Find your ${f.target || CHECKPOINTS} checkpoint booths and scan the Mission X QR at each one.`, done: f.target > 0 && f.checkpoints >= f.target },
+    { n: 3, title: 'Claim your tote bag', todo: 'Show your prize code at Lean X Digital, Booth 8H18A in Hall 8, and collect your tote bag.', done: f.claimed },
   ];
 }
 
@@ -93,10 +95,14 @@ export const MAX_STATIONS_PER_OWNER = 12;
 /** What a person may choose to share. Name is always part of a share; the rest is per-share consent. */
 export const SHARE_FIELDS = ['name', 'company', 'role', 'phone', 'email'] as const;
 export type ShareField = (typeof SHARE_FIELDS)[number];
-export const DEFAULT_SHARE: ShareField[] = ['name', 'company', 'role'];
+/** Everything is ticked to start with; a person unticks what they would rather keep. */
+export const DEFAULT_SHARE: ShareField[] = [...SHARE_FIELDS];
 
 /** With a card, a player appears as "Aisyah R." above their astronaut and on the board; without one, as "Visitor 4821". */
 export const NAME_ON_BOARD = true;
+
+/** A hand-over link (an exhibitor the crew registered at the counter) stays open this long. */
+export const HANDOFF_TTL_MS = 30 * 24 * 3600 * 1000;
 
 /** What a booth is called everywhere: its number, and the company that registered it once someone has. */
 export const boothLabel = (id: string, company?: string | null) => (company ? `${id} · ${company}` : id);
@@ -144,6 +150,11 @@ export const INFLUENCE_TAU_MS = 45 * 60_000;
 export const INFLUENCE = { stamp: 1, verified_contact: 2, link_cross_crew: 1 } as const;
 export const INFLUENCE_PRESENCE: Record<Presence, number> = { remote: 0.25, onsite: 1 };
 
+/** How long an avatar keeps standing where its person last was, once the phone has gone quiet (locked, another app,
+ *  the dashboard closed). A show day: someone who stopped in the morning is still there in the afternoon, gone by
+ *  tomorrow. Being *live* (moving, counted as "here now" for the speed check) still means a ping in the last 15 s. */
+export const PRESENCE_LINGER_MS = 12 * 3600_000;
+
 /** On deck (physically there) the avatar follows the person: walking pace, not the 12 m/s of a joystick avatar. */
 export const DECK_MAX_SPEED_MPS = 2.8;
 export const WALK_XP_PER_M = 0.1;
@@ -171,3 +182,22 @@ export const GC_MAX_WAYPOINTS = 5;
 
 export const TEAM_MAX = 12;
 export const TEAM_SCORERS = 5;
+
+/* ---------------- the route ---------------- */
+/** A fixed walking order for the checkpoints, by booth number: these come first, in this order, on the mission card and
+ *  on the trail. Any other checkpoint (an exhibitor approved later) follows, nearest first. Empty = nearest first for all.
+ *  Set 23 September for the three exhibitors then approved: UOB, printdaddy, Aura Biocare. */
+export const CHECKPOINT_ORDER: readonly string[] = ['8H17B', '6A21', '6A25'];
+/** Lower first; booths not on the route rank after every booth that is. */
+export const checkpointRank = (stationId: string): number => { const i = CHECKPOINT_ORDER.indexOf(stationId); return i < 0 ? CHECKPOINT_ORDER.length : i; };
+
+/* ---------------- WhatsApp links ---------------- */
+/** The digits WhatsApp wants: a number typed the Malaysian way ("012-345 6789") becomes 60123456789; one with a
+ *  country code is kept. wa.me rejects a leading 0, which is why "WhatsApp" did nothing for most cards. */
+export function waNumber(phone: string): string {
+  let d = phone.replace(/\D/g, '');
+  if (d.startsWith('00')) d = d.slice(2);
+  if (d.startsWith('0')) d = '60' + d.slice(1);
+  return d;
+}
+export const waLink = (phone: string, text?: string): string => `https://wa.me/${waNumber(phone)}${text ? `?text=${encodeURIComponent(text)}` : ''}`;

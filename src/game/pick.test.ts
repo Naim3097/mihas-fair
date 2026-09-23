@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import type { LevelData } from '../../shared/types';
 import { BoothPicker, type Ray } from './pick';
 import { fixY } from '../fair/level';
-import { planStands } from '../fair/stands';
+import { planStands } from '../../shared/stands';
 
 const level = JSON.parse(readFileSync('public/data/floor.json', 'utf8')) as LevelData;
 const picker = new BoothPicker(level), H = level.booth.h;

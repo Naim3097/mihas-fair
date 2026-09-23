@@ -38,7 +38,7 @@ test('what the game says about the show is counted from the data', () => {
 });
 
 test('stands: booths carry only their number, so no booths are merged into a named stand', async () => {
-  const { buildStands } = await import('./stands');
+  const { buildStands } = await import('../../shared/stand-groups');
   assert.deepEqual(level.booths.filter((b) => b.name).map((b) => b.id), [level.hero.id], 'only our own booth has a name in the plan');
   assert.deepEqual(buildStands(level), []);
 });

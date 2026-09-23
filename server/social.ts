@@ -2,7 +2,7 @@
 import { Game, GameError, cleanFields, cleanText, dayStart } from './game.js';
 import { shortCode } from './crypto.js';
 import type { Contact, LinkCode, LinkPeek, SharedCard, XpEvent } from '../shared/types.js';
-import { INFLUENCE, LINK_CODE_TTL_MS, LINK_DAILY_FULL, LINK_OVERFLOW_XP, POINTS, type Role, type ShareField } from '../shared/rules.js';
+import { INFLUENCE, LINK_CODE_TTL_MS, LINK_DAILY_FULL, LINK_OVERFLOW_XP, POINTS, SHARE_FIELDS, type Role, type ShareField } from '../shared/rules.js';
 import type { Stmt } from './db/types.js';
 
 const pair = (x: string, y: string): [string, string] => (x < y ? [x, y] : [y, x]);
@@ -46,15 +46,16 @@ export class Social {
     const other = await this.resolve(id, code), p = await this.g.player(other), [a, b] = pair(id, other);
     return {
       callsign: p.callsign, cls: p.cls as Role | null,
-      shares: await this.g.sharePrefs(other), alreadyLinked: !!(await this.g.db.get('SELECT 1 AS x FROM links WHERE a_id = ? AND b_id = ?', [a, b])),
+      shares: [...SHARE_FIELDS], alreadyLinked: !!(await this.g.db.get('SELECT 1 AS x FROM links WHERE a_id = ? AND b_id = ?', [a, b])),
     };
   }
 
-  async link(id: string, code: unknown, fieldsIn: unknown): Promise<XpEvent[]> {
+  async link(id: string, code: unknown, _fieldsIn: unknown): Promise<XpEvent[]> {
     await this.g.requirePassport(id);
     const other = await this.resolve(id, code), [a, b] = pair(id, other), t = this.g.now();
     if (await this.g.db.get('SELECT 1 AS x FROM links WHERE a_id = ? AND b_id = ?', [a, b])) throw new GameError('dup', 'You two have already swapped cards');
-    const [me, them, theirFields] = await Promise.all([this.g.player(id), this.g.player(other), this.g.sharePrefs(other)]);
+    // a swap is the whole card both ways: name, company, role, phone, email. Nothing to tick, nothing to miss.
+    const [me, them] = await Promise.all([this.g.player(id), this.g.player(other)]), theirFields: ShareField[] = [...SHARE_FIELDS];
 
     const xpFor = async (pid: string) => {
       const n = await this.g.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM links WHERE (a_id = ? OR b_id = ?) AND created_at >= ?', [pid, pid, dayStart(t)]);
@@ -68,7 +69,7 @@ export class Social {
     await this.g.db.batch([
       ['INSERT INTO links (a_id, b_id, created_at) VALUES (?,?,?)', [a, b, t]],
       ['DELETE FROM link_codes WHERE player_id = ?', [other]], // one code, one handshake
-      share(id, other, cleanFields(fieldsIn).join(',')),
+      share(id, other, theirFields.join(',')),
       share(other, id, theirFields.join(',')),
       ...this.g.award(id, 'link', myXp, them.callsign, null, t),
       ...this.g.award(other, 'link', theirXp, me.callsign, null, t),

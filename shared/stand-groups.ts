@@ -2,7 +2,7 @@
 // them as separate cells; on the floor they are one stand with one name. This groups neighbouring booths of the same
 // exhibitor, and says where that name should be written: along the longest straight run of the stand.
 // Game rules stay per booth (each cell is still stamped on its own); this is only how the world is drawn.
-import type { LevelData } from '../../shared/types';
+import type { LevelData } from './types.js';
 
 export interface Stand {
   name: string; deck: number;

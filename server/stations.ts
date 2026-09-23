@@ -4,6 +4,7 @@ import type { Stmt } from './db/types.js';
 import { Game, GameError, cleanFields, cleanText } from './game.js';
 import type { BoothTeam } from './team.js';
 import type { CrewStationRow, HostCode, HostLead, HostStation, StationClaimInput, StationStatus, StationView, XpEvent } from '../shared/types.js';
+import { counterSpots, type CounterSpot } from './counter.js';
 import { HOST_ONLINE_MS, HOST_WINDOW_MS, MAX_STATIONS_PER_OWNER, POINTS, SXP, stationLevel, type ShareField } from '../shared/rules.js';
 
 interface StationRow { station_id: string; owner_id: string; company: string; offer: string; link: string; color: number; status: StationStatus; claimed_at: number; host_seen_at: number | null; host_ms: number }
@@ -51,9 +52,8 @@ export class Stations {
   }
 
   private view(r: StationRow & Pics, c: Counts, t: number): StationView {
-    // uploaded images go into the world only once the crew has approved the booth
-    const ok = r.status === 'approved', logo = ok ? pic(r, 'logo') : null, photo = ok ? pic(r, 'photo') : null;
-    return { id: r.station_id, company: r.company, offer: r.offer, link: r.link, color: r.color, status: r.status, hosted: r.host_seen_at != null && t - r.host_seen_at < HOST_ONLINE_MS, level: stationLevel(this.sxp(r, c)), logo, photo };
+    // uploaded images go straight into the world; approval only decides whether the booth is a checkpoint
+    return { id: r.station_id, company: r.company, offer: r.offer, link: r.link, color: r.color, status: r.status, hosted: r.host_seen_at != null && t - r.host_seen_at < HOST_ONLINE_MS, level: stationLevel(this.sxp(r, c)), logo: pic(r, 'logo'), photo: pic(r, 'photo') };
   }
 
   private owners: { at: number; map: Map<string, string> } = { at: -1e9, map: new Map() };
@@ -124,11 +124,37 @@ export class Stations {
     return r;
   }
 
+  /** Counts the time the host is at their counter: seen now, and the minutes since the last look if that was recent. */
+  private async seen(r: StationRow, t: number): Promise<void> {
+    const gap = r.host_seen_at != null ? t - r.host_seen_at : Infinity;
+    await this.g.db.run('UPDATE stations SET host_seen_at = ?, host_ms = host_ms + ? WHERE station_id = ?', [t, gap < HOST_ONLINE_MS * 1.5 ? gap : 0, r.station_id]);
+  }
+
+  private spots: Map<string, CounterSpot> | null = null;
+  /** Where the host of this booth stands in the game: behind the counter, facing the aisle. */
+  counterSpot(stationId: string): CounterSpot | null { return (this.spots ??= counterSpots(this.g.level)).get(stationId) ?? null; }
+
+  /** The dashboard, while open, keeps its host standing at the booth: the avatar others walk up to and swap cards
+   *  with. Placed as a spawn, so coming from anywhere in the hall (or from the game tab a moment ago) is fine. */
+  async atCounter(id: string, stationId: string): Promise<CounterSpot> {
+    const r = await this.owned(id, stationId), t = this.g.now(), at = this.counterSpot(stationId);
+    if (!at) throw new GameError('no_booth', 'This booth is not on the plan');
+    await this.seen(r, t);
+    await this.g.presence.update(await this.g.hologramOf(id, { ...at, deck: false, sigma: 0 }), t, true);
+    return at;
+  }
+
+  /** Is this where one of the player's own booths puts its host? Then a jump away from it is the host leaving the
+   *  dashboard for the game, not a teleport. */
+  async isCounterSpot(id: string, x: number, y: number): Promise<boolean> {
+    const rows = await this.g.db.all<{ station_id: string }>("SELECT station_id FROM stations WHERE owner_id = ? AND status != 'revoked'", [await this.team.ownerFor(id)]);
+    return rows.some((r) => { const s = this.counterSpot(r.station_id); return !!s && Math.hypot(s.x - x, s.y - y) < 0.3; });
+  }
+
   /** The host screen polls this: returns the live code and counts the time the host is present. */
   async hostCode(id: string, stationId: string): Promise<HostCode> {
     const r = await this.owned(id, stationId), t = this.g.now();
-    const gap = r.host_seen_at != null ? t - r.host_seen_at : Infinity;
-    await this.g.db.run('UPDATE stations SET host_seen_at = ?, host_ms = host_ms + ? WHERE station_id = ?', [t, gap < HOST_ONLINE_MS * 1.5 ? gap : 0, stationId]);
+    await this.seen(r, t);
     const w = Math.floor(t / HOST_WINDOW_MS), c = await this.g.hostCode(stationId, w);
     return { stationId, url: `${this.g.publicOrigin}/?h=${encodeURIComponent(c.token)}`, digits: c.digits, expiresInMs: (w + 1) * HOST_WINDOW_MS - t };
   }
@@ -137,8 +163,7 @@ export class Stations {
     const rows = await this.g.db.all<StationRow & Pics>(`SELECT s.*, l.updated_at AS logo_at, ph.updated_at AS photo_at FROM stations s ${PICS} WHERE s.owner_id = ? AND s.status != 'revoked' ORDER BY s.claimed_at`, [await this.team.ownerFor(id)]);
     const counts = await this.counts(rows.map((r) => r.station_id)), t = this.g.now();
     const scans = new Map((await this.g.db.all<{ k: string; n: number }>(`SELECT station_id AS k, COUNT(*) AS n FROM booth_scans WHERE station_id IN (${rows.map(() => '?').join(',') || "''"}) GROUP BY station_id`, rows.map((r) => r.station_id))).map((r) => [r.k, r.n]));
-    // the owner sees their own logo before approval (the world does not)
-    return rows.map((r) => { const c = counts.get(r.station_id)!; return { ...this.view(r, c, t), scans: scans.get(r.station_id) ?? 0, logo: pic(r, 'logo'), photo: pic(r, 'photo'), sxp: this.sxp(r, c), stamps: c.stamps, shares: c.shares, verifiedContacts: c.verified, hostMinutes: Math.round(r.host_ms / 60_000) }; });
+    return rows.map((r) => { const c = counts.get(r.station_id)!; return { ...this.view(r, c, t), scans: scans.get(r.station_id) ?? 0, sxp: this.sxp(r, c), stamps: c.stamps, shares: c.shares, verifiedContacts: c.verified, hostMinutes: Math.round(r.host_ms / 60_000) }; });
   }
 
   /** Only what each visitor consented to share with THIS station, and only while the share stands. */
@@ -189,10 +214,11 @@ export class Stations {
 
   async crewList(): Promise<CrewStationRow[]> {
     const rows = await this.g.db.all<StationRow & Pics & { callsign: string; name: string; pcompany: string }>(
-      `SELECT s.*, pl.callsign, p.name, p.company AS pcompany, l.updated_at AS logo_at, ph.updated_at AS photo_at FROM stations s JOIN players pl ON pl.id = s.owner_id JOIN passports p ON p.player_id = s.owner_id
+      // LEFT JOIN on the card: a booth whose owner never made one (a stray row from a script) must still be seen here, so the crew can release it
+      `SELECT s.*, pl.callsign, p.name, p.company AS pcompany, l.updated_at AS logo_at, ph.updated_at AS photo_at FROM stations s JOIN players pl ON pl.id = s.owner_id LEFT JOIN passports p ON p.player_id = s.owner_id
        ${PICS} ORDER BY s.claimed_at DESC`);
     const counts = await this.counts(rows.map((r) => r.station_id)), t = this.g.now();
-    return rows.map((r) => ({ ...this.view(r, counts.get(r.station_id)!, t), logo: pic(r, 'logo'), photo: pic(r, 'photo'), visits: counts.get(r.station_id)!.stamps, ownerCallsign: r.callsign, ownerName: r.name, ownerCompany: r.pcompany, claimedAt: r.claimed_at }));
+    return rows.map((r) => ({ ...this.view(r, counts.get(r.station_id)!, t), visits: counts.get(r.station_id)!.stamps, ownerCallsign: r.callsign, ownerName: r.name ?? '', ownerCompany: r.pcompany ?? '', claimedAt: r.claimed_at }));
   }
 
   async crewSetStatus(stationId: string, status: string): Promise<void> {

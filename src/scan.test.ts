@@ -30,13 +30,18 @@ test("an exhibitor's rotating QR (a host code) is a stamp with the code", async 
   assert.deepEqual(calls[0]!.body, { stationId: '7C17', proof: 'host', code: '7C17.123456' });
 });
 
-test('a scan at an online booth you have not left your card with opens the booth sheet', async () => {
-  reset(); stations.value = [{ id: '7C17', company: 'Mamee' } as unknown as StationView];
+test('a scan at an online booth you have not left your card with swaps cards on the spot; only a failed swap opens the booth sheet', async () => {
+  reset(); stations.value = [{ id: '7C17', company: 'Mamee' } as unknown as StationView]; me.value = { passport: { name: 'T' }, shared: [], sharePrefs: ['name', 'company', 'role', 'phone', 'email'] } as unknown as Me;
   await handleScan('?b=7C17.tok');
-  assert.equal(modal.value, 'booth'); assert.equal(panelStation.value?.id, '7C17');
+  assert.deepEqual(calls.map((c) => c.path), ['/api/stamp', '/api/station/share'], 'the stamp, then the card left with the saved defaults');
+  assert.equal(modal.value, null, 'no picker, no sheet'); assert.equal(toasts.value[0]?.title, 'Cards swapped with Mamee');
   reset(); stations.value = [{ id: '7C17', company: 'Mamee' } as unknown as StationView]; me.value = { passport: { name: 'T' }, shared: ['7C17'] } as unknown as Me;
   await handleScan('?b=7C17.tok');
-  assert.equal(modal.value, null, 'card already left: nothing to offer');
+  assert.equal(modal.value, null, 'card already left: nothing to offer'); assert.deepEqual(calls.map((c) => c.path), ['/api/stamp']);
+  reset(); stations.value = [{ id: '7C17', company: 'Mamee' } as unknown as StationView]; me.value = { passport: { name: 'T' }, shared: [], sharePrefs: ['name'] } as unknown as Me;
+  reply = (path) => (path === '/api/station/share' ? { ok: false, code: 'x', error: 'no' } : { ok: true, data: null, events: [] });
+  await handleScan('?b=7C17.tok');
+  assert.equal(modal.value, 'booth', 'the swap failed: the booth sheet, to try again there'); assert.equal(panelStation.value?.id, '7C17');
 });
 
 test('a card-swap code opens the swap sheet with the code waiting, and sends nothing', async () => {

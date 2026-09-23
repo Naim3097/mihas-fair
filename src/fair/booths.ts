@@ -11,7 +11,7 @@ import { boothLabel } from '../../shared/rules';
 import { css } from '../theme';
 import { WALL_H, WALL_T, rectBox, toWorld, wallKey, wallRect } from './level';
 import { FAIR } from './palette';
-import { DIR, counterOf, signOf, type Side, type StandInfo } from './stands';
+import { DIR, counterOf, signOf, type Side, type StandInfo } from '../../shared/stands';
 
 const FASCIA_H = 0.32, FASCIA_T = 0.05;
 const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), S = new THREE.Vector3(), P = new THREE.Vector3(), C = new THREE.Color();

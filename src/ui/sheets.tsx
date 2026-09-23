@@ -6,8 +6,8 @@ import { handleScan } from '../scan';
 import { shrink } from './images';
 import { Camera, FieldPicker, Qr, Sheet, useCountdown } from './common';
 import { pgControls } from '../playground/state';
-import { POINTS, ROLE_INFO, type ShareField } from '../../shared/rules';
-import type { Booth, Contact, LinkCode, LinkPeek } from '../../shared/types';
+import { POINTS, ROLE_INFO, waLink, type ShareField } from '../../shared/rules';
+import type { Booth, BoothTeamView, Contact, LinkCode, LinkPeek } from '../../shared/types';
 import { LinkDemoHint, StationDemoHint } from '../demo/Tour';
 import { boothAction, referral, setReferral, drop, guideOn, guideTarget, journey, level, me, modal, myBooths, nearStation, online, panelStation, pendingLink, stampedSet, stationMap, stations, toast, world } from '../state';
 
@@ -23,7 +23,8 @@ export function BoothSheet({ engine }: Eng) {
   const b = panelStation.value, m = me.value!;
   const [fields, setFields] = useState<ShareField[]>(m.sharePrefs), [scan, setScan] = useState(false), [digits, setDigits] = useState(''), [busy, setBusy] = useState(false);
   if (!b) return null;
-  const st = stationMap.value.get(b.id), mine = m.hosting.includes(b.id), stamped = stampedSet.value.has(b.id), left = m.shared.includes(b.id), met = m.verified.includes(b.id);
+  const st = stationMap.value.get(b.id), mine = m.hosting.includes(b.id), stamped = stampedSet.value.has(b.id), left = m.shared.includes(b.id), met = m.verified.includes(b.id) || m.scanned.includes(b.id);
+  const visitor = m.cls !== 'exhibitor', cp = m.mission.checkpoints.find((c) => c.stationId === b.id);
   const near = nearStation.value?.id === b.id, title = st?.company || b.name || `Booth ${b.id}`;
   const run = async (f: () => Promise<unknown>, msg: string) => { setBusy(true); try { await f(); } catch (e) { fail(e, msg); } setBusy(false); };
 
@@ -32,7 +33,7 @@ export function BoothSheet({ engine }: Eng) {
       <div class="pills">
         {st && <span class={'pill ' + (st.hosted ? 'live' : 'on')}>{st.hosted ? 'At the counter now' : 'Online'}</span>}
         {st?.status === 'approved' && <span class="pill on">Verified exhibitor</span>}
-        {stamped && <span class="pill gold">Stamped</span>}{met && <span class="pill gold">Met in person</span>}
+        {met ? <span class="pill gold">Scanned ✓{cp ? ' · checkpoint done' : ''}</span> : stamped ? <span class="pill gold">Visited</span> : null}
       </div>
       {st?.offer && <p class="lead">{st.offer}</p>}
       {st?.link && <a class="btn" href={st.link} target="_blank" rel="noopener noreferrer nofollow">Visit their page</a>}
@@ -41,7 +42,8 @@ export function BoothSheet({ engine }: Eng) {
         <div class="stack"><button class="btn primary big" onClick={() => (modal.value = 'mybooth')}>Open my booth</button><button class="btn big" onClick={() => (modal.value = 'claim')}>Edit booth profile</button></div>
       ) : (
         <div class="stack">
-          {boothAction(b) === 'stamp' && near && <button class="btn primary big" disabled={busy} onClick={() => run(() => engine()!.stamp(b), 'Could not stamp')}>Stamp this booth · +{POINTS.stamp}</button>}
+          {boothAction(b) === 'stamp' && near && <button class="btn primary big" disabled={busy} onClick={() => run(() => engine()!.stamp(b), 'Could not swap cards')}>Swap card · +{POINTS.stamp + (left ? 0 : POINTS.leaveCard)}</button>}
+          {cp && !cp.done && <p class="fine">{met ? 'Scanned.' : 'For the checkpoint: scan the Mission X QR on their counter.'}</p>}
           {!near && <button class="btn big" onClick={() => guideTo(b, title)}>Guide me here</button>}
 
           {!met && (
@@ -60,8 +62,8 @@ export function BoothSheet({ engine }: Eng) {
           {st && m.passport && (
             <div class="box">
               <strong>{left ? `You swapped cards with ${st.company}` : `Swap cards with ${st.company}?`}</strong>
-              <p class="fine">They receive only what you tick. You can take it back any time from My contacts.</p>
-              <FieldPicker value={fields} onChange={setFields} />
+              <p class="fine">{visitor ? 'They receive your card: name, company, role, phone and email. You can take it back any time from My contacts.' : 'They receive only what you tick. You can take it back any time from My contacts.'}</p>
+              {!visitor && <FieldPicker value={fields} onChange={setFields} />}
               <div class="stack">
                 <button class="btn primary big" disabled={busy} onClick={() => run(() => api.leaveCard(b.id, fields), 'Could not leave your card')}>{left ? 'Update what they see' : `Swap card · +${POINTS.leaveCard}`}</button>
                 {left && <button class="btn big" disabled={busy} onClick={() => run(() => api.takeBackCard(b.id), 'Could not undo')}>Take it back</button>}
@@ -105,7 +107,7 @@ export function ClaimSheet() {
   return (
     <Sheet k={chosen ? where(chosen) : 'Register your booth'} title={mine ? 'Booth profile' : 'Light up your booth'} onClose={close}>
       <form onSubmit={submit}>
-        {!mine && <p class="lead">Your booth glows for every player, becomes a checkpoint on their mission once we approve it, and everyone who scans your QR comes to you — free.</p>}
+        {!mine && <p class="lead">Your booth glows for every player with your name, logo and photo the moment you save; it becomes a checkpoint on their mission once we approve it; and everyone who scans your QR comes to you — free.</p>}
         <label>Company name on the booth<input required maxLength={80} value={f.company} onInput={put('company')} /><small class="fhint">It goes up on booth {chosen?.id ?? ''} in the game, next to the booth number, as soon as you save.</small></label>
         <label>One line for visitors<input maxLength={120} placeholder="e.g. Free samples at 3 pm" value={f.offer} onInput={put('offer')} /></label>
         <label>Website<input maxLength={200} inputMode="url" placeholder="yourcompany.com" value={f.link} onInput={put('link')} /></label>
@@ -114,7 +116,7 @@ export function ClaimSheet() {
         <label>Photo of your booth<input type="file" accept="image/png,image/jpeg,image/webp" onChange={file(setPhoto)} /><small class="fhint">Your booth's backdrop or a photo of it: it goes on the back wall of your virtual booth.</small></label>
         {err && <p class="err" role="alert">{err}</p>}
         <button class="btn primary big" disabled={busy}>{busy ? 'Saving…' : mine ? 'Save' : 'Bring it online'}</button>
-        {!mine && <p class="fine">Our crew checks every booth before it becomes a checkpoint. Your logo and photo show in the game once it is approved. You can change them any time on your dashboard.</p>}
+        {!mine && <p class="fine">Your logo and photo go up in the game straight away — change them any time on your dashboard. Our crew checks every booth before it becomes a checkpoint.</p>}
       </form>
     </Sheet>
   );
@@ -140,12 +142,15 @@ function BoothPicker() {
 export function MyBoothSheet() {
   const m = me.value!, mine = myBooths.value, [loaded, setLoaded] = useState(false), [sel, setSel] = useState<string | null>(null), [adding, setAdding] = useState(false);
   const [qr, setQr] = useState<string | null>(null), j = journey.value;
+  const [team, setTeam] = useState<BoothTeamView | null>(null), [copied, setCopied] = useState(false);
+  const copyTeam = async () => { if (!team?.link) return; try { await navigator.clipboard.writeText(team.link); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* the link is on screen */ } };
 
   useEffect(() => { void refreshMyBooths().then(() => setLoaded(true)); }, []);
   useEffect(() => { if (!sel && mine[0]) setSel(mine[0].id); }, [mine]);
   useEffect(() => { // the fixed QR: the same one the exhibitor prints; the counts refresh while this is open
     if (!sel) return; let stop = false;
     api.fixedQr(sel).then((r) => !stop && setQr(r.url), (e) => fail(e, 'Could not load your booth QR'));
+    api.team().then((t) => !stop && setTeam(t), () => setTeam(null));
     void refreshStations();
     const t = setInterval(() => void refreshMyBooths(), 20_000);
     return () => { stop = true; clearInterval(t); };
@@ -170,7 +175,7 @@ export function MyBoothSheet() {
               <div class="stats three">
                 <div><span>Scanned your QR</span><strong>{s.scans}</strong></div><div><span>Visits</span><strong>{s.stamps}</strong></div><div><span>Status</span><strong class="small">{s.status === 'approved' ? 'Approved' : s.status === 'pending' ? 'Pending' : s.status}</strong></div>
               </div>
-              {s.status === 'pending' && <p class="fine">Live now. Our crew will confirm it is your booth; then it becomes a checkpoint and your logo and photo go up.</p>}
+              {s.status === 'pending' && <p class="fine">Live now, logo and photo included. Our crew will confirm it is your booth; then it becomes a checkpoint on visitors' missions.</p>}
               <div class="stack">
                 <a class="btn primary big" href="/booth.html" target="_blank" rel="noopener">Open my dashboard</a>
                 <p class="fine">Print your QR, see everyone who scanned (name, phone, email), change your logo and booth photo, {m.teamMember ? 'see your team' : 'add your team (each on their own phone)'} — and invite other exhibitors: +10 points for each one who joins.</p>
@@ -179,6 +184,19 @@ export function MyBoothSheet() {
               </div>
             </div>
           </div>
+          {team?.owner && team.link && (
+            <div class="teamrow">
+              <Qr text={team.link} label="Booth team QR" />
+              <div>
+                <strong>Your booth team{team.members.length ? ` · ${team.members.length + 1} people` : ''}</strong>
+                <p class="fine">Colleagues working the booth with you: let them scan this, or send them the link. Each joins on their own phone with their own card and sees the same dashboard.</p>
+                <div class="two">
+                  <button class="btn" onClick={copyTeam}>{copied ? 'Link copied' : 'Copy team link'}</button>
+                  <a class="btn" href={`https://wa.me/?text=${encodeURIComponent(`Join our ${team.company} booth team in Mission X (MIHAS 2026): ${team.link}`)}`} target="_blank" rel="noopener">Send on WhatsApp</a>
+                </div>
+              </div>
+            </div>
+          )}
         </>
       )}
     </Sheet>
@@ -189,8 +207,8 @@ export function MyBoothSheet() {
 
 export function SwapSheet() {
   const m = me.value!, [mode, setMode] = useState<'show' | 'scan'>(pendingLink.value ? 'scan' : 'show');
-  const [code, setCode] = useState<{ c: LinkCode; until: number } | null>(null), [prefs, setPrefs] = useState<ShareField[]>(m.sharePrefs);
-  const [cam, setCam] = useState(false), [typed, setTyped] = useState(''), [peek, setPeek] = useState<{ code: string; p: LinkPeek } | null>(null), [mine, setMine] = useState<ShareField[]>(m.sharePrefs), [busy, setBusy] = useState(false);
+  const [code, setCode] = useState<{ c: LinkCode; until: number } | null>(null);
+  const [cam, setCam] = useState(false), [typed, setTyped] = useState(''), [peek, setPeek] = useState<{ code: string; p: LinkPeek } | null>(null), [busy, setBusy] = useState(false);
   const left = useCountdown(code?.until ?? 0), swapsAtOpen = useRef(m.links);
 
   const fresh = () => api.swapCode().then((c) => setCode({ c, until: Date.now() + c.expiresInMs }), (e) => fail(e, 'Could not create your code'));
@@ -203,19 +221,21 @@ export function SwapSheet() {
 
   const look = async (raw: string) => {
     const c = (raw.match(/[?&]l=([A-Za-z0-9]{8})/)?.[1] ?? raw).trim().toUpperCase();
-    try { setPeek({ code: c, p: await api.swapPeek(c) }); } catch (e) { fail(e, 'That code did not work'); }
+    try {
+      const p = await api.swapPeek(c);
+      // a scan swaps on the spot: the whole card both ways, nothing to tick
+      if (!p.alreadyLinked) { setBusy(true); await api.swap(c, m.sharePrefs); api.track('swap'); setBusy(false); modal.value = 'contacts'; return; }
+      setPeek({ code: c, p });
+    } catch (e) { setBusy(false); fail(e, 'That code did not work'); }
   };
   useEffect(() => { const c = pendingLink.value; if (c && m.passport) { pendingLink.value = null; void look(c); } }, []);
-  const doSwap = async () => { if (!peek) return; setBusy(true); try { await api.swap(peek.code, mine); api.track('swap'); setPeek(null); modal.value = 'contacts'; } catch (e) { fail(e, 'Could not swap cards'); } setBusy(false); };
 
-  if (!m.passport) return <Sheet k="Swap cards" title="You need your card first"><p class="lead">Your digital business card is what you swap. It is free at the X — Booth 8H18A.</p><button class="btn primary big" onClick={() => { guideTarget.value = null; guideOn.value = true; modal.value = null; }}>Guide me to the X</button></Sheet>;
+  if (!m.passport) return <Sheet k="Swap cards" title="You need your card first"><p class="lead">Your digital business card is what you swap. It is free, and takes a minute.</p><button class="btn primary big" onClick={() => (modal.value = 'card')}>Make my card</button></Sheet>;
 
   if (peek) return (
     <Sheet k="Swap cards" title={`Swap with ${peek.p.callsign}?`} onClose={() => setPeek(null)}>
-      <p class="lead">{peek.p.cls ? ROLE_INFO[peek.p.cls].label : 'Player'}. They are sharing: <b>{peek.p.shares.join(', ')}</b>.</p>
-      {peek.p.alreadyLinked ? <p class="fine">You two have already swapped — find them in My contacts.</p> : (
-        <><strong>What do you share with them?</strong><FieldPicker value={mine} onChange={setMine} /><button class="btn primary big" disabled={busy} onClick={doSwap}>{busy ? 'Swapping…' : `Swap cards · +${POINTS.swap} each`}</button></>
-      )}
+      <p class="lead">{peek.p.cls ? ROLE_INFO[peek.p.cls].label : 'Player'}.</p>
+      <p class="fine">You two have already swapped — find them in My contacts.</p>
     </Sheet>
   );
 
@@ -226,13 +246,12 @@ export function SwapSheet() {
         <div class="center">
           {code && <Qr text={code.c.url} label="My card-swap code" />}
           <div class="code small">{code?.c.code.replace(/(.{4})/, '$1 ') ?? '···· ····'}</div>
-          <p class="fine">Fresh code in {left}s · works once.</p>
-          <div class="box left"><strong>Whoever scans you receives</strong><FieldPicker value={prefs} onChange={(f) => { setPrefs(f); void api.swapPrefs(f).catch((e) => fail(e, 'Could not save')); }} /></div>
+          <p class="fine">Fresh code in {left}s · works once. Whoever scans it gets your card, and you get theirs: name, company, role, phone and email.</p>
           <LinkDemoHint mode="show" onCode={() => {}} />
         </div>
       ) : (
         <div>
-          {cam ? <Camera onCode={(t) => { setCam(false); void look(t); }} onFail={(msg) => { setCam(false); toast(msg, undefined, 'warn', 5000); }} /> : <button class="btn primary big" onClick={() => setCam(true)}>Open camera</button>}
+          {busy ? <p class="lead">Swapping cards…</p> : cam ? <Camera onCode={(t) => { setCam(false); void look(t); }} onFail={(msg) => { setCam(false); toast(msg, undefined, 'warn', 5000); }} /> : <button class="btn primary big" onClick={() => setCam(true)}>Open camera</button>}
           <form class="inline" onSubmit={(e) => { e.preventDefault(); void look(typed); }}>
             <input maxLength={9} placeholder="or type their 8 characters" aria-label="8-character code" autocapitalize="characters" autocomplete="off" value={typed} onInput={(e) => setTyped((e.target as HTMLInputElement).value.toUpperCase().replace(/\s/g, ''))} />
             <button class="btn" disabled={typed.length !== 8}>Look up</button>
@@ -246,12 +265,6 @@ export function SwapSheet() {
 
 /* ------------------------------------------------------------------ my contacts */
 
-function vcardHref(c: Contact): string {
-  const v = (s: string) => s.replace(/([,;\\])/g, '\\$1'), k = c.card;
-  const lines = ['BEGIN:VCARD', 'VERSION:3.0', `FN:${v(k.name ?? c.title)}`, k.company && `ORG:${v(k.company)}`, k.role && `TITLE:${v(k.role)}`, k.phone && `TEL;TYPE=CELL:${v(k.phone)}`, k.email && `EMAIL:${v(k.email)}`, c.note && `NOTE:${v(c.note)}`, 'END:VCARD'].filter(Boolean);
-  return 'data:text/vcard;charset=utf-8,' + encodeURIComponent(lines.join('\r\n'));
-}
-
 export function ContactsSheet() {
   const [list, setList] = useState<Contact[] | null>(null);
   const load = () => api.contacts().then(setList, () => setList([]));
@@ -264,11 +277,17 @@ export function ContactsSheet() {
           <div key={c.key} class="contact">
             <div class="rowb"><strong>{c.title}{c.verified && <em> · met in person</em>}</strong><span class="pill">{c.kind === 'person' ? 'Person' : 'Booth'}</span></div>
             <span class="sub">{c.sub}</span>
+            <dl class="carddl">
+              {c.card.name && c.card.name !== c.title && <><dt>Name</dt><dd>{c.card.name}</dd></>}
+              {c.card.company && <><dt>Company</dt><dd>{c.card.company}</dd></>}
+              {c.card.role && <><dt>Role</dt><dd>{c.card.role}</dd></>}
+              {c.card.phone && <><dt>Phone</dt><dd><a href={`tel:${c.card.phone}`}>{c.card.phone}</a></dd></>}
+              {c.card.email && <><dt>Email</dt><dd><a href={`mailto:${c.card.email}`}>{c.card.email}</a></dd></>}
+            </dl>
             <div class="pills">
-              {c.card.phone && <a class="chip" href={`https://wa.me/${c.card.phone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer">WhatsApp</a>}
+              {c.card.phone && <a class="chip" href={waLink(c.card.phone)} target="_blank" rel="noopener noreferrer">WhatsApp</a>}
               {c.card.email && <a class="chip" href={`mailto:${c.card.email}`}>Email</a>}
               {c.link && <a class="chip" href={c.link} target="_blank" rel="noopener noreferrer nofollow">Their page</a>}
-              {c.kind === 'person' && c.card.name && <a class="chip" href={vcardHref(c)} download={`${c.card.name}.vcf`}>Save to phone</a>}
               <button class="chip ghostbtn" onClick={() => revoke(c)}>Take back my card</button>
             </div>
             <textarea rows={2} maxLength={500} placeholder="Private note — follow up about…" aria-label={`Note about ${c.title}`} defaultValue={c.note} onBlur={(e) => { const t = (e.target as HTMLTextAreaElement).value; if (t !== c.note) { c.note = t; void api.note(c.key, t).catch((x) => fail(x, 'Note not saved')); } }} />
@@ -289,7 +308,7 @@ export function MenuSheet() {
     <Sheet k={`${m.callsign} · ${online.value} here now`} title="Menu">
       <div class="menu">
         {drop.value && !drop.value.done && <button class="wide" onClick={() => { const d = drop.value!; guideTarget.value = { x: d.x, y: d.y, label: d.label }; guideOn.value = true; modal.value = null; }}><strong>Booth of the day · +{drop.value.bonus}</strong><small>{drop.value.label} · scan its QR at the real booth today</small></button>}
-        {m.passport && <a href={m.passport.url} target="_blank" rel="noopener"><strong>My card</strong><small>Your digital business card · link and QR</small></a>}
+        {m.cls !== 'exhibitor' && m.passport && <button onClick={go('prize')}><strong>My prize code</strong><small>{m.docked ? 'Tote bag claimed at Lean X Digital' : 'Show it at Lean X Digital, Booth 8H18A, for your tote bag'}</small></button>}
         {(m.cls === 'exhibitor' || m.hosting.length > 0) && <button onClick={go(m.passport ? 'mybooth' : 'card')}><strong>My booth</strong><small>{m.hosting.length ? m.hosting.join(', ') + ' · QR and leads' : 'Bring it online'}</small></button>}
         <button onClick={go('swap')}><strong>Swap cards</strong><small>Met someone? Exchange cards · +{POINTS.swap} each</small></button>
         <button onClick={go('contacts')}><strong>My contacts</strong><small>{m.links} people · {m.shared.length} booths</small></button>
@@ -300,7 +319,7 @@ export function MenuSheet() {
         {world.value !== 'playground' && <button onClick={go('map')}><strong>Map</strong><small>Halls 6–8 · search · places to go</small></button>}
         <button onClick={go('rules')}><strong>How to play</strong><small>The mission and the points, on one page</small></button>
         <button aria-pressed={soundOn.value} onClick={() => setSound(!soundOn.value)}><strong>Sound · {soundOn.value ? 'on' : 'off'}</strong><small>{soundOn.value ? 'Quiet chimes, and a buzz on phones that can' : 'Silent, no vibration'}</small></button>
-        <button onClick={switchRole}><strong>{m.cls === 'exhibitor' ? 'Play as a visitor' : 'I am exhibiting'}</strong><small>{m.cls === 'exhibitor' ? 'Do the five-chapter mission' : 'Put your booth in the game'}</small></button>
+        <button onClick={switchRole}><strong>{m.cls === 'exhibitor' ? 'Play as a visitor' : 'I am exhibiting'}</strong><small>{m.cls === 'exhibitor' ? 'Do the three-chapter mission' : 'Put your booth in the game'}</small></button>
       </div>
     </Sheet>
   );

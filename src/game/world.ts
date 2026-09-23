@@ -5,7 +5,7 @@ import { Troupe } from './troupe';
 import { defaultAvatar } from '../../shared/avatar';
 import { THEME, css } from '../theme';
 import { buildPlaces, taken, type Place, type Tone } from './places';
-import { buildStands, type Stand } from './stands';
+import { buildStands, type Stand } from '../../shared/stand-groups';
 
 // Floor-plan metres → world. +x east, +y north ⇒ world +x east, −z north.
 export const CX = 95, CY = 72;

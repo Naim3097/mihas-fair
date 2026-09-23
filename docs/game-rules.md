@@ -3,8 +3,8 @@
 This page is the whole game. If something is not here, it is not in the game.
 The numbers live in [`shared/rules.ts`](../shared/rules.ts); the words on screen live in `src/ui/`.
 
-**In one sentence:** walk the MIHAS expo on your phone, stamp booths, swap cards — and find the X for your free
-digital business card and a gift at the real Booth 8H18A.
+**In one sentence:** make your free digital business card, walk the MIHAS expo on your phone to the exhibitor booths
+on your list, scan the Mission X QR at each — and claim your tote bag at the real Booth 8H18A.
 
 ## Two doors
 
@@ -20,18 +20,20 @@ Anyone can switch doors from the menu. Whoever brings a booth online becomes an 
 
 ## The visitor's mission
 
-One instruction on screen at a time, and three dots that fill in. The whole game is on Level 2 (Halls 6–8); there
-is no location check, everyone plays in the one hall and sees everyone else.
+One instruction on screen at a time, and three dots that fill in.
 
-1. **Your card** — the form comes first, before the world: your free digital business card (its own link, QR and
-   contact file). This is the only form in the game.
-2. **Find Lean X Digital** — follow the trail to Booth 8H18A and scan the Lean X Digital QR there to start.
-3. **Checkpoints** — the game names exhibitor booths for you (five today, `CHECKPOINTS` in `shared/rules.ts`);
-   find each and scan the QR on its counter. The trail leads to the nearest one left; "Take me there" walks you.
+1. **Your card** — the form comes before the world: your free digital business card (its own link, QR and contact
+   file). This is the only form in the game, and it is the start of the mission. Nobody has to come to Lean X first.
+2. **Checkpoints** — up to three exhibitor booths, drawn from the ones the crew approved. The trail leads to the nearest
+   one; scan the Mission X QR on its counter. Every scan lands on that exhibitor's dashboard.
+3. **Claim your tote bag** — with every checkpoint done the trail leads to Booth 8H18A. Show your prize code (the
+   mission card, or menu → My prize code); our crew scans it and hands over the tote bag.
 
-When the last closes, the ending says what they just did — a customer journey — and who builds those.
-After the mission it is free play: stamping, swapping cards and leaving them keep scoring. Booths that are not your
-checkpoints offer **Swap card** when an exhibitor runs them.
+Lean X Digital's own QR at 8H18A starts nothing: scanned, it says how many checkpoints are left, or that the tote bag
+is here. Someone standing at the booth can be handed the tote bag early; the crew sees how far they got.
+When the third chapter closes, the ending says what they just did — a customer journey — and who builds those.
+
+After the mission it is free play: the same actions keep scoring.
 
 ## Points — fixed, and shown in the game ("How to play")
 

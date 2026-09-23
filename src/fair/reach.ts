@@ -4,7 +4,7 @@
 // (STAMP_RADIUS_M in shared/rules.ts); everything here fits inside it, so what the interface offers the server accepts.
 import type { Booth, LevelData } from '../../shared/types';
 import type { NavGrid, P2 } from '../game/nav';
-import { DIR, SIDES, planStands, type Cell, type Side, type StandInfo } from './stands';
+import { DIR, SIDES, planStands, type Cell, type Side, type StandInfo } from '../../shared/stands';
 
 /** How far out from an open side counts as being at the booth (m); once there, how far before it stops counting. */
 export const AT_M = 1.6, STAY_M = 2.2;

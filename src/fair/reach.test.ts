@@ -8,7 +8,7 @@ import type { Booth, LevelData } from '../../shared/types';
 import { STAMP_RADIUS_M } from '../../shared/rules';
 import { NavGrid } from '../game/nav';
 import { buildFairLevel, fairLevelData } from './level';
-import { DIR, OPPOSITE } from './stands';
+import { DIR, OPPOSITE } from '../../shared/stands';
 import { AT_M, Reach, SLACK_AT, SLACK_STAY, STAY_M } from './reach';
 
 const raw = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../public/data/floor.json'), 'utf8')) as LevelData;

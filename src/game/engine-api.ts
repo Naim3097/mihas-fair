@@ -4,13 +4,14 @@ import type { Booth, Lift } from '../../shared/types';
 import type { P2 } from './nav';
 
 export interface EngineApi {
-  /** Drop the player in at a spawn and hand over control. */
-  start(spawn: 'short' | 'epic'): void;
+  /** Drop the player in at an entrance (a gate id from the plan) and hand over control. */
+  start(gate: string): void;
   stamp(b: Booth): Promise<void>;
-  /** Walk to where the trail leads, on its own. Nothing happens when it leads nowhere. */
+  /** Walk to the current goal on its own, at a pace the eye can follow; pause keeps the route, stop drops it. */
   autopilot(): void;
-  /** Stop walking there. */
-  stop(): void;
+  pauseWalk(): void;
+  resumeWalk(): void;
+  stopWalk(): void;
   useLift(to: Lift): void;
   /** Where the player stands, in floor-plan metres. */
   readonly position: P2;

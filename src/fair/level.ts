@@ -8,7 +8,7 @@ import { buildPlaces, type Place } from '../game/places';
 import type { LevelDef } from '../ceritera/game/level';
 import { box, type Box } from '../ceritera/game/physics';
 import { v3, type V3 } from '../ceritera/game/v3';
-import { DIR, planStands, standFurniture, type StandInfo } from './stands';
+import { CELL, DIR, LEVEL2_ROW_M, WALL_H, planLevel, planStands, standFurniture, type StandInfo } from '../../shared/stands';
 
 export const CX = 95, CY = 72;
 
@@ -16,7 +16,7 @@ export const CX = 95, CY = 72;
  * apart down the columns and 3.0 m across, the café is 12 m deep where the plan says 11. The fair draws that deck
  * at true scale, compressing plan y about the deck's centre; the plan space itself stays as it is, so presence,
  * stamps and Mission X all keep the same numbers. */
-const FIX = { y0: 20, y1: 117, s: 3 / 3.25 } as const;
+const FIX = { y0: 20, y1: 117, s: CELL / LEVEL2_ROW_M } as const;
 const FIX_C = (FIX.y0 + FIX.y1) / 2;
 export const fixY = (y: number): number => (y > FIX.y0 && y < FIX.y1 ? FIX_C + (y - FIX_C) * FIX.s : y);
 export const unfixY = (y: number): number => (y > FIX_C + (FIX.y0 - FIX_C) * FIX.s && y < FIX_C + (FIX.y1 - FIX_C) * FIX.s ? FIX_C + (y - FIX_C) / FIX.s : y);
@@ -30,7 +30,8 @@ export const rectBox = (r: Rect, y0: number, y1: number, tag?: string): Box => b
 export const GLASS_H = 9;
 export const DECK_MARGIN = 3;
 /** The shell scheme: 3 m modules, 2.5 m partitions. */
-export const CELL = 3.0, WALL_H = 2.5, WALL_T = 0.08;
+export { CELL, WALL_H };
+export const WALL_T = 0.08;
 
 /** The plan as the fair reads it: the standard 3 m × 3 m module on every deck (the file's 2.82 was measured off
  * the drawing's line work; the plan says 3 m x 3 m), with level 2's cells 3.25 m apart in plan y because of the
@@ -38,7 +39,7 @@ export const CELL = 3.0, WALL_H = 2.5, WALL_T = 0.08;
 export function fairLevelData(level: LevelData): LevelData {
   // the Hall 8 entrance spawn sits on the line of a booth column in the file; the fair drops you in the middle of the aisle beside it
   const spawns = { ...level.spawns, short: { ...level.spawns.short, x: 36.4 } };
-  return { ...level, spawns, booth: { w: CELL, d: CELL, h: WALL_H }, decks: level.decks.map((d) => ({ ...d, boothD: d.level === 2 ? CELL * (1 / FIX.s) : CELL })) };
+  return { ...planLevel(level), spawns };
 }
 
 export interface FairLevel {

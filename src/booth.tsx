@@ -62,7 +62,12 @@ function Booth({ b, onChange }: { b: HostStation; onChange: () => void }) {
     pullScans();
     call<{ url: string }>('GET', `/api/host/qr?station=${q(b.id)}`).then((r) => !stop && setPrintable(r.data.url), () => {});
     const c = setInterval(pullScans, 15_000);
-    return () => { stop = true; clearInterval(c); };
+    // while this page is open, its host stands at the booth in the game (the server forgets anyone quiet for 15 s)
+    const stand = () => { if (!document.hidden) void call('POST', '/api/host/presence', { station: b.id }).catch(() => {}); };
+    stand();
+    const s = setInterval(stand, 5_000);
+    document.addEventListener('visibilitychange', stand);
+    return () => { stop = true; clearInterval(c); clearInterval(s); document.removeEventListener('visibilitychange', stand); };
   }, [b.id]);
   useEffect(() => { if (!printing) return; const done = () => setPrinting(false); addEventListener('afterprint', done); print(); return () => removeEventListener('afterprint', done); }, [printing]);
 
@@ -70,7 +75,7 @@ function Booth({ b, onChange }: { b: HostStation; onChange: () => void }) {
     const f = (e.target as HTMLInputElement).files?.[0]; if (!f) return;
     setBusy(kind); setMsg(null);
     const what = kind === 'logo' ? 'Logo' : 'Booth photo';
-    try { await call('POST', `/api/station/${kind}`, { stationId: b.id, image: await shrink(f, kind) }); setMsg({ ok: true, text: b.status === 'approved' ? `${what} saved — it is on your booth in the game now.` : `${what} saved. It appears on your booth in the game once Lean X Digital approves your booth.` }); onChange(); }
+    try { await call('POST', `/api/station/${kind}`, { stationId: b.id, image: await shrink(f, kind) }); setMsg({ ok: true, text: `${what} saved — it is on your booth in the game now.` }); onChange(); }
     catch (x) { setMsg({ ok: false, text: (x as Error).message }); }
     finally { setBusy(null); (e.target as HTMLInputElement).value = ''; }
   };
@@ -81,7 +86,8 @@ function Booth({ b, onChange }: { b: HostStation; onChange: () => void }) {
     <>
       <section class={'sheet wide status ' + b.status}>
         <div class="row"><h2>{b.company} <small>Booth {b.id}</small></h2><span class={'badge ' + b.status}>{b.status === 'approved' ? 'Approved · you are a checkpoint' : b.status === 'pending' ? 'Waiting for approval' : b.status}</span></div>
-        {b.status !== 'approved' && <p class="fine">Lean X Digital checks every booth before it becomes a checkpoint in the game. Visitors can already scan your QR, and you will see them below.</p>}
+        {b.status !== 'approved' && <p class="fine">Lean X Digital checks every booth before it becomes a checkpoint in the game. Your booth, logo and photo are already in the game, visitors can already scan your QR, and you will see them below.</p>}
+        <p class="fine">With this page open you are standing at your booth in the game, where visitors can walk up and swap cards with you. Close it or lock your phone and you stay there for the rest of the day.</p>
       </section>
 
       <div class="dash">
@@ -105,8 +111,7 @@ function Booth({ b, onChange }: { b: HostStation; onChange: () => void }) {
               <label class="btn big file">{busy === 'photo' ? 'Uploading…' : 'Upload booth photo'}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={!!busy} onChange={upload('photo')} /></label>
               <p class="fine">Your backdrop or a photo of your booth, on the back wall of your virtual booth.</p></div>
           </div>
-          {b.status !== 'approved' && <p class="fine">Shown in the game once your booth is approved.</p>}
-          {msg && <p class={'banner ' + (msg.ok ? 'ok' : 'bad')} role="status">{msg.text}</p>}
+          {msg &&<p class={'banner ' + (msg.ok ? 'ok' : 'bad')} role="status">{msg.text}</p>}
         </section>
       </div>
 
