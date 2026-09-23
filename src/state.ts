@@ -1,6 +1,6 @@
 import { signal, computed } from '@preact/signals';
 import type { Booth, DailyDrop, HostStation, LevelData, Lift, Me, StationView, XpEvent } from '../shared/types';
-import { boothSteps, chapters, type Chapter } from '../shared/rules';
+import { boothSteps, chapters, checkpointRank, type Chapter } from '../shared/rules';
 import type { Place } from './game/places';
 import { buzz, sfx } from './sfx';
 
@@ -33,14 +33,15 @@ export const autoWalk = signal<'off' | 'going' | 'paused'>('off');
 /** Checkpoints the trail has already delivered the player to this session, so the next one comes up before the QR is scanned. */
 export const reachedCps = signal<Set<string>>(new Set());
 export interface NextCheckpoint { stationId: string; company: string; x: number; y: number; label: string }
-/** The checkpoint the mission points to now: the nearest one not scanned and not yet walked to. Nothing when the mission
- *  has not started, is done, or every open checkpoint has been reached (the player is meant to be scanning). */
+/** The checkpoint the mission points to now: the first on the fixed route (CHECKPOINT_ORDER) not scanned and not yet
+ *  walked to; booths off the route come after, nearest first. Nothing when the mission has not started, is done, or every
+ *  open checkpoint has been reached (the player is meant to be scanning). */
 export function nextCheckpoint(from: { x: number; y: number } | null): NextCheckpoint | null {
   const m = me.value, lv = level.value; if (!m?.mission.started || !lv) return null;
   const open = m.mission.checkpoints.filter((c) => !c.done && !reachedCps.value.has(c.stationId))
     .map((c) => ({ c, b: lv.booths.find((b) => b.id === c.stationId) })).filter((x): x is { c: typeof x.c; b: Booth } => !!x.b);
   const d = (b: Booth) => (from ? Math.hypot(b.x - from.x, b.y - from.y) : 0);
-  const best = open.sort((p, q) => d(p.b) - d(q.b))[0]; if (!best) return null;
+  const best = open.sort((p, q) => checkpointRank(p.b.id) - checkpointRank(q.b.id) || d(p.b) - d(q.b))[0]; if (!best) return null;
   return { stationId: best.b.id, company: best.c.company, x: best.b.x, y: best.b.y, label: `${best.c.company} · Booth ${best.b.id}` };
 }
 /** The trail delivered the player to this checkpoint: on to the next one. */

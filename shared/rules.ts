@@ -185,6 +185,14 @@ export const GC_MAX_WAYPOINTS = 5;
 export const TEAM_MAX = 12;
 export const TEAM_SCORERS = 5;
 
+/* ---------------- the route ---------------- */
+/** A fixed walking order for the checkpoints, by booth number: these come first, in this order, on the mission card and
+ *  on the trail. Any other checkpoint (an exhibitor approved later) follows, nearest first. Empty = nearest first for all.
+ *  Set 23 September for the three exhibitors then approved: UOB, printdaddy, Aura Biocare. */
+export const CHECKPOINT_ORDER: readonly string[] = ['8H17B', '6A21', '6A25'];
+/** Lower first; booths not on the route rank after every booth that is. */
+export const checkpointRank = (stationId: string): number => { const i = CHECKPOINT_ORDER.indexOf(stationId); return i < 0 ? CHECKPOINT_ORDER.length : i; };
+
 /* ---------------- WhatsApp links ---------------- */
 /** The digits WhatsApp wants: a number typed the Malaysian way ("012-345 6789") becomes 60123456789; one with a
  *  country code is kept. wa.me rejects a leading 0, which is why "WhatsApp" did nothing for most cards. */

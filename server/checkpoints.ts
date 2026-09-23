@@ -5,7 +5,7 @@
 import { Game, GameError } from './game.js';
 import type { BoothTeam } from './team.js';
 import type { BoothScan, CheckpointMission, XpEvent } from '../shared/types.js';
-import { CHECKPOINTS } from '../shared/rules.js';
+import { CHECKPOINTS, checkpointRank } from '../shared/rules.js';
 
 const IMAGE_MAX_BYTES = { logo: 400_000, photo: 900_000 } as const;
 const IMAGE_TABLE = { logo: 'station_logos', photo: 'station_photos' } as const;
@@ -62,7 +62,9 @@ export class Checkpoints {
     const rows = await this.g.db.all<{ station_id: string; company: string | null; scanned_at: number | null }>(
       `SELECT c.station_id, s.company, c.scanned_at FROM checkpoints c LEFT JOIN stations s ON s.station_id = c.station_id
        WHERE c.player_id = ? AND (s.status IS NULL OR s.status != 'revoked') ORDER BY c.assigned_at, c.station_id`, [id]);
-    const checkpoints = rows.map((r) => ({ stationId: r.station_id, company: r.company || this.g.stations.get(r.station_id)?.name || `Booth ${r.station_id}`, done: r.scanned_at != null }));
+    // the fixed route first, in its order; the rest as they were handed out
+    const checkpoints = rows.map((r, i) => ({ stationId: r.station_id, company: r.company || this.g.stations.get(r.station_id)?.name || `Booth ${r.station_id}`, done: r.scanned_at != null, i }))
+      .sort((a, b) => checkpointRank(a.stationId) - checkpointRank(b.stationId) || a.i - b.i).map(({ i: _i, ...c }) => c);
     return { started: true, target: Math.min(CHECKPOINTS, checkpoints.length), checkpoints };
   }
 
