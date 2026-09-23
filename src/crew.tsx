@@ -2,6 +2,7 @@
 import { render } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Camera, Qr } from './ui/common';
+import { shrink } from './ui/images';
 import { OpsTab, ReviewTab } from './crew-ops';
 import qrcode from 'qrcode-generator';
 import './ui.css';
@@ -123,6 +124,8 @@ function Register() {
         <div class="sheet wide">
           <p class="banner ok" role="status">{done.company} · Booth {done.stationId} is online and approved, with a card for {done.name}. Hand them the link:</p>
           <HandoffCard r={done} wa={wa(done)} />
+          <div class="logo-row"><p class="fine" style={{ margin: 0 }}><b>Their logo</b> · on their counter and the sign over their booth in the game. A PNG with a transparent background looks best.</p><ImageUpload stationId={done.stationId} kind="logo" big /></div>
+          <div class="logo-row"><p class="fine" style={{ margin: 0 }}><b>Their booth photo</b> · the backdrop on the back wall of their virtual booth. Either can also be uploaded from their dashboard later.</p><ImageUpload stationId={done.stationId} kind="photo" big /></div>
           <button class="btn big" style={{ marginTop: '8px' }} onClick={() => setDone(null)}>Register another</button>
         </div>
       )}
@@ -206,6 +209,25 @@ function Leads() {
   );
 }
 
+/** The crew puts a logo or a booth photo (the backdrop) up for the exhibitor: on their booth in the game the moment it is saved. */
+function ImageUpload({ stationId, kind, onDone, big }: { stationId: string; kind: 'logo' | 'photo'; onDone?: () => void; big?: boolean }) {
+  const [busy, setBusy] = useState(false), [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const what = kind === 'logo' ? 'logo' : 'booth photo';
+  const upload = async (e: Event) => {
+    const t = e.target as HTMLInputElement, f = t.files?.[0]; if (!f) return;
+    setBusy(true); setMsg(null);
+    try { await call('POST', '/api/crew/stations/image', { stationId, kind, image: await shrink(f, kind) }); setMsg({ ok: true, text: `Saved: the ${what} is on their booth in the game now.` }); onDone?.(); }
+    catch (x) { setMsg({ ok: false, text: (x as Error).message }); }
+    finally { setBusy(false); t.value = ''; }
+  };
+  return (
+    <>
+      <label class={big ? 'btn big file' : 'chip file'}>{busy ? 'Uploading…' : `Upload ${what}`}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={upload} /></label>
+      {msg && <span class={'note ' + (msg.ok ? 'ok' : 'bad')} role="status">{msg.text}</span>}
+    </>
+  );
+}
+
 /** Anyone with a card can bring a booth online, so the crew checks them. */
 function StationsTab() {
   const [rows, setRows] = useState<CrewStationRow[] | null>(null), [err, setErr] = useState('');
@@ -215,11 +237,11 @@ function StationsTab() {
   return (
     <section class="sheet wide">
       <div class="row"><h2>Booths online {rows ? `(${rows.length})` : ''}</h2><button class="btn" onClick={load}>Refresh</button></div>
-      <p class="fine">Approve = “verified exhibitor” badge. Revoke = the booth goes dark and that person cannot take it again. Release = remove them so the real exhibitor can bring the booth online; their logo, photo and the visitors who scanned or left a card are cleared, so the next owner starts clean.</p>
+      <p class="fine">Approve = “verified exhibitor” badge. Revoke = the booth goes dark and that person cannot take it again. Release = remove them so the real exhibitor can bring the booth online; their logo, photo and the visitors who scanned or left a card are cleared, so the next owner starts clean. Logo and booth photo: upload them here for an exhibitor; they go on the booth in the game straight away, and the exhibitor can change them from their dashboard.</p>
       {err && <p class="banner bad">{err}</p>}
-      <div class="scroll"><table><thead><tr><th>Booth</th><th>Logo</th><th>Name shown</th><th>Brought online by</th><th>Their company</th><th>Status</th><th>Visits</th><th></th></tr></thead>
+      <div class="scroll"><table><thead><tr><th>Booth</th><th>Logo</th><th>Booth photo</th><th>Name shown</th><th>Brought online by</th><th>Their company</th><th>Status</th><th>Visits</th><th></th></tr></thead>
         <tbody>{(rows ?? []).map((r) => (
-          <tr key={r.id}><td>{r.id}</td><td>{r.logo ? <img class="thumb" src={r.logo} alt={`${r.company} logo`} /> : <small>none</small>}</td><td>{r.company}</td><td>{r.ownerName ? <>{r.ownerName} <small>{r.ownerCallsign}</small></> : <span class="badge revoked">No card — not a real exhibitor</span>}</td><td>{r.ownerCompany}</td><td>{r.status}{r.hosted ? ' · at the counter' : ''}</td><td>{r.visits}</td>
+          <tr key={r.id}><td>{r.id}</td><td class="logo">{r.logo ? <img class="thumb" src={r.logo} alt={`${r.company} logo`} /> : <small>none</small>}<ImageUpload stationId={r.id} kind="logo" onDone={load} /></td><td class="logo">{r.photo ? <img class="thumb" src={r.photo} alt={`${r.company} booth`} /> : <small>none</small>}<ImageUpload stationId={r.id} kind="photo" onDone={load} /></td><td>{r.company}</td><td>{r.ownerName ? <>{r.ownerName} <small>{r.ownerCallsign}</small></> : <span class="badge revoked">No card — not a real exhibitor</span>}</td><td>{r.ownerCompany}</td><td>{r.status}{r.hosted ? ' · at the counter' : ''}</td><td>{r.visits}</td>
             <td class="acts">{r.status !== 'approved' && <button class="chip" onClick={() => set(r.id, 'approved')}>Approve</button>}{r.status !== 'revoked' && <button class="chip" onClick={() => set(r.id, 'revoked')}>Revoke</button>}<button class="chip" onClick={() => set(r.id, 'release')}>Release</button></td></tr>
         ))}</tbody></table></div>
     </section>

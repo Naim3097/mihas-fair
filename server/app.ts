@@ -197,6 +197,7 @@ export function createApp({ game, stations, social, crews, venue, director, gc, 
   });
   crew.get('/referrals', async (c) => c.json({ ok: true, data: await referrals.ranking() }));
   crew.post('/stations/status', async (c) => { const b = await body(c); await stations.crewSetStatus(String(b.stationId), String(b.status)); return c.json({ ok: true, data: null }); });
+  crew.post('/stations/image', async (c) => { const b = await body(c); await checkpoints.crewSetImage(String(b.stationId ?? ''), b.kind === 'photo' ? 'photo' : 'logo', b.image); return c.json({ ok: true, data: null }); });
   /* registering an exhibitor at the counter: their card and booth, and the link that hands the account to them */
   crew.post('/register', async (c) => c.json({ ok: true, data: await onboarding.register((await body(c)) as never) }));
   crew.get('/registered', async (c) => c.json({ ok: true, data: await onboarding.list() }));

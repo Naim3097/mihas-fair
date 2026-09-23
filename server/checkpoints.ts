@@ -111,6 +111,17 @@ export class Checkpoints {
    *  no approval needed: the logo on the counter and a sign over it, the photo on the back wall. */
   async setImage(ownerId: string, stationId: string, kind: BoothImage, dataUrl: unknown): Promise<void> {
     await this.owner(ownerId, stationId);
+    await this.store(stationId, kind, dataUrl);
+  }
+
+  /** The crew, at the counter: the logo or photo for any booth that is online, whoever brought it online. */
+  async crewSetImage(stationId: string, kind: BoothImage, dataUrl: unknown): Promise<void> {
+    const r = await this.g.db.get<{ status: string }>('SELECT status FROM stations WHERE station_id = ?', [stationId]);
+    if (!r || r.status === 'revoked') throw new GameError('not_hosted', 'This booth is not online');
+    await this.store(stationId, kind, dataUrl);
+  }
+
+  private async store(stationId: string, kind: BoothImage, dataUrl: unknown): Promise<void> {
     const m = /^data:(image\/[a-z]+);base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl ?? ''));
     if (!m || !LOGO_TYPES.includes(m[1]!)) throw new GameError(kind, 'Upload a PNG, JPG or WebP image');
     if (m[2]!.length * 0.75 > IMAGE_MAX_BYTES[kind]) throw new GameError(kind, 'That image is too large — try a smaller one');

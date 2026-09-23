@@ -62,6 +62,13 @@ test('register at Lean X, scan its QR to start, get checkpoints, scan them — a
   assert.equal((await r.user().call('POST', '/api/station/logo', { stationId: '7C17', image: PNG })).status, 403, 'only the owner');
   assert.equal((await ex[0]!.u.call('POST', '/api/station/logo', { stationId: '7C17', image: PNG })).status, 200);
   assert.equal((await ex[0]!.u.call('POST', '/api/station/photo', { stationId: '7C17', image: PNG })).status, 200, 'and a photo of the booth');
+  // the crew can put a logo on any booth that is online, for exhibitors registered at the counter
+  assert.equal((await r.user().call('POST', '/api/crew/stations/image', { stationId: '7C19', kind: 'logo', image: PNG })).status, 401, 'crew only');
+  assert.equal((await r.crew.call('POST', '/api/crew/stations/image', { stationId: 'ZZ99', kind: 'logo', image: PNG })).json.code, 'not_hosted');
+  assert.equal((await r.crew.call('POST', '/api/crew/stations/image', { stationId: '7C19', kind: 'logo', image: PNG })).status, 200);
+  assert.equal(((await ex[1]!.u.call('GET', '/api/host/stations')).json.data as StationView[])[0]!.logo !== null, true, 'the exhibitor sees the logo the crew put up');
+  assert.equal((await r.crew.call('POST', '/api/crew/stations/image', { stationId: '7C19', kind: 'photo', image: PNG })).status, 200, 'and the booth photo');
+  assert.equal(((await ex[1]!.u.call('GET', '/api/host/stations')).json.data as StationView[])[0]!.photo !== null, true);
   assert.equal(((await ex[0]!.u.call('GET', '/api/host/stations')).json.data as StationView[])[0]!.photo !== null, true, 'the owner sees their photo');
   r.tick(10_000); // the station list is cached for a few seconds
   let list = (await r.crew.call('GET', '/api/stations')).json.data as StationView[];
