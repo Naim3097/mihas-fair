@@ -126,6 +126,9 @@ function Hud({ engine }: Eng) {
   const [stamping, setStamping] = useState(false), [open, setOpen] = useState(false), [tray, setTray] = useState(false);
   const [mini, setMiniState] = useState(() => { try { const v = localStorage.getItem('mx_hud'); if (v) return v === 'mini'; } catch { /* private mode */ } return innerHeight < 520; });
   const setMini = (v: boolean) => { setMiniState(v); try { localStorage.setItem('mx_hud', v ? 'mini' : 'full'); } catch { /* private mode */ } };
+  // "Take me there" folds the card away so the walk can be watched; the slim line keeps the distance, Pause and Stop
+  const walking = autoWalk.value === 'going';
+  useEffect(() => { if (walking) setMiniState(true); }, [walking]);
   const place = herePlace.value, sitting = seated.value, eng = engine(), points = useRolling(m.xp);
   const express = (f: () => void) => () => { f(); setTray(false); };
   useEffect(() => { // an open tray is a question; tapping anywhere else is the answer "never mind"
@@ -160,7 +163,6 @@ function Hud({ engine }: Eng) {
   const act = boothAction(st), cpHere = !!st && m.mission.checkpoints.some((c) => c.stationId === st.id && !c.done);
   const doStamp = async () => { if (!st) return; setStamping(true); await engine()?.stamp(st); setStamping(false); };
   const cps = m.mission.checkpoints, left = cps.filter((c) => !c.done);
-  const scanBtn = (label: string) => <button class="btn primary" onClick={(e) => { e.stopPropagation(); modal.value = 'scan'; }}>{label}</button>;
 
   return (
     <>
@@ -173,7 +175,6 @@ function Hud({ engine }: Eng) {
           {trail && distToGoal.value != null && <span class="d">{distToGoal.value} m</span>}
           {trail ? walkBtn(true)
             : !goal && toClaim ? <button class="btn primary" onClick={(e) => { e.stopPropagation(); modal.value = 'prize'; }}>Code</button>
-            : !goal && j.kind === 'visitor' && j.now?.n === 2 ? scanBtn('Scan')
             : !goal && j.kind === 'exhibitor' ? <button class="btn primary" onClick={(e) => { e.stopPropagation(); modal.value = m.passport ? 'mybooth' : 'card'; }}>Booth</button> : null}
           <span class="score" title="Points">{points.toLocaleString()}</span>
         </div>
@@ -194,7 +195,6 @@ function Hud({ engine }: Eng) {
             {cps.length ? <ul class="cps">{cps.map((c) => <li key={c.stationId} class={c.done ? 'done' : c.stationId === next?.stationId ? 'next' : ''}><i aria-hidden="true" />{c.company}<small>{c.stationId}</small>{!c.done && !goal && c.stationId !== next?.stationId && <button class="link go" onClick={(e) => { e.stopPropagation(); const b = level.value?.booths.find((x) => x.id === c.stationId); if (b) { unreachCheckpoint(c.stationId); guideTarget.value = { x: b.x, y: b.y, label: `${c.company} · Booth ${c.stationId}` }; guideOn.value = true; } }}>Take me there</button>}</li>)}</ul> : <div class="via">Your checkpoints appear here as exhibitors join.</div>}
             {next && <div class="via">Next: {next.label}</div>}
             {!next && left.length > 0 && <div class="via">At the booth? Scan the Mission X QR on their counter.</div>}
-            <div class="go-row"><span />{scanBtn('Scan QR')}</div>
           </>
         )}
         {!goal && j.kind === 'exhibitor' && <div class="go-row"><span /><button class="btn primary" onClick={(e) => { e.stopPropagation(); modal.value = m.passport ? 'mybooth' : 'card'; }}>{m.hosting.length ? 'Open my booth' : 'Set up my booth'}</button></div>}

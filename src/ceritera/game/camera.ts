@@ -2,7 +2,7 @@
 // velocity, pulls in when a shelf or column is in the way (and eases back out), turns toward a locked target,
 // widens on a sprint or a dash, and shakes when something lands hard.
 import * as THREE from 'three';
-import { raycast, type World } from './physics';
+import { raycast, type Box, type World } from './physics';
 import { clamp, damp, angleDiff, type V3 } from './v3';
 
 export class CameraRig {
@@ -16,9 +16,11 @@ export class CameraRig {
   private target = new THREE.Vector3();
   private lookAt = new THREE.Vector3();
   private tmp = new THREE.Vector3();
-  readonly baseFov = 55;
+  /** The field of view at rest; the host sets it for the screen's shape. */
+  baseFov = 55;
 
-  constructor(readonly camera: THREE.PerspectiveCamera, private world: World) {}
+  /** `solid` says which boxes push the camera in; by default every one does. */
+  constructor(readonly camera: THREE.PerspectiveCamera, private world: World, private solid?: (b: Box) => boolean) {}
 
   turn(dx: number, dy: number): void {
     this.yaw -= dx * 0.0024;
@@ -45,9 +47,10 @@ export class CameraRig {
     // where the camera wants to be, and how far it can actually go
     const cp = Math.cos(this.pitch);
     const dir = this.tmp.set(-Math.sin(this.yaw) * cp, Math.sin(this.pitch), -Math.cos(this.yaw) * cp);
-    const hit = raycast(this.world, { x: this.target.x, y: this.target.y, z: this.target.z }, { x: dir.x, y: dir.y, z: dir.z }, this.dist + 0.35);
+    const hit = raycast(this.world, { x: this.target.x, y: this.target.y, z: this.target.z }, { x: dir.x, y: dir.y, z: dir.z }, this.dist + 0.35, this.solid);
     const want = hit ? Math.max(0.7, hit.t - 0.35) : this.dist;
-    this.curDist = want < this.curDist ? want : damp(this.curDist, want, 3, dt);
+    // in quickly (never inside a wall for long), out gently
+    this.curDist = want < this.curDist ? damp(this.curDist, want, 14, dt) : damp(this.curDist, want, 3, dt);
     const pos = this.camera.position;
     pos.copy(this.target).addScaledVector(dir, this.curDist);
     if (this.shakeAmp > 0) {

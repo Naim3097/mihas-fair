@@ -42,6 +42,7 @@ export function pickQuality(): Quality {
 /** Everyone sees everyone, so everyone reports where they are this often (~330 req/s for 1,000 players). */
 const PING_MS = 3000, TRAIL_STEP = 1.5, TRAIL_MAX = 220, BOOTH_LABELS = 6, BOOTH_LABEL_RANGE = 12, ARRIVAL_FRESH_MS = 10 * 60_000;
 const CAM = { dist: 4.6, min: 2.4, max: 12, pitch: 0.3 };
+const CAM_SEES_PAST = new Set(['wall', 'furniture', 'booth', 'island']);
 const EMOTE = { wave: { clip: 'wave', ms: 2600 }, cheer: { clip: 'victory', ms: 2600 }, dance: { clip: 'dance', ms: 5200 } } as const;
 
 interface Holo { actor: NexoActor; cls: Hologram['cls']; track: RemoteTrack; label: HTMLDivElement; seen: number; pose: string; tx: number; ty: number }
@@ -100,7 +101,9 @@ export class FairEngine implements EngineApi {
     this.sim = new Sim('pengembara', classByKey('pengembara')!.base, this.fair.def, 1, FAIR_MOVEMENT);
     this.world = new FairWorld(level, this.fair, quality === 'low');
     // the camera collides with what the body does (partitions, counters, glass): in a 2.5 m aisle it rides over the wall tops
-    this.rig = new CameraRig(this.camera, this.sim.world);
+    // the camera is pushed in only by the hall itself (glass, floors, platforms): a 2.5 m partition or a counter
+    // beside the aisle used to yank it in and let it drift back out at every stand, which read as zooming in and out
+    this.rig = new CameraRig(this.camera, this.sim.world, (b) => !CAM_SEES_PAST.has(b.tag ?? ''));
     this.rig.dist = CAM.dist; this.rig.pitch = CAM.pitch;
     this.halls = hallCards(level);
     this.nav = new NavGrid(level);
@@ -167,7 +170,7 @@ export class FairEngine implements EngineApi {
 
   private resize() {
     const w = this.host.clientWidth || innerWidth, h = this.host.clientHeight || innerHeight;
-    this.renderer.setSize(w, h); this.camera.aspect = w / h; this.camera.fov = w < h ? 58 : 50;
+    this.renderer.setSize(w, h); this.camera.aspect = w / h; this.rig.baseFov = w < h ? 58 : 50; // the rig eases the FOV there itself
     this.ui = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui')) || 1;
     this.camera.updateProjectionMatrix();
   }
@@ -463,7 +466,7 @@ export class FairEngine implements EngineApi {
   private updateCamera(dt: number) {
     if (this.liftT < 1) { this.liftT = Math.min(1, this.liftT + dt / 1.5); this.rig.dist = CAM.dist + 26 * Math.sin(Math.PI * this.liftT); }
     const p = this.sim.player;
-    this.rig.update(dt, p.body.pos, p.body.vel, null, p.gait === 'sprint');
+    this.rig.update(dt, p.body.pos, p.body.vel, null, false); // no wider view on a run: it read as a zoom every time a tap set off
   }
 
   /* ---------------- what is next to the player: a booth, the X, a lift; and which booth names to show ---------------- */
