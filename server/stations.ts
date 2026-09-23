@@ -4,6 +4,7 @@ import type { Stmt } from './db/types.js';
 import { Game, GameError, cleanFields, cleanText } from './game.js';
 import type { BoothTeam } from './team.js';
 import type { CrewStationRow, HostCode, HostLead, HostStation, StationClaimInput, StationStatus, StationView, XpEvent } from '../shared/types.js';
+import { counterSpots, type CounterSpot } from './counter.js';
 import { HOST_ONLINE_MS, HOST_WINDOW_MS, MAX_STATIONS_PER_OWNER, POINTS, SXP, stationLevel, type ShareField } from '../shared/rules.js';
 
 interface StationRow { station_id: string; owner_id: string; company: string; offer: string; link: string; color: number; status: StationStatus; claimed_at: number; host_seen_at: number | null; host_ms: number }
@@ -123,11 +124,37 @@ export class Stations {
     return r;
   }
 
+  /** Counts the time the host is at their counter: seen now, and the minutes since the last look if that was recent. */
+  private async seen(r: StationRow, t: number): Promise<void> {
+    const gap = r.host_seen_at != null ? t - r.host_seen_at : Infinity;
+    await this.g.db.run('UPDATE stations SET host_seen_at = ?, host_ms = host_ms + ? WHERE station_id = ?', [t, gap < HOST_ONLINE_MS * 1.5 ? gap : 0, r.station_id]);
+  }
+
+  private spots: Map<string, CounterSpot> | null = null;
+  /** Where the host of this booth stands in the game: behind the counter, facing the aisle. */
+  counterSpot(stationId: string): CounterSpot | null { return (this.spots ??= counterSpots(this.g.level)).get(stationId) ?? null; }
+
+  /** The dashboard, while open, keeps its host standing at the booth: the avatar others walk up to and swap cards
+   *  with. Placed as a spawn, so coming from anywhere in the hall (or from the game tab a moment ago) is fine. */
+  async atCounter(id: string, stationId: string): Promise<CounterSpot> {
+    const r = await this.owned(id, stationId), t = this.g.now(), at = this.counterSpot(stationId);
+    if (!at) throw new GameError('no_booth', 'This booth is not on the plan');
+    await this.seen(r, t);
+    await this.g.presence.update(await this.g.hologramOf(id, { ...at, deck: false, sigma: 0 }), t, true);
+    return at;
+  }
+
+  /** Is this where one of the player's own booths puts its host? Then a jump away from it is the host leaving the
+   *  dashboard for the game, not a teleport. */
+  async isCounterSpot(id: string, x: number, y: number): Promise<boolean> {
+    const rows = await this.g.db.all<{ station_id: string }>("SELECT station_id FROM stations WHERE owner_id = ? AND status != 'revoked'", [await this.team.ownerFor(id)]);
+    return rows.some((r) => { const s = this.counterSpot(r.station_id); return !!s && Math.hypot(s.x - x, s.y - y) < 0.3; });
+  }
+
   /** The host screen polls this: returns the live code and counts the time the host is present. */
   async hostCode(id: string, stationId: string): Promise<HostCode> {
     const r = await this.owned(id, stationId), t = this.g.now();
-    const gap = r.host_seen_at != null ? t - r.host_seen_at : Infinity;
-    await this.g.db.run('UPDATE stations SET host_seen_at = ?, host_ms = host_ms + ? WHERE station_id = ?', [t, gap < HOST_ONLINE_MS * 1.5 ? gap : 0, stationId]);
+    await this.seen(r, t);
     const w = Math.floor(t / HOST_WINDOW_MS), c = await this.g.hostCode(stationId, w);
     return { stationId, url: `${this.g.publicOrigin}/?h=${encodeURIComponent(c.token)}`, digits: c.digits, expiresInMs: (w + 1) * HOST_WINDOW_MS - t };
   }

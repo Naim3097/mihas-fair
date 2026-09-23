@@ -7,7 +7,7 @@ import { MOVEMENT } from '../../content';
 import { newBody, overlapsAny, buildGrid } from '../ceritera/game/physics';
 import { v3 } from '../ceritera/game/v3';
 import { CELL, WALL_H, buildFairLevel, fairLevelData, toPlan, toWorld, wallKey } from './level';
-import { planStands } from './stands';
+import { planStands } from '../../shared/stands';
 
 const raw = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../public/data/floor.json'), 'utf8')) as LevelData;
 const level = fairLevelData(raw);

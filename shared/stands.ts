@@ -4,9 +4,17 @@
 // stand, which of each cell's four sides face a neighbour (a wall goes there), which face an aisle (open, with the
 // fascia board), and what kind of stand it makes: a shell-scheme cell, a corner with two open sides, a block, or an
 // island the aisles run all the way round. Pure plan geometry, no rendering: the level builds its collision from it
-// and the world dresses it.
-import type { Booth, LevelData, Rect } from '../../shared/types';
-import { buildStands } from '../game/stands';
+// and the world dresses it. Shared with the server, so imports carry .js (Node ES modules).
+import type { Booth, LevelData, Rect } from './types.js';
+import { buildStands } from './stand-groups.js';
+
+/** The shell scheme as the fair reads the plan: 3 m modules with 2.5 m partitions. Level 2's cells sit 3.25 m apart
+ * down the columns (the drawing is 8.3 % taller than its own dimensions; src/fair/level.ts corrects the world for it). */
+export const CELL = 3.0, WALL_H = 2.5, LEVEL2_ROW_M = 3.25;
+/** The plan at the standard module: what the world builds from and where the server stands a booth's host. */
+export function planLevel(level: LevelData): LevelData {
+  return { ...level, booth: { w: CELL, d: CELL, h: WALL_H }, decks: level.decks.map((d) => ({ ...d, boothD: d.level === 2 ? LEVEL2_ROW_M : CELL })) };
+}
 
 export type Side = 'N' | 'E' | 'S' | 'W';
 export const SIDES: readonly Side[] = ['N', 'E', 'S', 'W'];

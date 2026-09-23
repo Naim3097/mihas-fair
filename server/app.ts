@@ -58,7 +58,7 @@ export function createApp({ game, stations, social, crews, venue, director, gc, 
       cookies.set(c, 'mx_s', await signer.sign(`p:${id}`), YEAR);
     }
     c.set('playerId', id);
-    if (c.req.method !== 'GET' && c.req.path !== '/api/presence' && !writeLimit(id)) throw new GameError('rate', 'Slow down a little', 429);
+    if (c.req.method !== 'GET' && c.req.path !== '/api/presence' && c.req.path !== '/api/host/presence' && !writeLimit(id)) throw new GameError('rate', 'Slow down a little', 429);
     if (c.req.method !== 'GET' && (await ops.isBanned(id))) throw new GameError('review', 'This player is under review — please see the crew at Booth 8H18A', 403);
     await next();
   });
@@ -96,6 +96,8 @@ export function createApp({ game, stations, social, crews, venue, director, gc, 
   player.post('/station/share', async (c) => { const b = await body(c); return ok(c, null, await stations.share(pid(c), String(b.stationId), b.fields)); });
   player.post('/station/unshare', async (c) => { await stations.revokeShare(pid(c), String((await body(c)).stationId)); return ok(c, null); });
   player.get('/host/stations', async (c) => ok(c, await stations.mine(pid(c)), [], false));
+  /* the dashboard, while open, keeps its host standing at the booth in the game */
+  player.post('/host/presence', async (c) => { if (!pingLimit(pid(c))) throw new GameError('rate', 'Too many updates', 429); return ok(c, await stations.atCounter(pid(c), String((await body(c)).station ?? '')), [], false); });
   player.get('/host/code', async (c) => ok(c, await stations.hostCode(pid(c), c.req.query('station') ?? ''), [], false));
   /* the exhibitor's dashboard: who scanned their QR, their printable QR, their logo */
   player.get('/host/scans', async (c) => ok(c, await checkpoints.scans(pid(c), c.req.query('station') ?? ''), [], false));
