@@ -77,6 +77,9 @@ Status: everything below is pushed to GitHub `main` and live. The 23 September i
 - [x] Buang butang "skip" masa join game — `e0aa062`
   - It was **Skip this one** on the mission card, beside **Scan QR**: it moved the trail to the next checkpoint, but read as skipping a QR scan. Gone. The trail still leads to the nearest unscanned checkpoint and moves on by itself.
 
+- [x] Crew boleh upload logo dan backdrop untuk exhibitor yang didaftarkan, dari /crew.html — `75c1e63`
+  - **Booths** tab: every booth has a Logo and a Booth photo cell with the thumbnail and an **Upload** chip. **Register**: after saving an exhibitor, two rows under the hand-over links, Upload logo and Upload booth photo. Both are on the booth in the game the moment they are saved; the exhibitor can still change them from their dashboard. Checked in Chrome on the isolated local copy.
+
 ## Still to do
 
 - Nothing on the list. Approve or register exhibitors so visitors have 3 checkpoints.
