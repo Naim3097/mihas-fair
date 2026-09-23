@@ -51,9 +51,8 @@ export class Stations {
   }
 
   private view(r: StationRow & Pics, c: Counts, t: number): StationView {
-    // uploaded images go into the world only once the crew has approved the booth
-    const ok = r.status === 'approved', logo = ok ? pic(r, 'logo') : null, photo = ok ? pic(r, 'photo') : null;
-    return { id: r.station_id, company: r.company, offer: r.offer, link: r.link, color: r.color, status: r.status, hosted: r.host_seen_at != null && t - r.host_seen_at < HOST_ONLINE_MS, level: stationLevel(this.sxp(r, c)), logo, photo };
+    // uploaded images go straight into the world; approval only decides whether the booth is a checkpoint
+    return { id: r.station_id, company: r.company, offer: r.offer, link: r.link, color: r.color, status: r.status, hosted: r.host_seen_at != null && t - r.host_seen_at < HOST_ONLINE_MS, level: stationLevel(this.sxp(r, c)), logo: pic(r, 'logo'), photo: pic(r, 'photo') };
   }
 
   private owners: { at: number; map: Map<string, string> } = { at: -1e9, map: new Map() };
@@ -137,8 +136,7 @@ export class Stations {
     const rows = await this.g.db.all<StationRow & Pics>(`SELECT s.*, l.updated_at AS logo_at, ph.updated_at AS photo_at FROM stations s ${PICS} WHERE s.owner_id = ? AND s.status != 'revoked' ORDER BY s.claimed_at`, [await this.team.ownerFor(id)]);
     const counts = await this.counts(rows.map((r) => r.station_id)), t = this.g.now();
     const scans = new Map((await this.g.db.all<{ k: string; n: number }>(`SELECT station_id AS k, COUNT(*) AS n FROM booth_scans WHERE station_id IN (${rows.map(() => '?').join(',') || "''"}) GROUP BY station_id`, rows.map((r) => r.station_id))).map((r) => [r.k, r.n]));
-    // the owner sees their own logo before approval (the world does not)
-    return rows.map((r) => { const c = counts.get(r.station_id)!; return { ...this.view(r, c, t), scans: scans.get(r.station_id) ?? 0, logo: pic(r, 'logo'), photo: pic(r, 'photo'), sxp: this.sxp(r, c), stamps: c.stamps, shares: c.shares, verifiedContacts: c.verified, hostMinutes: Math.round(r.host_ms / 60_000) }; });
+    return rows.map((r) => { const c = counts.get(r.station_id)!; return { ...this.view(r, c, t), scans: scans.get(r.station_id) ?? 0, sxp: this.sxp(r, c), stamps: c.stamps, shares: c.shares, verifiedContacts: c.verified, hostMinutes: Math.round(r.host_ms / 60_000) }; });
   }
 
   /** Only what each visitor consented to share with THIS station, and only while the share stands. */
@@ -192,7 +190,7 @@ export class Stations {
       `SELECT s.*, pl.callsign, p.name, p.company AS pcompany, l.updated_at AS logo_at, ph.updated_at AS photo_at FROM stations s JOIN players pl ON pl.id = s.owner_id JOIN passports p ON p.player_id = s.owner_id
        ${PICS} ORDER BY s.claimed_at DESC`);
     const counts = await this.counts(rows.map((r) => r.station_id)), t = this.g.now();
-    return rows.map((r) => ({ ...this.view(r, counts.get(r.station_id)!, t), logo: pic(r, 'logo'), photo: pic(r, 'photo'), visits: counts.get(r.station_id)!.stamps, ownerCallsign: r.callsign, ownerName: r.name, ownerCompany: r.pcompany, claimedAt: r.claimed_at }));
+    return rows.map((r) => ({ ...this.view(r, counts.get(r.station_id)!, t), visits: counts.get(r.station_id)!.stamps, ownerCallsign: r.callsign, ownerName: r.name, ownerCompany: r.pcompany, claimedAt: r.claimed_at }));
   }
 
   async crewSetStatus(stationId: string, status: string): Promise<void> {

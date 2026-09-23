@@ -111,6 +111,15 @@ CREATE TABLE IF NOT EXISTS stations (
 );
 CREATE INDEX IF NOT EXISTS stations_owner ON stations(owner_id);
 
+-- An exhibitor the crew registered at the counter: the account the crew made for them, and the link that hands it over.
+CREATE TABLE IF NOT EXISTS booth_handoffs (
+  station_id  TEXT PRIMARY KEY,
+  owner_id    TEXT NOT NULL REFERENCES players(id),
+  code        TEXT NOT NULL UNIQUE,
+  created_at  INTEGER NOT NULL,
+  taken_at    INTEGER
+);
+
 -- The consent record: who shared which fields with whom, when, and whether they took it back.
 CREATE TABLE IF NOT EXISTS card_shares (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,

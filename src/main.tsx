@@ -11,7 +11,7 @@ import { handleScan } from './scan';
 import { ensureBackend } from './demo/client';
 import { installBack } from './ui/back';
 import { installSfx } from './sfx';
-import { bootError, bootNote, drop, level, me, modal, myBooths, online, phase, setReferral, stations, teamInvite } from './state';
+import { bootError, bootNote, drop, gate, handoff, level, me, modal, myBooths, online, phase, setReferral, stations, teamInvite } from './state';
 import type { LevelData } from '../shared/types';
 
 let engine: FairEngine | null = null;
@@ -49,16 +49,19 @@ async function boot() {
     // a colleague's booth team link: offer to join once the page is up
     const team = new URLSearchParams(location.search).get('team');
     if (team && /^[A-Za-z0-9]{6,10}$/.test(team)) { teamInvite.value = team.toUpperCase(); history.replaceState(null, '', location.pathname); }
+    // the crew registered this exhibitor at the counter: the link hands them the account
+    const join = new URLSearchParams(location.search).get('join');
+    if (join && /^[A-Za-z0-9]{6,10}$/.test(join)) { handoff.value = join.toUpperCase(); history.replaceState(null, '', location.pathname); }
     const query = location.search;
     if (/[?&](b|h|l)=/.test(query)) {
       history.replaceState(null, '', location.pathname);
       const returning = !!me.value?.cls && !!me.value.passport; // everyone in the world has a card
-      if (returning) { engine.start('short'); phase.value = 'play'; }
+      if (returning) { engine.start(gate.value); phase.value = 'play'; }
       await handleScan(query);
       if (returning) { api.track('boot', { via: 'scan', world: 'nexova' }); return; }
     }
     phase.value = 'start';
-    if (teamInvite.value) modal.value = 'jointeam';
+    if (handoff.value) modal.value = 'handoff'; else if (teamInvite.value) modal.value = 'jointeam';
     api.track('boot', { q: pickQuality(), world: 'nexova', returning: (me.value?.xp ?? 0) > 0 });
   } catch (e) {
     bootError.value = e instanceof ApiError || (e instanceof Error && /demo/i.test(e.message)) ? e.message : 'Could not reach the fair. Check your connection.';

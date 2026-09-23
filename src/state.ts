@@ -5,7 +5,7 @@ import type { Place } from './game/places';
 import { buzz, sfx } from './sfx';
 
 export type Phase = 'boot' | 'start' | 'play' | 'error';
-export type Modal = null | 'card' | 'prize' | 'claimed' | 'complete' | 'booth' | 'claim' | 'mybooth' | 'swap' | 'contacts' | 'map' | 'photo' | 'menu' | 'rules' | 'tour' | 'scan' | 'jointeam';
+export type Modal = null | 'card' | 'prize' | 'claimed' | 'complete' | 'booth' | 'claim' | 'mybooth' | 'swap' | 'contacts' | 'map' | 'photo' | 'menu' | 'rules' | 'tour' | 'scan' | 'jointeam' | 'handoff';
 
 export const phase = signal<Phase>('boot');
 export const level = signal<LevelData | null>(null);
@@ -25,8 +25,45 @@ export const goalVia = signal<string | null>(null);
 export const currentDeck = signal(2);
 export const distToGoal = signal<number | null>(null);
 export const guideOn = signal(true);
-/** Where the trail leads. null = the X, until the player has their card; after that, nowhere until they pick a place. */
+/** Where the trail leads when the player picked a place. null = wherever the mission points: Lean X until it starts,
+ *  then the next checkpoint (nextCheckpoint). */
 export const guideTarget = signal<{ x: number; y: number; label: string } | null>(null);
+/** "Take me there": walking the trail on its own — going, or paused with the route kept. */
+export const autoWalk = signal<'off' | 'going' | 'paused'>('off');
+/** Checkpoints the trail has already delivered the player to this session, so the next one comes up before the QR is scanned. */
+export const reachedCps = signal<Set<string>>(new Set());
+export interface NextCheckpoint { stationId: string; company: string; x: number; y: number; label: string }
+/** The checkpoint the mission points to now: the nearest one not scanned and not yet walked to. Nothing when the mission
+ *  has not started, is done, or every open checkpoint has been reached (the player is meant to be scanning). */
+export function nextCheckpoint(from: { x: number; y: number } | null): NextCheckpoint | null {
+  const m = me.value, lv = level.value; if (!m?.mission.started || !lv) return null;
+  const open = m.mission.checkpoints.filter((c) => !c.done && !reachedCps.value.has(c.stationId))
+    .map((c) => ({ c, b: lv.booths.find((b) => b.id === c.stationId) })).filter((x): x is { c: typeof x.c; b: Booth } => !!x.b);
+  const d = (b: Booth) => (from ? Math.hypot(b.x - from.x, b.y - from.y) : 0);
+  const best = open.sort((p, q) => d(p.b) - d(q.b))[0]; if (!best) return null;
+  return { stationId: best.b.id, company: best.c.company, x: best.b.x, y: best.b.y, label: `${best.c.company} · Booth ${best.b.id}` };
+}
+/** The trail delivered the player to this checkpoint: on to the next one. */
+export function reachCheckpoint(stationId: string) { reachedCps.value = new Set([...reachedCps.value, stationId]); }
+/** The checkpoint the trail leads to now, as the engine last chose it; the mission card shows the same one. */
+export const currentCp = signal<NextCheckpoint | null>(null);
+/** The engine asks every second: keep the checkpoint it has until that one is scanned or reached, so the trail never
+ *  flips between two booths mid-walk; only then pick the nearest open one. */
+export function trailCheckpoint(from: { x: number; y: number } | null): NextCheckpoint | null {
+  const m = me.value, cur = currentCp.value;
+  const open = !!cur && !!m?.mission.started && m.mission.checkpoints.some((c) => c.stationId === cur.stationId && !c.done) && !reachedCps.value.has(cur.stationId);
+  const next = open ? cur : nextCheckpoint(from);
+  if (next?.stationId !== cur?.stationId) currentCp.value = next;
+  return next;
+}
+
+/** Which entrance the player walks in by. Remembered on this phone. */
+const GATE_KEY = 'mx_gate';
+export const gate = signal<string>((() => { try { return localStorage.getItem(GATE_KEY) ?? 'hall8'; } catch { return 'hall8'; } })());
+export function setGate(id: string) { gate.value = id; try { localStorage.setItem(GATE_KEY, id); } catch { /* private mode */ } }
+
+/** A hand-over link from the crew (…/?join=CODE): the account they made for this exhibitor, until it is taken. */
+export const handoff = signal<string | null>(null);
 export const online = signal(0);
 /** Booths that are online (an exhibitor brought them into the game). */
 export const stations = signal<StationView[]>([]);

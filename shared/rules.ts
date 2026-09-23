@@ -40,18 +40,19 @@ export type StampProof = 'virtual' | 'beacon' | 'host';
 export type Presence = 'remote' | 'onsite';
 export const stampPoints = (presence: Presence) => (presence === 'onsite' ? POINTS.scan : POINTS.stamp);
 
-/* ---------------- the mission: one journey, five chapters ---------------- */
+/* ---------------- the mission: one journey, three chapters ---------------- */
 
+/** Free-play stamps in the server's walkthrough test; not a rule anyone meets. */
 export const MISSION_STAMPS = 5;
 /** Exhibitor booths each visitor is sent to. Fewer while fewer exhibitors are approved; topped up as more join. */
-export const CHECKPOINTS = 5;
+export const CHECKPOINTS = 3;
 /** How many colleagues one company's booth team can have, besides the owner. */
 export const BOOTH_TEAM_MAX = 20;
 /** Points an exhibitor earns for each exhibitor they bring into the game (counted once that booth is approved). */
 export const REFERRAL_POINTS = 10;
 export interface MissionFacts { started: boolean; card: boolean; checkpoints: number; target: number; claimed: boolean }
 export interface Chapter { n: number; title: string; todo: string; done: boolean }
-/** Chapters 3 and 4 can be finished in either order, and someone standing at the booth may finish 5 early. */
+/** Three chapters, in order: the card, the start QR at Lean X, then the checkpoints. */
 export function chapters(f: MissionFacts): Chapter[] {
   return [
     { n: 1, title: 'Your card', todo: 'Make your free digital business card.', done: f.card },
@@ -97,6 +98,9 @@ export const DEFAULT_SHARE: ShareField[] = ['name', 'company', 'role'];
 
 /** With a card, a player appears as "Aisyah R." above their astronaut and on the board; without one, as "Visitor 4821". */
 export const NAME_ON_BOARD = true;
+
+/** A hand-over link (an exhibitor the crew registered at the counter) stays open this long. */
+export const HANDOFF_TTL_MS = 30 * 24 * 3600 * 1000;
 
 /** What a booth is called everywhere: its number, and the company that registered it once someone has. */
 export const boothLabel = (id: string, company?: string | null) => (company ? `${id} · ${company}` : id);

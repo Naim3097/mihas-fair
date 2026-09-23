@@ -59,3 +59,6 @@ tr.dim{opacity:.45}b.good{color:var(--green)}b.bad{color:var(--red)}
 .joined li .chip{margin-left:auto}
 .backtogame{display:flex;margin:16px auto 8px;max-width:420px}
 @media print{.backtogame{display:none}}
+/* the Register form: two fields to a row, booth-number suggestions under the first */
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}@media (max-width:560px){.frow{grid-template-columns:1fr}}
+.hits{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.hits .chip{min-height:30px;padding:4px 12px;font-size:12.5px}

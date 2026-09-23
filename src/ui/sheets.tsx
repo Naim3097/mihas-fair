@@ -104,7 +104,7 @@ export function ClaimSheet() {
   return (
     <Sheet k={chosen ? where(chosen) : 'Register your booth'} title={mine ? 'Booth profile' : 'Light up your booth'} onClose={close}>
       <form onSubmit={submit}>
-        {!mine && <p class="lead">Your booth glows for every player, becomes a checkpoint on their mission once we approve it, and everyone who scans your QR comes to you — free.</p>}
+        {!mine && <p class="lead">Your booth glows for every player with your name, logo and photo the moment you save; it becomes a checkpoint on their mission once we approve it; and everyone who scans your QR comes to you — free.</p>}
         <label>Company name on the booth<input required maxLength={80} value={f.company} onInput={put('company')} /><small class="fhint">It goes up on booth {chosen?.id ?? ''} in the game, next to the booth number, as soon as you save.</small></label>
         <label>One line for visitors<input maxLength={120} placeholder="e.g. Free samples at 3 pm" value={f.offer} onInput={put('offer')} /></label>
         <label>Website<input maxLength={200} inputMode="url" placeholder="yourcompany.com" value={f.link} onInput={put('link')} /></label>
@@ -113,7 +113,7 @@ export function ClaimSheet() {
         <label>Photo of your booth<input type="file" accept="image/png,image/jpeg,image/webp" onChange={file(setPhoto)} /><small class="fhint">Your booth's backdrop or a photo of it: it goes on the back wall of your virtual booth.</small></label>
         {err && <p class="err" role="alert">{err}</p>}
         <button class="btn primary big" disabled={busy}>{busy ? 'Saving…' : mine ? 'Save' : 'Bring it online'}</button>
-        {!mine && <p class="fine">Our crew checks every booth before it becomes a checkpoint. Your logo and photo show in the game once it is approved. You can change them any time on your dashboard.</p>}
+        {!mine && <p class="fine">Your logo and photo go up in the game straight away — change them any time on your dashboard. Our crew checks every booth before it becomes a checkpoint.</p>}
       </form>
     </Sheet>
   );
@@ -169,7 +169,7 @@ export function MyBoothSheet() {
               <div class="stats three">
                 <div><span>Scanned your QR</span><strong>{s.scans}</strong></div><div><span>Visits</span><strong>{s.stamps}</strong></div><div><span>Status</span><strong class="small">{s.status === 'approved' ? 'Approved' : s.status === 'pending' ? 'Pending' : s.status}</strong></div>
               </div>
-              {s.status === 'pending' && <p class="fine">Live now. Our crew will confirm it is your booth; then it becomes a checkpoint and your logo and photo go up.</p>}
+              {s.status === 'pending' && <p class="fine">Live now, logo and photo included. Our crew will confirm it is your booth; then it becomes a checkpoint on visitors' missions.</p>}
               <div class="stack">
                 <a class="btn primary big" href="/booth.html" target="_blank" rel="noopener">Open my dashboard</a>
                 <p class="fine">Print your QR, see everyone who scanned (name, phone, email), change your logo and booth photo, {m.teamMember ? 'see your team' : 'add your team (each on their own phone)'} — and invite other exhibitors: +10 points for each one who joins.</p>
@@ -295,7 +295,7 @@ export function MenuSheet() {
         <button onClick={go('map')}><strong>Map</strong><small>Halls 6–8 · search · places to go</small></button>
         <button onClick={go('rules')}><strong>How to play</strong><small>The mission and the points, on one page</small></button>
         <button aria-pressed={soundOn.value} onClick={() => setSound(!soundOn.value)}><strong>Sound · {soundOn.value ? 'on' : 'off'}</strong><small>{soundOn.value ? 'Quiet chimes, and a buzz on phones that can' : 'Silent, no vibration'}</small></button>
-        <button onClick={switchRole}><strong>{m.cls === 'exhibitor' ? 'Play as a visitor' : 'I am exhibiting'}</strong><small>{m.cls === 'exhibitor' ? 'Do the five-chapter mission' : 'Put your booth in the game'}</small></button>
+        <button onClick={switchRole}><strong>{m.cls === 'exhibitor' ? 'Play as a visitor' : 'I am exhibiting'}</strong><small>{m.cls === 'exhibitor' ? 'Do the three-chapter mission' : 'Put your booth in the game'}</small></button>
       </div>
     </Sheet>
   );

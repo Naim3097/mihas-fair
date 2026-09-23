@@ -30,7 +30,7 @@ function toCsv(cols: string[], rows: Record<string, unknown>[]): string {
 }
 const csvHeaders = (name: string) => ({ 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="${name}"` });
 
-export function createApp({ game, stations, social, crews, venue, director, gc, ops, signer, ceritera, checkpoints, referrals, team, crewPin, publicOrigin, secureCookies, cookies: cookieIO }: AppDeps) {
+export function createApp({ game, stations, social, crews, venue, director, gc, ops, signer, ceritera, checkpoints, referrals, team, onboarding, crewPin, publicOrigin, secureCookies, cookies: cookieIO }: AppDeps) {
   const app = new Hono<Vars>();
   const cookieOpts = { httpOnly: true, sameSite: 'Lax' as const, secure: secureCookies, path: '/' };
   const cookies: CookieIO = cookieIO ?? { get: (c, name) => getCookie(c, name), set: (c, name, value, maxAge) => setCookie(c, name, value, { ...cookieOpts, maxAge }) };
@@ -110,6 +110,13 @@ export function createApp({ game, stations, social, crews, venue, director, gc, 
   player.post('/host/team/leave', async (c) => { await team.leave(pid(c)); return ok(c, null); });
   player.get('/booth-team/peek', async (c) => ok(c, await team.peek(c.req.query('code')), [], false));
   player.post('/booth-team/join', async (c) => ok(c, await team.join(pid(c), (await body(c)).code)));
+  /* an exhibitor the crew registered at the counter opens their hand-over link: this phone becomes that account */
+  player.get('/handoff/peek', async (c) => ok(c, await onboarding.peek(c.req.query('code')), [], false));
+  player.post('/handoff', async (c) => {
+    const { id, peek } = await onboarding.take((await body(c)).code);
+    cookies.set(c, 'mx_s', await signer.sign(`p:${id}`), YEAR); c.set('playerId', id);
+    return ok(c, peek);
+  });
   player.get('/host/referrals', async (c) => ok(c, await referrals.view(pid(c)), [], false));
   player.get('/host/qr', async (c) => ok(c, await checkpoints.printableQr(pid(c), c.req.query('station') ?? ''), [], false));
   player.post('/station/logo', async (c) => { const b = await body(c); await checkpoints.setImage(pid(c), String(b.stationId ?? ''), 'logo', b.image); return ok(c, null, [], false); });
@@ -188,6 +195,9 @@ export function createApp({ game, stations, social, crews, venue, director, gc, 
   });
   crew.get('/referrals', async (c) => c.json({ ok: true, data: await referrals.ranking() }));
   crew.post('/stations/status', async (c) => { const b = await body(c); await stations.crewSetStatus(String(b.stationId), String(b.status)); return c.json({ ok: true, data: null }); });
+  /* registering an exhibitor at the counter: their card and booth, and the link that hands the account to them */
+  crew.post('/register', async (c) => c.json({ ok: true, data: await onboarding.register((await body(c)) as never) }));
+  crew.get('/registered', async (c) => c.json({ ok: true, data: await onboarding.list() }));
 
   // The pages ask this first: a healthy answer means "real backend"; anything else and they start the in-browser demo.
   // Registered before the player routes so that asking does not create a guest account.

@@ -17,7 +17,7 @@ import { NavGrid, pathLength, pointAlong, type P2 } from '../game/nav';
 import { BoothPicker } from '../game/pick';
 import { placeAt, type Seat } from '../game/places';
 import { RemoteTrack } from '../game/remote';
-import { atLaunchPad, boothAction, currentDeck, distToGoal, goalVia, guideOn, guideTarget, herePlace, markSeen, me, modal, moveHint, myBooths, nearLift, nearStation, online, panelStation, photoShot, seated, seen, stampedSet, stationMap, stations, toast } from '../state';
+import { atLaunchPad, autoWalk, boothAction, currentDeck, distToGoal, goalVia, guideOn, guideTarget, herePlace, markSeen, me, modal, moveHint, myBooths, nearLift, nearStation, online, panelStation, photoShot, reachCheckpoint, reachedCps, seated, seen, stampedSet, stationMap, stations, toast, trailCheckpoint } from '../state';
 import type { Library } from '../ceritera/game/anim';
 import { CameraRig } from '../ceritera/game/camera';
 import type { Intent } from '../ceritera/game/controller';
@@ -74,6 +74,8 @@ export class FairEngine implements EngineApi {
   private trailAt = 0;
   private ping: { mesh: THREE.Mesh; t: number };
   private route: P2[] = [];
+  /** The route is the trail's ("Take me there"), not a tap's: jogging pace, and it can be paused. */
+  private auto = false;
   private stall = 0;
   private replans = 0;
   private running = false; private last = 0; private pingAt = 0; private proxAt = 0; private firstPing = true; private arrivalSeen = 0;
@@ -132,7 +134,7 @@ export class FairEngine implements EngineApi {
     canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.running = false; toast('Graphics paused', 'Reloading…', 'warn', 6000); setTimeout(() => location.reload(), 1500); });
     this.stops.push(effect(() => this.world.setStamped(stampedSet.value)));
     this.stops.push(effect(() => this.world.setStations(stations.value)));
-    this.stops.push(effect(() => { void guideTarget.value; this.trailAt = 0; }));
+    this.stops.push(effect(() => { void guideTarget.value; void reachedCps.value; void me.value?.mission; this.trailAt = 0; }));
     this.stops.push(effect(() => { const a = me.value?.anchor; if (a && this.started && a.at > this.arrivalSeen) this.arriveAt(a.stationId, a.at); }));
     this.stops.push(effect(() => { const role = this.role(); void me.value; this.player?.setRole(role); }));
     // the sky video and sounds may wait for the first gesture
@@ -174,13 +176,26 @@ export class FairEngine implements EngineApi {
     const p = this.sim.player, w = toWorld(x, y, 0);
     p.body.pos.x = w.x; p.body.pos.y = 0.05; p.body.pos.z = w.z; p.body.vel = v3(); p.body.grounded = false; p.yaw = yaw; p.peak = 0;
     p.action = null; p.dodge = null; p.airDash = null; p.slamming = false;
-    this.route = []; this.world.mark('goal', null); loop(p, 'idle');
+    this.dropRoute(); loop(p, 'idle');
+  }
+  private dropRoute() { this.route = []; this.world.mark('goal', null); this.setAuto(false); }
+  private setAuto(on: boolean) { this.auto = on; const v = on ? 'going' : 'off'; if (autoWalk.value !== v) autoWalk.value = v; }
+
+  /** Where walking in by a gate puts you: the plan's spawn for that gate, or a spot just outside it, facing the hall. */
+  private spawnAt(gateId: string): { x: number; y: number; yaw: number } {
+    const g = this.level.gates.find((x) => x.id === gateId) ?? this.level.gates[0]!;
+    const s = Object.values(this.level.spawns).find((x) => x.gate === g.id);
+    if (s) return { x: s.x, y: s.y, yaw: g.axis === 'x' ? Math.PI : -Math.PI / 2 };
+    // the halls lie north of the entrance gates and west of the main one
+    const want = g.axis === 'x' ? { x: g.x, y: g.y - 4.8 } : { x: g.x + 6, y: g.y };
+    const at = this.nav.nearestWalkable(want.x, want.y, 14) ?? want;
+    return { x: at.x, y: at.y, yaw: g.axis === 'x' ? Math.PI : -Math.PI / 2 };
   }
 
-  /** Drop the player in at the Hall 8 entrance and hand over control. The camera settles in from above. */
-  start(spawn: 'short' | 'epic') {
-    const s = this.level.spawns[spawn], yaw = spawn === 'short' ? Math.PI : -Math.PI / 2;
-    this.teleport(s.x, s.y, yaw);
+  /** Drop the player in at the entrance they chose and hand over control. The camera settles in from above. */
+  start(gate: string) {
+    const { x, y, yaw } = this.spawnAt(gate);
+    this.teleport(x, y, yaw);
     if (!this.player) this.player = this.makeActor(this.role());
     this.started = true;
     this.rig.dist = 30; this.rig.pitch = 0.6; this.rig.snapBehind(yaw); this.introT = 0;
@@ -241,20 +256,22 @@ export class FairEngine implements EngineApi {
 
   private intent(dt: number): Intent {
     const it = this.input.poll();
-    if (it.move.x || it.move.y) { if (this.route.length) { this.route = []; this.world.mark('goal', null); } this.seatGoal = null; return it; }
-    if (!this.route.length) return it;
+    if (it.move.x || it.move.y) { if (this.route.length) this.dropRoute(); this.seatGoal = null; return it; }
+    if (!this.route.length) { if (this.auto) this.setAuto(false); return it; }
+    if (autoWalk.value === 'paused') return it; // standing still on the trail, the route kept for "Resume"
     const pos = this.position, n = this.route[0]!, dx = n.x - pos.x, dy = n.y - pos.y, l = Math.hypot(dx, dy);
-    if (l < 0.5) { this.route.shift(); this.stall = 0; if (!this.route.length && this.seatGoal) this.takeSeat(this.seatGoal); return it; }
+    if (l < 0.5) { this.route.shift(); this.stall = 0; if (!this.route.length) { if (this.seatGoal) this.takeSeat(this.seatGoal); this.setAuto(false); } return it; }
     // plan (x east, y north) → world (x, −z) → screen (x right, y forward) for the controller
     const wx = dx / l, wz = -dy / l, f = fromYaw(this.rig.yaw), r = fromYaw(this.rig.yaw - Math.PI / 2);
     it.move.x = wx * r.x + wz * r.z; it.move.y = wx * f.x + wz * f.z;
-    it.sprint = l > 5 || this.route.length > 2;
+    // a tap runs; the guide jogs, so the halls it passes can be read and the walk can be followed
+    it.sprint = !this.auto && (l > 5 || this.route.length > 2);
     // pressed against something the grid did not know about: plan again from here, then give up
     if (lenXZ(this.sim.player.body.vel) < 0.3) {
       this.stall += dt;
       if (this.stall > 0.6) {
         this.stall = 0;
-        if (++this.replans > 3) { this.route = []; this.replans = 0; this.world.mark('goal', null); }
+        if (++this.replans > 3) { this.replans = 0; this.dropRoute(); }
         else { const path = this.nav.path(pos, this.route[this.route.length - 1]!); this.route = path ? path.slice(1) : []; }
       }
     } else this.stall = 0;
@@ -381,7 +398,7 @@ export class FairEngine implements EngineApi {
     if (this.seat) this.stand();
     this.seatGoal = null;
     const path = this.nav.path(this.position, to); if (!path) return false;
-    this.route = path.slice(1); this.replans = 0; this.stall = 0;
+    this.route = path.slice(1); this.replans = 0; this.stall = 0; this.setAuto(false);
     const end = path[path.length - 1]!, w = toWorld(end.x, end.y, 0.04); this.ping.mesh.position.set(w.x, w.y, w.z); this.ping.t = 0; sfx('go');
     return true;
   }
@@ -404,8 +421,15 @@ export class FairEngine implements EngineApi {
   get position(): P2 { return toPlan(this.sim.player.body.pos); }
   levelOf(p: P2): number { const d = this.level.decks; return (d.find((k) => p.y >= k.y0 - 15 && p.y <= k.y1 + 15) ?? d[0]!).level; }
 
+  /** What the trail leads to: the place the player picked; else the next checkpoint once the mission has started; else Lean X. */
+  private missionGoal(): { x: number; y: number; label: string; stationId?: string } | null {
+    const t = guideTarget.value; if (t) return t;
+    const m = me.value; if (!m || m.cls === 'exhibitor') return null;
+    if (!m.mission.started) return { ...this.level.hero.dock, label: 'Lean X Digital · Booth ' + this.level.hero.id };
+    return trailCheckpoint(this.position);
+  }
   private get goal(): P2 {
-    const target = guideTarget.value ?? this.level.hero.dock, pos = this.position, here = this.levelOf(pos), there = this.levelOf(target);
+    const target = this.missionGoal() ?? this.level.hero.dock, pos = this.position, here = this.levelOf(pos), there = this.levelOf(target);
     if (here === there) { if (goalVia.value) goalVia.value = null; return target; }
     const lifts = this.level.lifts.filter((l) => l.deck === here), lift = lifts.reduce((a, b) => (Math.hypot(b.x - pos.x, b.y - pos.y) < Math.hypot(a.x - pos.x, a.y - pos.y) ? b : a), lifts[0]!);
     const via = `Take the ${lift.label.toLowerCase()} to Level ${there}`; if (goalVia.value !== via) goalVia.value = via;
@@ -423,7 +447,13 @@ export class FairEngine implements EngineApi {
   }
 
   autopilot() {
-    if (this.seat) this.stand(); this.seatGoal = null; const p = this.nav.path(this.position, this.goal); if (p) { this.route = p.slice(1); this.replans = 0; } }
+    if (this.seat) this.stand(); this.seatGoal = null;
+    const p = this.nav.path(this.position, this.goal); if (!p) { toast('No way through from here', 'Tap somewhere on the floor and try again', 'warn'); return; }
+    this.route = p.slice(1); this.replans = 0; this.stall = 0; this.setAuto(true);
+  }
+  pauseWalk() { if (this.auto && this.route.length) autoWalk.value = 'paused'; }
+  resumeWalk() { if (this.auto && this.route.length) autoWalk.value = 'going'; }
+  stopWalk() { this.dropRoute(); }
 
   /* ---------------- camera ---------------- */
 
@@ -481,13 +511,16 @@ export class FairEngine implements EngineApi {
   /* ---------------- guide trail ---------------- */
 
   private updateTrail(now: number, t: number) {
-    const wanted = guideOn.value && (guideTarget.value != null || (!me.value?.mission.started && me.value?.cls !== 'exhibitor')); // until the mission starts, the trail leads to Lean X
-    if (!wanted) { if (this.trail.count) { this.trail.count = 0; distToGoal.value = null; } return; }
+    const target = guideOn.value ? this.missionGoal() : null; // Lean X until the mission starts, then checkpoint after checkpoint
+    if (!target) { if (this.trail.count || distToGoal.value != null) { this.trail.count = 0; distToGoal.value = null; } return; }
     if (now - this.trailAt > 1200) {
       this.trailAt = now; this.trailPath = this.nav.path(this.position, this.goal) ?? [];
       const d = this.trailPath.length ? Math.round(pathLength(this.trailPath)) : null;
       distToGoal.value = d;
-      if (guideTarget.value && !goalVia.value && d != null && d < 6) { toast('You have arrived', guideTarget.value.label); guideTarget.value = null; }
+      if (!goalVia.value && d != null && d < 6) {
+        if (guideTarget.value) { toast('You have arrived', target.label); guideTarget.value = null; }
+        else if (target.stationId) { toast(`You are at ${target.label}`, 'Scan the Mission X QR on their counter', 'info', 5000); reachCheckpoint(target.stationId); }
+      }
     }
     const L = pathLength(this.trailPath), n = Math.min(TRAIL_MAX, Math.floor(L / TRAIL_STEP)), M = new THREE.Matrix4();
     for (let i = 0; i < n; i++) {

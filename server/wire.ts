@@ -11,13 +11,14 @@ import { Ceritera } from './ceritera.js';
 import { Checkpoints } from './checkpoints.js';
 import { Referrals } from './referrals.js';
 import { BoothTeam } from './team.js';
+import { Onboarding } from './onboard.js';
 import { Signer } from './crypto.js';
 import { PresenceStore, type Presence } from './presence.js';
 import type { Db } from './db/types.js';
 import type { LevelData } from '../shared/types.js';
 import { FEATURES, type Features } from '../shared/rules.js';
 
-export interface Services { game: Game; stations: Stations; checkpoints: Checkpoints; referrals: Referrals; team: BoothTeam; social: Social; crews: Crews; venue: Venue; director: Director; gc: GroundControl; ops: LiveOps; signer: Signer; /** the library game's characters */ ceritera: Ceritera }
+export interface Services { game: Game; stations: Stations; checkpoints: Checkpoints; referrals: Referrals; team: BoothTeam; /** exhibitors the crew registers at the counter */ onboarding: Onboarding; social: Social; crews: Crews; venue: Venue; director: Director; gc: GroundControl; ops: LiveOps; signer: Signer; /** the library game's characters */ ceritera: Ceritera }
 
 export function buildServices(o: { db: Db; secret: string; level: LevelData; publicOrigin: string; now?: () => number; /** defaults to in-memory; pass DbPresence on serverless */ presence?: Presence; /** switched-off systems to run anyway (their tests do) */ features?: Partial<Features> }): Services {
   const signer = new Signer(o.secret);
@@ -27,7 +28,7 @@ export function buildServices(o: { db: Db; secret: string; level: LevelData; pub
   const venue = new Venue(game), director = new Director(game, stations, venue), gc = new GroundControl(game, stations, venue), ops = new LiveOps(game, stations);
   const ceritera = new Ceritera(o.db, o.now), checkpoints = new Checkpoints(game, team);
   stations.onStatus = () => checkpoints.forget();
-  const referrals = new Referrals(game, team);
+  const referrals = new Referrals(game, team), onboarding = new Onboarding(game, stations);
   stations.onFirstClaim = (id, ref) => referrals.record(id, ref);
 
   game.hooks = {
@@ -44,5 +45,5 @@ export function buildServices(o: { db: Db; secret: string; level: LevelData; pub
     mission: checkpoints,
     teamOwner: (id) => team.ownerFor(id),
   };
-  return { game, stations, social, crews, venue, director, gc, ops, signer, ceritera, checkpoints, referrals, team };
+  return { game, stations, social, crews, venue, director, gc, ops, signer, ceritera, checkpoints, referrals, team, onboarding };
 }

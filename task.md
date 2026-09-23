@@ -1,13 +1,12 @@
 # Mission X — MIHAS 2026 to-do
 
-Last updated 22 September 2026. `[x]` = done tonight; the commit is in brackets.
-Status: everything below is pushed to GitHub `main` and live.
+Last updated 23 September 2026. `[x]` = done; the commit is in brackets.
+Status: everything up to `f8176bd` is pushed to GitHub `main` and live; the 23 September items are committed locally, not yet pushed.
 
 ## Done tonight
 
 - [x] User boleh interact dengan booth yang bukan checkpoints (swap card) — `243aff0`
   - Near an exhibitor's booth that isn't one of your checkpoints, the button is **Swap card** (E key too). Checkpoints keep **Stamp**; empty booths show no button.
-  - [ ] *Bila berjalan dekat booth user boleh nampak detail company* — partly done: walking up shows the company name in the chip, but the details (offer line, website) only show after you tap into the booth.
 - [x] Update privacy page — `139ff39`, `67074ff`
   - Operator Leanis Solution Sdn Bhd (Lean X Digital), no location use, hosting in Tokyo, 12 months retention, contact sales@nexovadigital.com. English and Bahasa Malaysia.
 - [x] Kod dan layout betul tapi nama booth salah, scrap detail nama booth dari database, akan match nama company dengan kod booth masa onboarding — `17c6c0a`
@@ -30,11 +29,20 @@ Status: everything below is pushed to GitHub `main` and live.
 - [x] 1 company exhibitor boleh register banyak member
   - The booth team: the owner shares a team link, up to 20 colleagues each join on their own phone and see the same dashboard. Check it covers what you need.
 
+## Done 23 September
+
+- [x] "Take me there" to checkpoint ada bug: tak bawa ke checkpoint seterusnya, hanya bawa ke Lean X booth
+  - The trail leads to Lean X only until the start QR is scanned. After that it leads to the nearest checkpoint you have not scanned, then the next one, without pressing anything: the mission card shows "Next: Company · Booth", the distance, and **Take me there**. "Skip this one" moves on.
+- [x] User boleh pilih nak start game dari gate mana
+  - On the first screen, under the two doors: **Walk in by** Hall 8 · Hall 7 · Hall 6 · Main entrance (Hall 5). Remembered on the phone.
+- [x] Movement "take me there" terlalu laju, takut user tak boleh catch up; ada pause button
+  - The guide jogs (2.7 m/s) instead of running (4.2 m/s); a tap on the floor still runs. While it walks the card shows **Pause** / **Resume** and **Stop**.
+- [x] Mission dari 5 checkpoint turun ke 3 — `CHECKPOINTS = 3` in `shared/rules.ts`.
+- [x] Booth upload gambar tak perlu approval Lean X
+  - Logo and photo go up in the game the moment they are saved, pending or not. Approval still decides whether the booth is a checkpoint.
+- [x] 2 flow onboarding: 1 exhibitor sign up sendiri, 1 lagi kita sign up-kan (dashboard dekat /crew.html untuk daftarkan user)
+  - `/crew.html` → **Register**: booth number, company, contact name, phone, email, one line, website, consent tick. Saves their card and their booth (approved) and shows a hand-over link + QR (copy, or WhatsApp it). The exhibitor opens `/?join=CODE` on their phone → "Continue as <name>" → that account is theirs: dashboard, booth QR, visitors. The list under the form shows who has opened their link. Self sign-up in the game is unchanged.
+
 ## Still to do
 
-- [ ] "Take me there" to checkpoint ada bug: tak bawa ke checkpoint seterusnya, hanya bawa ke Lean X booth
-- [ ] User boleh pilih nak start game dari gate mana
-- [ ] Movement "take me there" terlalu laju, takut user tak boleh catch up; ada pause button
-- [ ] Mission dari 5 checkpoint turun ke 3
-- [ ] Booth upload gambar tak perlu approval Lean X
-- [ ] 2 flow onboarding: 1 exhibitor sign up sendiri, 1 lagi kita sign up-kan (dashboard dekat /crew.html untuk daftarkan user)
+- [ ] *Bila berjalan dekat booth user boleh nampak detail company* — the offer line and website only show after tapping into the booth (the chip shows the company name).

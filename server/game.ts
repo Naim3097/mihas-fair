@@ -227,7 +227,8 @@ export class Game {
 
   async ping(id: string, pos: PresencePing, isSpawn: boolean): Promise<{ holograms: Hologram[]; events: XpEvent[]; online: number; deck: boolean }> {
     if (![pos.x, pos.y, pos.h].every(Number.isFinite)) throw new GameError('bad_pos', 'Bad position');
-    if (isSpawn && ![...Object.values(this.level.spawns), ...this.level.lifts].some((s) => Math.hypot(s.x - pos.x, s.y - pos.y) < 4)) isSpawn = false;
+    // a spawn is only honoured next to a lift or a gate (the player chose which entrance to start from)
+    if (isSpawn && ![...Object.values(this.level.spawns), ...this.level.lifts].some((s) => Math.hypot(s.x - pos.x, s.y - pos.y) < 4) && !this.level.gates.some((g) => Math.hypot(g.x - pos.x, g.y - pos.y) < 16)) isSpawn = false;
     const t = this.now();
     const deck = false, sigma = 0; // no GPS: every avatar is walked in the virtual hall, none follows a real person's steps
     const pose = (POSES as readonly string[]).includes(pos.pose ?? '') ? pos.pose : '';

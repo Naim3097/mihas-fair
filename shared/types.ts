@@ -72,6 +72,12 @@ export interface ReferralView { code: string; url: string; points: number; joine
 /** The crew's view: who has brought in the most exhibitors. */
 export interface ReferralRow { name: string; company: string; phone: string; email: string; booths: string; approved: number; pending: number; points: number }
 export interface BoothScan { name: string; phone: string; email: string; company: string; at: number; checkpoint: boolean }
+/** The crew registering an exhibitor at the counter: their card and their booth in one go. */
+export interface CrewRegisterInput { stationId: string; company: string; name: string; phone: string; email: string; role?: string; offer?: string; link?: string; /** the exhibitor agreed to the privacy notice at the counter */ consent: boolean }
+/** A crew-registered booth and the link that hands its account to the exhibitor. */
+export interface HandoffRow { stationId: string; company: string; name: string; phone: string; email: string; code: string; url: string; createdAt: number; taken: boolean; status: StationStatus | 'released' }
+/** What someone opening a hand-over link is about to take over. */
+export interface HandoffPeek { stationId: string; company: string; name: string; taken: boolean }
 
 export interface PassportInput {
   name: string;

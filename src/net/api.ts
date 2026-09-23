@@ -1,4 +1,4 @@
-import type { BoothTeamPeek } from '../../shared/types';
+import type { BoothTeamPeek, HandoffPeek } from '../../shared/types';
 import type { ApiResult, Contact, Hologram, HostCode, HostLead, HostStation, LinkCode, LinkPeek, PassportInput, PresencePing, StampRequest, StationClaimInput, StationView, TodayView } from '../../shared/types';
 import type { Role } from '../../shared/rules';
 import type { ShareField } from '../../shared/rules';
@@ -40,6 +40,9 @@ export const api = {
   boothQr: (stationId: string) => call<HostCode>('GET', `/api/host/code?station=${q(stationId)}`),
   teamPeek: (code: string) => call<BoothTeamPeek>('GET', `/api/booth-team/peek?code=${q(code)}`, undefined, true),
   teamJoin: (code: string) => call<BoothTeamPeek>('POST', '/api/booth-team/join', { code }),
+  /** The crew registered this exhibitor at the counter: the link makes that account this phone's. */
+  handoffPeek: (code: string) => call<HandoffPeek>('GET', `/api/handoff/peek?code=${q(code)}`, undefined, true),
+  handoff: (code: string) => call<HandoffPeek>('POST', '/api/handoff', { code }),
   /** The booth's fixed QR: printed once and left on the counter. */
   fixedQr: (stationId: string) => call<{ stationId: string; url: string }>('GET', `/api/host/qr?station=${q(stationId)}`, undefined, true),
   leads: (stationId: string) => call<HostLead[]>('GET', `/api/host/leads?station=${q(stationId)}`),

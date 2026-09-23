@@ -1,14 +1,14 @@
 // Crew console for booth staff: scan prize codes, see leads, check booths, print booth QRs.
 import { render } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { Camera } from './ui/common';
+import { Camera, Qr } from './ui/common';
 import { OpsTab, ReviewTab } from './crew-ops';
 import qrcode from 'qrcode-generator';
 import './ui.css';
 import './crew.css';
 import './demo/demo.css';
 import { demo, demoState, ensureBackend } from './demo/client';
-import type { CrewStationRow, CrewTicketView, ReferralRow } from '../shared/types';
+import type { CrewRegisterInput, CrewStationRow, CrewTicketView, HandoffRow, ReferralRow } from '../shared/types';
 
 type Res<T> = { ok: true; data: T } | { ok: false; error: string; code: string };
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -27,17 +27,17 @@ function extractTicket(raw: string): string {
 
 function Crew() {
   const [authed, setAuthed] = useState<boolean | null>(null);
-  const [tab, setTab] = useState<'scan' | 'leads' | 'stations' | 'review' | 'ops' | 'beacons' | 'referrals'>('scan');
+  const [tab, setTab] = useState<'scan' | 'register' | 'leads' | 'stations' | 'review' | 'ops' | 'beacons' | 'referrals'>('scan');
   useEffect(() => { call('GET', '/api/crew/check').then(() => setAuthed(true), () => setAuthed(false)); }, []);
   if (authed === null) return <main class="console"><p>Loading…</p></main>;
   if (!authed) return <Login onDone={() => setAuthed(true)} />;
   return (
     <main class="console">
       <header><div class="brand"><span>lean<b>.x</b>digital</span><i /><span>Crew console</span></div>
-        <nav>{([['scan', 'Scan'], ['leads', 'Leads'], ['stations', 'Booths'], ['review', 'Review'], ['ops', 'Live'], ['beacons', 'Booth QRs'], ['referrals', 'Referrals']] as const).map(([t, label]) => <button key={t} class={'chip' + (tab === t ? ' on' : '')} onClick={() => setTab(t)}>{label}</button>)}
+        <nav>{([['scan', 'Scan'], ['register', 'Register'], ['leads', 'Leads'], ['stations', 'Booths'], ['review', 'Review'], ['ops', 'Live'], ['beacons', 'Booth QRs'], ['referrals', 'Referrals']] as const).map(([t, label]) => <button key={t} class={'chip' + (tab === t ? ' on' : '')} onClick={() => setTab(t)}>{label}</button>)}
           <button class="chip ghost" onClick={() => call('POST', '/api/crew/logout').finally(() => setAuthed(false))}>Sign out</button></nav></header>
       {demo.value && <p class="demobar"><b>Demo mode.</b> This console talks to the demo world inside this browser — the same one the game tab is playing in. Leads, stations and the accounts under review belong to a simulated cast; your own demo player is in there too.</p>}
-      {tab === 'scan' && <Scan />}{tab === 'leads' && <Leads />}{tab === 'stations' && <StationsTab />}{tab === 'review' && <ReviewTab />}{tab === 'ops' && <OpsTab />}{tab === 'beacons' && <Beacons />}{tab === 'referrals' && <Referrals />}
+      {tab === 'scan' && <Scan />}{tab === 'register' && <Register />}{tab === 'leads' && <Leads />}{tab === 'stations' && <StationsTab />}{tab === 'review' && <ReviewTab />}{tab === 'ops' && <OpsTab />}{tab === 'beacons' && <Beacons />}{tab === 'referrals' && <Referrals />}
     </main>
   );
 }
@@ -97,6 +97,87 @@ function Scan() {
         </div>
       )}
     </section>
+  );
+}
+
+/** The second way in for exhibitors: the crew registers them at the counter — card and booth in one go, approved — and
+ *  hands them a link (or its QR). Opened on their phone, that account becomes theirs. */
+function Register() {
+  const blank: CrewRegisterInput = { stationId: '', company: '', name: '', role: '', phone: '', email: '', offer: '', link: '', consent: false };
+  const [f, setF] = useState(blank), [booths, setBooths] = useState<{ id: string; name: string }[]>([]), [rows, setRows] = useState<HandoffRow[] | null>(null);
+  const [done, setDone] = useState<HandoffRow | null>(null), [err, setErr] = useState(''), [busy, setBusy] = useState(false), [show, setShow] = useState<string | null>(null);
+  const load = () => call<HandoffRow[]>('GET', '/api/crew/registered').then(setRows, () => setRows([]));
+  useEffect(() => { void load(); call<{ id: string; name: string }[]>('GET', '/api/crew/beacons').then(setBooths, () => {}); }, []);
+  const set = (k: keyof CrewRegisterInput) => (e: Event) => { const t = e.target as HTMLInputElement; const v = t.type === 'checkbox' ? t.checked : t.value; setF((p) => ({ ...p, [k]: v })); };
+  const T = f.stationId.trim().toUpperCase().replace(/\s+/g, ''), hits = T && !booths.some((b) => b.id === T) ? booths.filter((b) => b.id.startsWith(T)).slice(0, 8) : [];
+  const submit = async (e: Event) => {
+    e.preventDefault(); setErr(''); setBusy(true);
+    try { const r = await call<HandoffRow>('POST', '/api/crew/register', { ...f, stationId: T }); setDone(r); setShow(r.stationId); setF(blank); await load(); }
+    catch (x) { setErr((x as Error).message); }
+    finally { setBusy(false); }
+  };
+  const wa = (r: HandoffRow) => `https://wa.me/${r.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${r.name}, your ${r.company} booth (${r.stationId}) is set up in Mission X for MIHAS 2026. Open this link on your phone to take it over — your booth QR, your visitors and your dashboard are inside: ${r.url}`)}`;
+  return (
+    <section>
+      {done && (
+        <div class="sheet wide">
+          <p class="banner ok" role="status">{done.company} · Booth {done.stationId} is online and approved, with a card for {done.name}. Hand them the link:</p>
+          <HandoffCard r={done} wa={wa(done)} />
+          <button class="btn big" style={{ marginTop: '8px' }} onClick={() => setDone(null)}>Register another</button>
+        </div>
+      )}
+      <form class="sheet wide" onSubmit={submit}>
+        <h2>Register an exhibitor</h2>
+        <p class="fine">For exhibitors who come to the counter rather than signing up in the game themselves. Fill in their booth and details; they get a link that makes the account theirs on their own phone. The booth is approved as you save it — you have them in front of you.</p>
+        <div class="frow">
+          <label>Booth number<input required maxLength={8} autocapitalize="characters" placeholder="e.g. 7C17" value={f.stationId} onInput={set('stationId')} />
+            {hits.length > 0 && <div class="hits">{hits.map((b) => <button type="button" key={b.id} class="chip" onClick={() => setF((p) => ({ ...p, stationId: b.id }))}>{b.id}</button>)}</div>}</label>
+          <label>Company name on the booth<input required maxLength={80} value={f.company} onInput={set('company')} /></label>
+        </div>
+        <div class="frow">
+          <label>Contact person<input required maxLength={80} autocomplete="off" value={f.name} onInput={set('name')} /></label>
+          <label>Their role <span class="opt">optional</span><input maxLength={80} autocomplete="off" value={f.role} onInput={set('role')} /></label>
+        </div>
+        <div class="frow">
+          <label>WhatsApp / phone<input required type="tel" inputMode="tel" autocomplete="off" placeholder="+60…" value={f.phone} onInput={set('phone')} /></label>
+          <label>Email<input required type="email" autocomplete="off" value={f.email} onInput={set('email')} /></label>
+        </div>
+        <div class="frow">
+          <label>One line for visitors <span class="opt">optional</span><input maxLength={120} placeholder="e.g. Free samples at 3 pm" value={f.offer} onInput={set('offer')} /></label>
+          <label>Website <span class="opt">optional</span><input maxLength={200} inputMode="url" placeholder="company.com" value={f.link} onInput={set('link')} /></label>
+        </div>
+        <label class="check"><input type="checkbox" checked={f.consent} onChange={set('consent')} /><span>The exhibitor has read the <a href="/privacy.html" target="_blank" rel="noopener">Privacy Notice</a> and agrees to Lean X Digital processing these details to run Mission X.</span></label>
+        {err && <p class="banner bad" role="alert">{err}</p>}
+        <button class="btn primary big" disabled={busy}>{busy ? 'Saving…' : 'Register and make their link'}</button>
+      </form>
+      <div class="sheet wide">
+        <div class="row"><h2>Registered at the counter {rows ? `(${rows.length})` : ''}</h2><button class="btn" onClick={load}>Refresh</button></div>
+        <p class="fine">“Taken” = the exhibitor has opened their link. A link works for 30 days; register the booth again after a Release to make a new one.</p>
+        {rows && rows.length === 0 && <p class="lead">Nobody yet.</p>}
+        {!!rows?.length && (
+          <div class="scroll"><table><thead><tr><th>Booth</th><th>Company</th><th>Contact</th><th>Status</th><th>Link</th><th></th></tr></thead>
+            <tbody>{rows.map((r) => (
+              <tr key={r.stationId}><td>{r.stationId}</td><td>{r.company || <small>released</small>}</td><td>{r.name}<br /><small>{r.phone} · {r.email}</small></td><td>{r.status}</td><td>{r.taken ? <span class="badge approved">Taken</span> : <small>not yet opened</small>}</td>
+                <td class="acts">{r.status !== 'released' && <button class="chip" onClick={() => setShow(show === r.stationId ? null : r.stationId)}>{show === r.stationId ? 'Hide link' : 'Show link'}</button>}</td></tr>
+            ))}</tbody></table></div>
+        )}
+        {rows?.filter((r) => r.stationId === show && r.status !== 'released').map((r) => <HandoffCard key={r.code} r={r} wa={wa(r)} />)}
+      </div>
+    </section>
+  );
+}
+function HandoffCard({ r, wa }: { r: HandoffRow; wa: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => { try { await navigator.clipboard.writeText(r.url); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* the link is on screen */ } };
+  return (
+    <div class="teamlink">
+      <Qr text={r.url} label={`Hand-over QR for booth ${r.stationId}`} />
+      <div>
+        <p class="fine" style={{ margin: '0 0 6px' }}><b>{r.company} · Booth {r.stationId}</b> · {r.name}. Let them scan this QR with their phone camera, or send the link.</p>
+        <div class="reflink"><code>{r.url}</code></div>
+        <div class="stack two"><button type="button" class="btn primary big" onClick={copy}>{copied ? 'Link copied' : 'Copy link'}</button><a class="btn big" href={wa} target="_blank" rel="noopener">Send on WhatsApp</a></div>
+      </div>
+    </div>
   );
 }
 

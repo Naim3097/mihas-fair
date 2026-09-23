@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { EngineApi as Engine } from '../game/engine-api';
 import { api, ApiError } from '../net/api';
-import { POINTS, ROLE_INFO, chapters, type Role } from '../../shared/rules';
-import type { BoothTeamPeek, PassportInput } from '../../shared/types';
-import { afterCard, boothAction, referral, teamInvite, atLaunchPad, bootError, bootNote, distToGoal, goalVia, guideOn, guideTarget, herePlace, journey, level, me, modal, moveHint, nearLift, nearStation, online, panelStation, phase, seated, stampedSet, stationMap, toast, toasts } from '../state';
+import { CHECKPOINTS, POINTS, ROLE_INFO, chapters, type Role } from '../../shared/rules';
+import type { BoothTeamPeek, HandoffPeek, PassportInput } from '../../shared/types';
+import { afterCard, autoWalk, boothAction, currentCp, gate, handoff, reachCheckpoint, referral, setGate, teamInvite, atLaunchPad, bootError, bootNote, distToGoal, goalVia, guideOn, guideTarget, herePlace, journey, level, me, modal, moveHint, nearLift, nearStation, online, panelStation, phase, seated, stampedSet, stationMap, toast, toasts } from '../state';
 import { facts } from '../game/facts';
 import { MapSheet, PhotoSheet } from './world-sheets';
 import { DemoChip, TourSheet } from '../demo/Tour';
@@ -35,6 +35,7 @@ export function App({ engine }: Eng) {
       {m === 'tour' && <TourSheet />}
       {m === 'scan' && <ScanSheet />}
       {m === 'jointeam' && <JoinTeamSheet engine={engine} />}
+      {m === 'handoff' && <HandoffSheet engine={engine} />}
       <Toasts />
     </>
   );
@@ -53,7 +54,7 @@ const Splash = ({ text, error }: { text: string; error?: boolean }) => (
 function Start({ engine }: Eng) {
   const [busy, setBusy] = useState<Role | null>(null), was = me.value?.cls ?? null;
   const enter = (role: Role) => {
-    engine()?.start('short'); phase.value = 'play'; api.track('start', { role });
+    engine()?.start(gate.value); phase.value = 'play'; api.track('start', { role, gate: gate.value });
     if (role === 'exhibitor') modal.value = 'mybooth';
     else if (!me.value?.mission.started) toast('Welcome to MIHAS', 'Follow the trail to Lean X Digital, Booth 8H18A', 'info', 5000);
   };
@@ -81,8 +82,12 @@ function Start({ engine }: Eng) {
         <p class="lead">The whole MIHAS expo, live on your phone. Make your free digital business card, walk the halls with everyone else in the game, and meet exhibitors.</p>
         {referral.value && !me.value?.hosting.length && was !== 'visitor' && <p class="invite">An exhibitor invited you to put your booth in the game — choose <b>I'm exhibiting</b>.</p>}
         <div class="doors">
-          {door('visitor', was === 'visitor' ? 'Continue visiting' : "I'm visiting", 'Make your card, start at Lean X Digital, then scan the QR at 5 exhibitor booths.')}
+          {door('visitor', was === 'visitor' ? 'Continue visiting' : "I'm visiting", `Make your card, start at Lean X Digital, then scan the QR at ${CHECKPOINTS} exhibitor booths.`)}
           {door('exhibitor', was === 'exhibitor' ? 'Back to my booth' : "I'm exhibiting", 'Put your booth in the game. Collect visitor leads, free.')}
+        </div>
+        <div class="gates" role="radiogroup" aria-label="Walk in by">
+          <span class="k">Walk in by</span>
+          {(level.value?.gates ?? []).map((g) => <button key={g.id} role="radio" aria-checked={gate.value === g.id} class={'chip' + (gate.value === g.id ? ' on' : '')} disabled={!!busy} onClick={() => setGate(g.id)}>{g.name}</button>)}
         </div>
         <p class="fine">An expo game by Lean X Digital. Unofficial — not affiliated with MATRADE or MIHAS.</p>
       </div>
@@ -128,8 +133,20 @@ function Hud({ engine }: Eng) {
     document.addEventListener('pointerdown', away, true); return () => document.removeEventListener('pointerdown', away, true);
   }, [tray]);
   const goal = guideTarget.value, stName = st ? view?.company || st.name || 'Booth ' + st.id : '', total = (level.value?.booths.length ?? 1) - 1;
-  const trail = guideOn.value && distToGoal.value != null && (goal || (!m.mission.started && j.kind === 'visitor')); // until the mission starts, the trail leads to Lean X
+  // the trail: a place the player picked; else Lean X until the mission starts, then the next checkpoint
+  const next = !goal && j.kind === 'visitor' && m.mission.started ? currentCp.value : null;
+  const trail = guideOn.value && distToGoal.value != null && (goal || next || (!m.mission.started && j.kind === 'visitor'));
+  const walk = autoWalk.value;
   const word = j.kind === 'visitor' ? 'Chapter' : 'Step';
+  /** "Take me there" — and, once walking, Pause / Resume and Stop. */
+  const walkBtn = (mini?: boolean) => (
+    <span class="walk">
+      {walk !== 'off' && !mini && <button class="link" onClick={(e) => { e.stopPropagation(); eng?.stopWalk(); }}>Stop</button>}
+      {walk === 'going' ? <button class="btn primary" onClick={(e) => { e.stopPropagation(); eng?.pauseWalk(); }}>Pause</button>
+        : walk === 'paused' ? <button class="btn primary" onClick={(e) => { e.stopPropagation(); eng?.resumeWalk(); }}>Resume</button>
+        : <button class="btn primary" onClick={(e) => { e.stopPropagation(); eng?.autopilot(); }}>{mini ? 'Go' : 'Take me there'}</button>}
+    </span>
+  );
 
   // the ending is shown once, the moment the fifth chapter closes and nothing else is on screen
   useEffect(() => {
@@ -141,11 +158,6 @@ function Hud({ engine }: Eng) {
   const act = boothAction(st);
   const doStamp = async () => { if (!st) return; setStamping(true); await engine()?.stamp(st); setStamping(false); };
   const cps = m.mission.checkpoints, left = cps.filter((c) => !c.done);
-  const toNext = () => { // the nearest checkpoint not yet scanned
-    const pos = eng?.position, booths = left.map((c) => level.value!.booths.find((b) => b.id === c.stationId)).filter((b) => !!b);
-    const b = pos ? booths.sort((p, q) => Math.hypot(p!.x - pos.x, p!.y - pos.y) - Math.hypot(q!.x - pos.x, q!.y - pos.y))[0] : booths[0];
-    if (!b) return; const c = cps.find((x) => x.stationId === b.id)!; guideTarget.value = { x: b.x, y: b.y, label: `${c.company} · Booth ${b.id}` }; guideOn.value = true;
-  };
   const scanBtn = (label: string) => <button class="btn primary" onClick={(e) => { e.stopPropagation(); modal.value = 'scan'; }}>{label}</button>;
 
   return (
@@ -153,10 +165,10 @@ function Hud({ engine }: Eng) {
       {/* top-left: what to do now. One card, nothing else up here — or, folded away, one slim line. */}
       {mini ? (
         <div class="objective mini" role="button" tabIndex={0} aria-label="Show the mission" onClick={() => setMini(false)}>
-          {!goal && <div class="dots" aria-hidden="true">{j.steps.map((s) => <i key={s.n} class={s.done ? 'on' : s === j.now ? 'now' : ''} />)}</div>}
-          <span class="t">{goal ? goal.label : j.now ? j.now.title : 'Free play'}</span>
+          {!goal && !next && <div class="dots" aria-hidden="true">{j.steps.map((s) => <i key={s.n} class={s.done ? 'on' : s === j.now ? 'now' : ''} />)}</div>}
+          <span class="t">{goal ? goal.label : next ? next.label : j.now ? j.now.title : 'Free play'}</span>
           {trail && distToGoal.value != null && <span class="d">{distToGoal.value} m</span>}
-          {trail ? <button class="btn primary" onClick={(e) => { e.stopPropagation(); engine()?.autopilot(); }}>Go</button>
+          {trail ? walkBtn(true)
             : !goal && j.kind === 'visitor' && ((j.now?.n === 2 && m.passport) || j.now?.n === 3) ? scanBtn('Scan')
             : !goal && j.kind === 'exhibitor' ? <button class="btn primary" onClick={(e) => { e.stopPropagation(); modal.value = m.passport ? 'mybooth' : 'card'; }}>Booth</button> : null}
           <span class="score" title="Points">{points.toLocaleString()}</span>
@@ -174,15 +186,17 @@ function Hud({ engine }: Eng) {
         {!goal && j.kind === 'visitor' && j.now?.n === 2 && <div class="go-row"><span>{m.passport ? 'At the booth?' : 'At Booth 8H18A?'}</span>{m.passport ? scanBtn('Scan the start QR') : <button class="btn primary" onClick={(e) => { e.stopPropagation(); modal.value = 'card'; }}>Get my free card</button>}</div>}
         {!goal && j.kind === 'visitor' && j.now?.n === 3 && (
           <>
-            {cps.length ? <ul class="cps">{cps.map((c) => <li key={c.stationId} class={c.done ? 'done' : ''}><i aria-hidden="true" />{c.company}<small>{c.stationId}</small></li>)}</ul> : <div class="via">Your checkpoints appear here as exhibitors join.</div>}
-            <div class="go-row">{left.length ? <button class="link" onClick={(e) => { e.stopPropagation(); toNext(); }}>Guide me to the next</button> : <span />}{scanBtn('Scan QR')}</div>
+            {cps.length ? <ul class="cps">{cps.map((c) => <li key={c.stationId} class={c.done ? 'done' : c.stationId === next?.stationId ? 'next' : ''}><i aria-hidden="true" />{c.company}<small>{c.stationId}</small></li>)}</ul> : <div class="via">Your checkpoints appear here as exhibitors join.</div>}
+            {next && <div class="via">Next: {next.label}</div>}
+            {!next && left.length > 0 && <div class="via">At the booth? Scan the Mission X QR on their counter.</div>}
+            <div class="go-row">{next && left.length > 1 ? <button class="link" onClick={(e) => { e.stopPropagation(); reachCheckpoint(next.stationId); }}>Skip this one</button> : <span />}{scanBtn('Scan QR')}</div>
           </>
         )}
         {!goal && j.kind === 'exhibitor' && <div class="go-row"><span /><button class="btn primary" onClick={(e) => { e.stopPropagation(); modal.value = m.passport ? 'mybooth' : 'card'; }}>{m.hosting.length ? 'Open my booth' : 'Set up my booth'}</button></div>}
         {trail && goalVia.value && <div class="via">{goalVia.value}</div>}
         {trail && (
-          <div class="go-row"><span>{distToGoal.value} m {goalVia.value ? 'to the lift' : ''}</span>
-            <span>{goal && <button class="link" style={{ marginRight: '12px' }} onClick={(e) => { e.stopPropagation(); guideTarget.value = null; }}>Cancel</button>}<button class="btn primary" onClick={(e) => { e.stopPropagation(); engine()?.autopilot(); }}>Take me there</button></span></div>
+          <div class="go-row"><span>{distToGoal.value} m {goalVia.value ? 'to the lift' : ''}{walk === 'paused' ? ' · paused' : walk === 'going' ? ' · walking' : ''}</span>
+            <span class="walk">{goal && walk === 'off' && <button class="link" onClick={(e) => { e.stopPropagation(); guideTarget.value = null; }}>Cancel</button>}{walkBtn()}</span></div>
         )}
       </div>
       )}
@@ -341,7 +355,7 @@ function JoinTeamSheet({ engine }: Eng) {
     if (!code) return; setBusy(true); setErr('');
     try {
       const p = await api.teamJoin(code); teamInvite.value = null; api.track('team_join');
-      if (phase.value !== 'play') { engine()?.start('short'); phase.value = 'play'; }
+      if (phase.value !== 'play') { engine()?.start(gate.value); phase.value = 'play'; }
       toast(`You are on the ${p.company} team`, 'Your booth, its QR and its visitors are in My booth', 'xp', 5000); modal.value = 'mybooth';
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Could not join'); setBusy(false); }
   };
@@ -351,6 +365,31 @@ function JoinTeamSheet({ engine }: Eng) {
       {err && <p class="err" role="alert">{err}</p>}
       {peek && !m?.passport && <><p class="fine">First, your card — so your team knows who you are. One minute.</p><button class="btn primary big" onClick={card}>Fill in my card</button></>}
       {peek && m?.passport && <button class="btn primary big" disabled={busy} onClick={join}>{busy ? 'Joining…' : `Join as ${m.passport.name}`}</button>}
+      <button class="link" onClick={close}>Not now</button>
+    </Sheet>
+  );
+}
+
+/* ------------------------------------------------------------------ an exhibitor the crew registered at the counter */
+
+function HandoffSheet({ engine }: Eng) {
+  const code = handoff.value, m = me.value, [peek, setPeek] = useState<HandoffPeek | null>(null), [err, setErr] = useState(''), [busy, setBusy] = useState(false);
+  useEffect(() => { if (code) api.handoffPeek(code).then(setPeek, (e) => setErr(e instanceof ApiError ? e.message : 'This link did not work')); }, [code]);
+  const close = () => { handoff.value = null; modal.value = null; };
+  const take = async () => {
+    if (!code || !peek) return; setBusy(true); setErr('');
+    try {
+      await api.handoff(code); handoff.value = null; api.track('handoff', { booth: peek.stationId });
+      if (phase.value !== 'play') { engine()?.start(gate.value); phase.value = 'play'; }
+      toast(`Welcome, ${peek.name}`, `Booth ${peek.stationId} · ${peek.company} is yours in the game`, 'xp', 5000); modal.value = 'mybooth';
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Could not continue'); setBusy(false); }
+  };
+  return (
+    <Sheet k="From the Lean X Digital crew" title={peek ? `${peek.company} · Booth ${peek.stationId}` : 'Your booth in the game'} onClose={close}>
+      {peek && <p class="lead">Our crew at Booth 8H18A set up your booth and your card{peek.name ? ` for ${peek.name}` : ''}. Continue on this phone and it is yours: the booth QR for your counter, everyone who scans it, your logo and photo.</p>}
+      {peek && m?.passport && <p class="fine">This phone is signed in as {m.callsign} at the moment. Continuing switches it to the account the crew made for you.</p>}
+      {err && <p class="err" role="alert">{err}</p>}
+      {peek && <button class="btn primary big" disabled={busy} onClick={take}>{busy ? 'One moment…' : `Continue as ${peek.name}`}</button>}
       <button class="link" onClick={close}>Not now</button>
     </Sheet>
   );

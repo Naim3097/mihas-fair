@@ -102,8 +102,8 @@ export class Checkpoints {
     return { stationId, url: `${this.g.publicOrigin}/?b=${encodeURIComponent(await this.g.beaconToken(stationId))}` };
   }
 
-  /** The logo, or a photo of the real booth, as a data URL (the browser resizes it first). Shown in the world once the
-   *  crew approves the booth: the logo on the counter and a sign over it, the photo on the back wall. */
+  /** The logo, or a photo of the real booth, as a data URL (the browser resizes it first). In the world straight away,
+   *  no approval needed: the logo on the counter and a sign over it, the photo on the back wall. */
   async setImage(ownerId: string, stationId: string, kind: BoothImage, dataUrl: unknown): Promise<void> {
     await this.owner(ownerId, stationId);
     const m = /^data:(image\/[a-z]+);base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl ?? ''));
