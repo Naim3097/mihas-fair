@@ -120,6 +120,9 @@ All nine, in one commit. Checked in Chrome on the isolated local copy: beams, th
   - Cause: the camera sits level with the 2.5 m booth partitions and was pulled in whenever its line to the avatar crossed one, then eased back out: at every stand along an aisle. Now it collides only with the hall itself, and eases in. The view also stopped widening on a run (every tap set off a run), and a resize no longer pops the field of view.
 - [x] "Take me there" folds the mission card to its slim line, so the walk can be watched — `35f3f5a`
 
+- [x] Android (Mi Browser, Xiaomi): mission card terlalu besar; kamera terlalu dekat — default patut lebih zoom out (iOS dan Android) — `c3ac926`
+  - Camera rest position 6.4 m back, pitch 0.38 (was 4.6 / 0.3). On phones the mission card starts as its slim line, opens on a tap, and the open card is a size down.
+
 ## Still to do
 
 - Nothing on the list. Approve or register exhibitors so visitors have 3 checkpoints.
