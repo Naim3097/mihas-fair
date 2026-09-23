@@ -1,7 +1,7 @@
 # Mission X — MIHAS 2026 to-do
 
 Last updated 23 September 2026. `[x]` = done; the commit is in brackets.
-Status: everything up to `f8176bd` is pushed to GitHub `main` and live; the 23 September items are committed locally, not yet pushed.
+Status: everything below is pushed to GitHub `main` and live. The 23 September items were checked in Chrome on an isolated local copy before pushing.
 
 ## Done tonight
 
