@@ -13,9 +13,12 @@ export async function handleScan(text: string): Promise<boolean> {
     if (s.kind === 'link') { pendingLink.value = s.code; modal.value = 'swap'; return true; }
     if (s.kind === 'host') await api.stamp({ stationId: s.stationId, proof: 'host', code: s.code });
     else await api.stamp({ stationId: s.stationId, proof: 'beacon', beacon: s.token });
-    // An online booth you have not left your card with yet: offer it straight away.
-    const booth = level.value?.booths.find((b) => b.id === s.stationId);
-    if (booth && stationMap.value.has(booth.id) && me.value?.passport && !me.value.shared.includes(booth.id)) { panelStation.value = booth; modal.value = 'booth'; }
+    // An online booth you have not left your card with yet: cards are swapped on the spot, with the saved defaults
+    const booth = level.value?.booths.find((b) => b.id === s.stationId), st = booth && stationMap.value.get(booth.id), m = me.value;
+    if (booth && st && m?.passport && !m.shared.includes(booth.id)) {
+      try { await api.leaveCard(booth.id, m.sharePrefs); toast(`Cards swapped with ${st.company}`, 'They have your card. Take it back any time from My contacts.', 'xp', 5000); }
+      catch { panelStation.value = booth; modal.value = 'booth'; }
+    }
     return true;
   } catch (e) {
     // scanned before registering: the card form comes up, and the scan is theirs to repeat once it is done

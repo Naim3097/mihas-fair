@@ -3,7 +3,7 @@ import type { EngineApi as Engine } from '../game/engine-api';
 import { api, ApiError } from '../net/api';
 import { CHECKPOINTS, POINTS, ROLE_INFO, chapters, type Role } from '../../shared/rules';
 import type { BoothTeamPeek, HandoffPeek, PassportInput } from '../../shared/types';
-import { afterCard, autoWalk, boothAction, currentCp, gate, handoff, referral, setGate, teamInvite, atLaunchPad, bootError, bootNote, distToGoal, goalVia, guideOn, guideTarget, herePlace, journey, level, me, modal, moveHint, nearLift, nearStation, online, panelStation, phase, seated, stampedSet, stationMap, toast, toasts } from '../state';
+import { afterCard, autoWalk, boothAction, currentCp, gate, handoff, referral, unreachCheckpoint, setGate, teamInvite, atLaunchPad, bootError, bootNote, distToGoal, goalVia, guideOn, guideTarget, herePlace, journey, level, me, modal, moveHint, nearLift, nearStation, online, panelStation, phase, seated, stampedSet, stationMap, toast, toasts } from '../state';
 import { facts } from '../game/facts';
 import { MapSheet, PhotoSheet } from './world-sheets';
 import { DemoChip, TourSheet } from '../demo/Tour';
@@ -157,7 +157,7 @@ function Hud({ engine }: Eng) {
     modal.value = 'complete'; api.track('mission_complete');
   }, [j.now, modal.value]);
 
-  const act = boothAction(st);
+  const act = boothAction(st), cpHere = !!st && m.mission.checkpoints.some((c) => c.stationId === st.id && !c.done);
   const doStamp = async () => { if (!st) return; setStamping(true); await engine()?.stamp(st); setStamping(false); };
   const cps = m.mission.checkpoints, left = cps.filter((c) => !c.done);
   const scanBtn = (label: string) => <button class="btn primary" onClick={(e) => { e.stopPropagation(); modal.value = 'scan'; }}>{label}</button>;
@@ -190,7 +190,7 @@ function Hud({ engine }: Eng) {
         {!goal && toClaim && <div class="go-row"><span>{atLaunchPad.value ? 'At the counter?' : 'All checkpoints done'}</span><button class="btn primary" onClick={(e) => { e.stopPropagation(); modal.value = 'prize'; }}>Show my prize code</button></div>}
         {!goal && j.kind === 'visitor' && j.now?.n === 2 && (
           <>
-            {cps.length ? <ul class="cps">{cps.map((c) => <li key={c.stationId} class={c.done ? 'done' : c.stationId === next?.stationId ? 'next' : ''}><i aria-hidden="true" />{c.company}<small>{c.stationId}</small></li>)}</ul> : <div class="via">Your checkpoints appear here as exhibitors join.</div>}
+            {cps.length ? <ul class="cps">{cps.map((c) => <li key={c.stationId} class={c.done ? 'done' : c.stationId === next?.stationId ? 'next' : ''}><i aria-hidden="true" />{c.company}<small>{c.stationId}</small>{!c.done && !goal && c.stationId !== next?.stationId && <button class="link go" onClick={(e) => { e.stopPropagation(); const b = level.value?.booths.find((x) => x.id === c.stationId); if (b) { unreachCheckpoint(c.stationId); guideTarget.value = { x: b.x, y: b.y, label: `${c.company} · Booth ${c.stationId}` }; guideOn.value = true; } }}>Take me there</button>}</li>)}</ul> : <div class="via">Your checkpoints appear here as exhibitors join.</div>}
             {next && <div class="via">Next: {next.label}</div>}
             {!next && left.length > 0 && <div class="via">At the booth? Scan the Mission X QR on their counter.</div>}
             <div class="go-row"><span />{scanBtn('Scan QR')}</div>
@@ -228,6 +228,7 @@ function Hud({ engine }: Eng) {
         {sitting && <SeatNote />}
         {sitting && <button class="btn big" onClick={() => eng?.stand()}>Stand up<kbd>E</kbd></button>}
         {nearLift.value && <div class="liftrow">{nearLift.value.others.map((l) => <button key={l.deck} class="btn lift" onClick={() => engine()?.useLift(l)}>Level {l.deck}<small>{level.value?.decks.find((d) => d.level === l.deck)?.label.split(' · ')[1]}</small></button>)}</div>}
+        {cpHere && !sitting && <button class="scanpill" onClick={() => (modal.value = 'scan')}>Scan now<small>the Mission X QR on their counter · your checkpoint</small></button>}
         {atLaunchPad.value && !m.passport && <button class="btn primary big" onClick={() => (modal.value = 'card')}>Get my free card</button>}
         {atLaunchPad.value && toClaim && <button class="btn primary big" onClick={() => (modal.value = 'prize')}>Show my prize code</button>}
         {/* walking up to a booth that is online: who they are and what they are offering, before tapping in */}
@@ -245,8 +246,9 @@ function Hud({ engine }: Eng) {
           <div class="chiprow">
             {place?.verb === 'photo' && <button class="chip act" onClick={() => void eng?.photo()}>Take a photo<kbd>E</kbd></button>}
             {(place?.verb === 'sit' || place?.verb === 'watch') && !act && <button class="chip act" onClick={() => eng?.sit()}>{place.verb === 'watch' ? 'Sit and watch' : 'Sit down'}<kbd>E</kbd></button>}
-            {!atLaunchPad.value && act === 'stamp' && <button class="chip act" disabled={stamping} onClick={doStamp}>{stamping ? 'Stamping…' : `Stamp +${POINTS.stamp}`}{!stamping && <kbd>E</kbd>}</button>}
+            {!atLaunchPad.value && act === 'stamp' && <button class="chip act" disabled={stamping} onClick={doStamp}>{stamping ? 'Swapping…' : `Swap card · +${POINTS.stamp + (m.shared.includes(st!.id) ? 0 : POINTS.leaveCard)}`}{!stamping && <kbd>E</kbd>}</button>}
             {!atLaunchPad.value && act === 'swap' && <button class="chip act" onClick={() => { panelStation.value = st; modal.value = 'booth'; }}>{m.shared.includes(st!.id) ? 'Card swapped ✓' : `Swap card · +${POINTS.leaveCard}`}<kbd>E</kbd></button>}
+            {!atLaunchPad.value && !act && st && m.scanned.includes(st.id) && <span class="chip done">Scanned ✓</span>}
             {!atLaunchPad.value && st && <button class={'chip' + (has ? ' on' : '')} onClick={() => { panelStation.value = st; modal.value = 'booth'; }}>{stName}{view ? (view.hosted ? ' · at the counter' : ' · online') : ''} ›</button>}
           </div>
         )}
@@ -333,7 +335,7 @@ function Finish() {
 /* ------------------------------------------------------------------ the whole rulebook */
 
 function Rules() {
-  const rows: [string, number][] = [['Stamp a booth in the game', POINTS.stamp], ['Leave your card at a booth', POINTS.leaveCard], ['Scan a booth QR at the real booth', POINTS.scan], ['Swap cards with a person', POINTS.swap], ['Get your digital business card at the X', POINTS.card]];
+  const rows: [string, number][] = [['Walk up to a booth in the game and swap your card', POINTS.stamp + POINTS.leaveCard], ['Scan a booth QR at the real booth', POINTS.scan], ['Swap cards with a person', POINTS.swap], ['Get your digital business card at the X', POINTS.card]];
   return (
     <Sheet k="How to play" title="One mission. Three steps.">
       <ol class="rules">{chapters({ started: false, card: false, checkpoints: 0, target: 0, claimed: false }).map((c) => <li key={c.n}><strong>{c.title}</strong><span>{c.todo}</span></li>)}</ol>

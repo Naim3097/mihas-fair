@@ -9,7 +9,10 @@ import './ui.css';
 import './crew.css';
 import './demo/demo.css';
 import { demo, demoState, ensureBackend } from './demo/client';
+import { waLink } from '../shared/rules';
 import type { CrewRegisterInput, CrewStationRow, CrewTicketView, HandoffRow, ReferralRow } from '../shared/types';
+
+const when = (t: number) => new Date(t).toLocaleString('en-MY', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 
 type Res<T> = { ok: true; data: T } | { ok: false; error: string; code: string };
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -83,6 +86,8 @@ function Scan() {
         <div class="sheet wide">
           <div class="k gold">Prize code</div><h2>{ticket.view.name}</h2>
           <p class="lead">{[ticket.view.role, ticket.view.company].filter(Boolean).join(' · ')}<br /><small>{ticket.view.callsign}</small></p>
+          <p class="fine">{ticket.view.phone && <a href={waLink(ticket.view.phone)} target="_blank" rel="noopener">{ticket.view.phone}</a>}{ticket.view.phone && ticket.view.email ? ' · ' : ''}{ticket.view.email && <a href={`mailto:${ticket.view.email}`}>{ticket.view.email}</a>}{!ticket.view.phone && !ticket.view.email && 'No phone or email on the card'} · in the game as {ticket.view.callsign}</p>
+          {ticket.view.scans.length > 0 ? <ul class="scanlist">{ticket.view.scans.map((x) => <li key={x.stationId}><b>{x.company || 'Booth'}</b> <small>{x.stationId} · {when(x.at)}</small></li>)}</ul> : <p class="fine">They have not scanned any booth QR.</p>}
           {ticket.view.checkpoints && <p class={'banner ' + (ticket.view.checkpoints.started && ticket.view.checkpoints.target > 0 && ticket.view.checkpoints.done >= ticket.view.checkpoints.target ? 'ok' : 'bad')}>{ticket.view.checkpoints.target === 0 ? 'No checkpoints yet (none were available when they registered)' : `Checkpoints: ${ticket.view.checkpoints.done} of ${ticket.view.checkpoints.target}`}</p>}
           {ticket.view.alreadyDocked ? <p class="banner bad">Already claimed — do not hand out a second gift.</p> : <button class="btn primary big" onClick={dock}>Confirm · +500 points and the gift</button>}
           <button class="btn big" style={{ marginTop: '8px' }} onClick={() => setTicket(null)}>Back</button>
@@ -117,7 +122,7 @@ function Register() {
     catch (x) { setErr((x as Error).message); }
     finally { setBusy(false); }
   };
-  const wa = (r: HandoffRow) => `https://wa.me/${r.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${r.name}, your ${r.company} booth (${r.stationId}) is set up in Mission X for MIHAS 2026.\n\nOpen this link on your phone to take it over — your booth QR, your visitors and your dashboard are inside: ${r.url}\n\nColleagues working the booth? Send them this one; each joins on their own phone and sees the same dashboard: ${r.teamUrl}`)}`;
+  const wa = (r: HandoffRow) => waLink(r.phone, `Hi ${r.name}, your ${r.company} booth (${r.stationId}) is set up in Mission X for MIHAS 2026.\n\nOpen this link on your phone to take it over — your booth QR, your visitors and your dashboard are inside: ${r.url}\n\nColleagues working the booth? Send them this one; each joins on their own phone and sees the same dashboard: ${r.teamUrl}`);
   return (
     <section>
       {done && (

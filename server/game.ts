@@ -137,7 +137,7 @@ export class Game {
 
   async me(id: string): Promise<Me> {
     const p = await this.player(id);
-    const [stamps, pass, ticket, avatar, sharePrefs, links, shared, verified, hosting] = await Promise.all([
+    const [stamps, pass, ticket, avatar, sharePrefs, links, shared, verified, hosting, scanned] = await Promise.all([
       this.db.all<{ station_id: string }>('SELECT station_id FROM stamps WHERE player_id = ?', [id]),
       this.passportOf(id),
       this.db.get<{ id: string; code: string; redeemed_at: number | null }>('SELECT id, code, redeemed_at FROM tickets WHERE player_id = ?', [id]),
@@ -147,6 +147,7 @@ export class Game {
       this.db.all<{ to_station: string }>('SELECT to_station FROM card_shares WHERE from_player = ? AND to_station IS NOT NULL AND revoked_at IS NULL', [id]),
       this.db.all<{ station_id: string }>('SELECT station_id FROM verified_contacts WHERE player_id = ?', [id]),
       this.db.all<{ station_id: string }>("SELECT station_id FROM stations WHERE owner_id = ? AND status != 'revoked'", [(await this.hooks.teamOwner?.(id)) ?? id]),
+      this.db.all<{ station_id: string }>('SELECT station_id FROM booth_scans WHERE player_id = ?', [id]),
     ]);
     const docked = p.docked_at != null;
     const t = this.now(), anchor = (await this.hooks.anchorOf?.(id)) ?? null;
@@ -167,6 +168,7 @@ export class Game {
       links: links?.n ?? 0,
       shared: shared.map((s) => s.to_station),
       verified: verified.map((s) => s.station_id),
+      scanned: scanned.map((s) => s.station_id),
       hosting: hosting.map((s) => s.station_id),
       teamMember: ((await this.hooks.teamOwner?.(id)) ?? id) !== id,
       mission: (await this.hooks.mission?.view(id)) ?? { started: false, target: 0, checkpoints: [] },
@@ -458,11 +460,13 @@ export class Game {
 
   async crewTicket(tokenOrCode: string): Promise<CrewTicketView> {
     const tk = await this.resolveTicket(tokenOrCode);
-    const v = await this.db.get<{ callsign: string; name: string; company: string; role: string }>(
-      'SELECT pl.callsign, p.name, p.company, p.role FROM players pl JOIN passports p ON p.player_id = pl.id WHERE pl.id = ?', [tk.player_id]);
+    const v = await this.db.get<{ callsign: string; name: string; company: string; role: string; phone: string; email: string }>(
+      'SELECT pl.callsign, p.name, p.company, p.role, p.phone, p.email FROM players pl JOIN passports p ON p.player_id = pl.id WHERE pl.id = ?', [tk.player_id]);
     if (!v) throw new GameError('no_passport', 'No card behind this prize code', 404);
     const m = await this.hooks.mission?.view(tk.player_id);
-    return { ...v, alreadyDocked: tk.redeemed_at != null, checkpoints: m && { started: m.started, done: m.checkpoints.filter((c) => c.done).length, target: m.target } };
+    const scans = await this.db.all<{ station_id: string; company: string | null; at: number }>(
+      'SELECT b.station_id, s.company, b.created_at AS at FROM booth_scans b LEFT JOIN stations s ON s.station_id = b.station_id WHERE b.player_id = ? ORDER BY b.created_at DESC', [tk.player_id]);
+    return { ...v, alreadyDocked: tk.redeemed_at != null, scans: scans.map((r) => ({ stationId: r.station_id, company: r.company ?? '', at: r.at })), checkpoints: m && { started: m.started, done: m.checkpoints.filter((c) => c.done).length, target: m.target } };
   }
 
   async crewDock(tokenOrCode: string): Promise<CrewTicketView> {

@@ -17,7 +17,7 @@ import { NavGrid, pathLength, pointAlong, type P2 } from '../game/nav';
 import { BoothPicker } from '../game/pick';
 import { placeAt, type Seat } from '../game/places';
 import { RemoteTrack } from '../game/remote';
-import { atLaunchPad, autoWalk, boothAction, currentDeck, distToGoal, goalVia, guideOn, guideTarget, herePlace, markSeen, me, modal, moveHint, myBooths, nearLift, nearStation, online, panelStation, photoShot, reachCheckpoint, reachedCps, seated, seen, stampedSet, stationMap, stations, toast, trailCheckpoint } from '../state';
+import { atLaunchPad, autoWalk, boothAction, currentCp, currentDeck, REACHED_RESET_M, unreachCheckpoint, distToGoal, goalVia, guideOn, guideTarget, herePlace, markSeen, me, modal, moveHint, myBooths, nearLift, nearStation, online, panelStation, photoShot, reachCheckpoint, reachedCps, seated, seen, stampedSet, stationMap, stations, toast, trailCheckpoint } from '../state';
 import type { Library } from '../ceritera/game/anim';
 import { CameraRig } from '../ceritera/game/camera';
 import type { Intent } from '../ceritera/game/controller';
@@ -134,6 +134,7 @@ export class FairEngine implements EngineApi {
     canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.running = false; toast('Graphics paused', 'Reloading…', 'warn', 6000); setTimeout(() => location.reload(), 1500); });
     this.stops.push(effect(() => this.world.setStamped(stampedSet.value)));
     this.stops.push(effect(() => this.world.setStations(stations.value)));
+    this.stops.push(effect(() => { const m = me.value, cur = currentCp.value; this.world.setBeams(m && m.cls !== 'exhibitor' ? m.mission.checkpoints.filter((c) => !c.done).map((c) => ({ id: c.stationId, next: c.stationId === cur?.stationId })) : []); }));
     this.stops.push(effect(() => { void guideTarget.value; void reachedCps.value; void me.value?.mission; this.trailAt = 0; }));
     this.stops.push(effect(() => { const a = me.value?.anchor; if (a && this.started && a.at > this.arrivalSeen) this.arriveAt(a.stationId, a.at); }));
     this.stops.push(effect(() => { const role = this.role(); void me.value; this.player?.setRole(role); }));
@@ -504,10 +505,13 @@ export class FairEngine implements EngineApi {
   }
 
   /** The server checks distance against the position it last saw, so report position first. */
+  /** "Swap card" at a booth in the game: the stamp for walking up, and the card left with the exhibitor, in one press. */
   async stamp(b: Booth) {
-    const pos = this.position;
-    try { await api.presence({ x: pos.x, y: pos.y, h: this.sim.player.yaw }); await api.stamp({ stationId: b.id, proof: 'virtual' }); this.emote('cheer', 1300); }
-    catch (e) { toast(e instanceof ApiError ? e.message : 'Could not stamp', undefined, 'warn'); }
+    const pos = this.position, m = me.value, st = stationMap.value.get(b.id);
+    try {
+      await api.presence({ x: pos.x, y: pos.y, h: this.sim.player.yaw }); await api.stamp({ stationId: b.id, proof: 'virtual' }); this.emote('cheer', 1300);
+      if (st && m?.passport && !m.shared.includes(b.id)) { await api.leaveCard(b.id, m.sharePrefs); toast(`Cards swapped with ${st.company}`, 'Scan the Mission X QR on their counter for your checkpoint', 'xp', 5000); }
+    } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not swap cards', undefined, 'warn'); }
   }
 
   /* ---------------- guide trail ---------------- */
@@ -516,6 +520,8 @@ export class FairEngine implements EngineApi {
     const target = guideOn.value ? this.missionGoal() : null; // Lean X until the mission starts, then checkpoint after checkpoint
     if (!target) { if (this.trail.count || distToGoal.value != null) { this.trail.count = 0; distToGoal.value = null; } return; }
     if (now - this.trailAt > 1200) {
+      // a checkpoint the trail delivered you to, left behind without a scan: it can be pointed to again
+      for (const id of reachedCps.value) { const b = this.level.booths.find((x) => x.id === id); if (b && Math.hypot(b.x - this.position.x, b.y - this.position.y) > REACHED_RESET_M) unreachCheckpoint(id); }
       this.trailAt = now; this.trailPath = this.nav.path(this.position, this.goal) ?? [];
       const d = this.trailPath.length ? Math.round(pathLength(this.trailPath)) : null;
       distToGoal.value = d;

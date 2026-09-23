@@ -48,6 +48,8 @@ export interface Me {
   /** Stations this player has shared a Passport with, and those where a host verified the contact. */
   shared: string[];
   verified: string[];
+  /** Booths whose Mission X QR (printed or live) this player has scanned. */
+  scanned: string[];
   /** Station ids this player hosts. */
   hosting: string[];
   /** Verifiably at the venue right now (venue check or on-site scan in the last 30 min). */
@@ -108,7 +110,7 @@ export interface StampRequest { stationId: string; proof: StampProof; beacon?: s
 export interface PresencePing { x: number; y: number; h: number; /** sitting, waving, … — shown to others, nothing more */ pose?: Pose; deck?: boolean; sigma?: number; /** steps counted since the last ping (deck mode) */ steps?: number }
 export interface Hologram { id: string; callsign: string; cls: Role | null; /** an exhibitor's company, for the label over their head */ company?: string; x: number; y: number; h: number; av: string; pose?: Pose; /** really there, following real steps */ deck: boolean; /** position uncertainty in metres */ sigma: number }
 
-export interface CrewTicketView { callsign: string; name: string; company: string; role: string; alreadyDocked: boolean; /** checkpoints scanned, of how many */ checkpoints?: { started: boolean; done: number; target: number } }
+export interface CrewTicketView { callsign: string; name: string; company: string; role: string; phone: string; email: string; alreadyDocked: boolean; /** every booth QR they scanned, latest first */ scans: { stationId: string; company: string; at: number }[]; /** checkpoints scanned, of how many */ checkpoints?: { started: boolean; done: number; target: number } }
 
 /* ---------------- M2 ---------------- */
 

@@ -66,3 +66,5 @@ tr.dim{opacity:.45}b.good{color:var(--green)}b.bad{color:var(--red)}
 /* the Register form: two fields to a row, booth-number suggestions under the first */
 .frow{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}@media (max-width:560px){.frow{grid-template-columns:1fr}}
 .hits{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.hits .chip{min-height:30px;padding:4px 12px;font-size:12.5px}
+
+.scanlist{list-style:none;margin:8px 0 12px;padding:0;display:grid;gap:4px}.scanlist li{background:var(--surface-2);border-radius:var(--r-s);padding:8px 12px;font-size:14px}.scanlist small{color:var(--ink-3)}

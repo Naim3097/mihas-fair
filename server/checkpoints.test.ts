@@ -138,6 +138,11 @@ test('register at Lean X, scan its QR to start, get checkpoints, scan them — a
   assert.equal(back.json.events[0].action, 'prize', 'the Lean X QR now says the tote bag is here');
   const ticket = (await r.crew.call('GET', `/api/crew/ticket?t=${me.ticket!.code}`)).json.data;
   assert.deepEqual(ticket.checkpoints, { started: true, done: CHECKPOINTS, target: CHECKPOINTS });
+  assert.deepEqual([ticket.phone, ticket.email], ['+60123456789', 'aisyah@example.com'], 'the crew sees how to reach the winner');
+  const scanned = ticket.scans.map((x: { stationId: string; company: string }) => `${x.stationId}=${x.company}`);
+  assert.ok(scanned.includes('7C17=Company 7C17') && scanned.includes('7C19=Company 7C19'), `and every booth QR they scanned: ${scanned}`);
+  const mine = (await v.me()).scanned;
+  assert.ok(mine.includes('7C17') && mine.includes('7C19'), 'the player knows which booths they scanned, live QR or printed');
   assert.equal((await r.crew.call('POST', '/api/crew/dock', { t: me.ticket!.code })).status, 200);
   me = await v.me();
   assert.deepEqual(chapters(facts(me)).filter((c) => !c.done).map((c) => c.n), [], 'tote bag claimed: mission complete');

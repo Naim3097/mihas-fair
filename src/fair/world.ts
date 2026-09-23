@@ -220,6 +220,25 @@ export class FairWorld {
     this.pins.count = 0; this.pins.frustumCulled = false; this.scene.add(this.pins);
   }
 
+  /** Checkpoints: a column of light from each booth still to scan, seen across the hall; gold for the one the trail leads to. */
+  private beams = new Map<string, { mesh: THREE.Mesh; next: boolean; phase: number }>();
+  private beamGeo?: THREE.CylinderGeometry;
+  setBeams(list: { id: string; next: boolean }[]) {
+    const want = new Map(list.map((b) => [b.id, b.next]));
+    for (const [id, b] of this.beams) if (!want.has(id)) { this.scene.remove(b.mesh); (b.mesh.material as THREE.Material).dispose(); this.beams.delete(id); }
+    for (const [id, next] of want) {
+      const booth = this.level.booths[this.boothIndex.get(id) ?? -1]; if (!booth) continue;
+      let b = this.beams.get(id);
+      if (!b) {
+        this.beamGeo ??= new THREE.CylinderGeometry(0.42, 1.1, 46, 20, 1, true);
+        const mesh = new THREE.Mesh(this.beamGeo, new THREE.MeshBasicMaterial({ color: FAIR.blue, transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide }));
+        mesh.position.copy(W(booth.x, booth.y, this.boothH + 23)); mesh.renderOrder = 8; mesh.frustumCulled = false;
+        this.scene.add(mesh); b = { mesh, next: !next, phase: Math.random() * 6.28 }; this.beams.set(id, b);
+      }
+      if (b.next !== next) { b.next = next; (b.mesh.material as THREE.MeshBasicMaterial).color.setHex(next ? FAIR.gold : FAIR.blue); }
+    }
+  }
+
   /** Blue on the floor of the booth under the pointer or the one you asked to walk to. */
   mark(kind: 'hover' | 'goal', b: Booth | null) {
     let g = this.marks[kind];
@@ -263,6 +282,7 @@ export class FairWorld {
     const { X, ring } = this.heroBits;
     X.rotation.y = t * 0.6; X.position.y = 8.5 + Math.sin(t * 1.2) * 0.25;
     const k = (t * 0.35) % 1, s = 3 + k * 9; ring.scale.set(s, 1, s); (ring.material as THREE.MeshBasicMaterial).opacity = (1 - k) * 0.55;
+    for (const b of this.beams.values()) { const k = 0.5 + 0.5 * Math.sin(t * 2.2 + b.phase); (b.mesh.material as THREE.MeshBasicMaterial).opacity = (b.next ? 0.34 : 0.22) + k * 0.14; const sc = 1 + k * 0.12; b.mesh.scale.set(sc, 1, sc); }
     if (this.pinned.length) {
       const M = new THREE.Matrix4(), y = this.boothH + 1.5 + Math.sin(t * 2) * 0.18;
       this.pinned.forEach((bi, n) => { const b = this.level.booths[bi]!; M.makeRotationY(t * 0.9).setPosition(W(b.x, b.y, y)); this.pins.setMatrixAt(n, M); });

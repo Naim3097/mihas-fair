@@ -184,3 +184,14 @@ export const GC_MAX_WAYPOINTS = 5;
 
 export const TEAM_MAX = 12;
 export const TEAM_SCORERS = 5;
+
+/* ---------------- WhatsApp links ---------------- */
+/** The digits WhatsApp wants: a number typed the Malaysian way ("012-345 6789") becomes 60123456789; one with a
+ *  country code is kept. wa.me rejects a leading 0, which is why "WhatsApp" did nothing for most cards. */
+export function waNumber(phone: string): string {
+  let d = phone.replace(/\D/g, '');
+  if (d.startsWith('00')) d = d.slice(2);
+  if (d.startsWith('0')) d = '60' + d.slice(1);
+  return d;
+}
+export const waLink = (phone: string, text?: string): string => `https://wa.me/${waNumber(phone)}${text ? `?text=${encodeURIComponent(text)}` : ''}`;

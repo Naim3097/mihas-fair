@@ -45,6 +45,10 @@ export function nextCheckpoint(from: { x: number; y: number } | null): NextCheck
 }
 /** The trail delivered the player to this checkpoint: on to the next one. */
 export function reachCheckpoint(stationId: string) { reachedCps.value = new Set([...reachedCps.value, stationId]); }
+/** Walked off without scanning (or asked for it again): the trail may point there once more. */
+export function unreachCheckpoint(stationId: string) { if (reachedCps.value.has(stationId)) reachedCps.value = new Set([...reachedCps.value].filter((x) => x !== stationId)); }
+/** How far from a delivered checkpoint counts as having walked off. */
+export const REACHED_RESET_M = 15;
 /** The checkpoint the trail leads to now, as the engine last chose it; the mission card shows the same one. */
 export const currentCp = signal<NextCheckpoint | null>(null);
 /** The engine asks every second: keep the checkpoint it has until that one is scanned or reached, so the trail never

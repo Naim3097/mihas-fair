@@ -5,7 +5,7 @@ import { api, ApiError } from '../net/api';
 import { handleScan } from '../scan';
 import { shrink } from './images';
 import { Camera, FieldPicker, Qr, Sheet, useCountdown } from './common';
-import { POINTS, ROLE_INFO, type ShareField } from '../../shared/rules';
+import { POINTS, ROLE_INFO, waLink, type ShareField } from '../../shared/rules';
 import type { Booth, BoothTeamView, Contact, LinkCode, LinkPeek } from '../../shared/types';
 import { LinkDemoHint, StationDemoHint } from '../demo/Tour';
 import { boothAction, referral, setReferral, drop, guideOn, guideTarget, journey, level, me, modal, myBooths, nearStation, online, panelStation, pendingLink, stampedSet, stationMap, stations, toast } from '../state';
@@ -22,7 +22,8 @@ export function BoothSheet({ engine }: Eng) {
   const b = panelStation.value, m = me.value!;
   const [fields, setFields] = useState<ShareField[]>(m.sharePrefs), [scan, setScan] = useState(false), [digits, setDigits] = useState(''), [busy, setBusy] = useState(false);
   if (!b) return null;
-  const st = stationMap.value.get(b.id), mine = m.hosting.includes(b.id), stamped = stampedSet.value.has(b.id), left = m.shared.includes(b.id), met = m.verified.includes(b.id);
+  const st = stationMap.value.get(b.id), mine = m.hosting.includes(b.id), stamped = stampedSet.value.has(b.id), left = m.shared.includes(b.id), met = m.verified.includes(b.id) || m.scanned.includes(b.id);
+  const visitor = m.cls !== 'exhibitor', cp = m.mission.checkpoints.find((c) => c.stationId === b.id);
   const near = nearStation.value?.id === b.id, title = st?.company || b.name || `Booth ${b.id}`;
   const run = async (f: () => Promise<unknown>, msg: string) => { setBusy(true); try { await f(); } catch (e) { fail(e, msg); } setBusy(false); };
 
@@ -31,7 +32,7 @@ export function BoothSheet({ engine }: Eng) {
       <div class="pills">
         {st && <span class={'pill ' + (st.hosted ? 'live' : 'on')}>{st.hosted ? 'At the counter now' : 'Online'}</span>}
         {st?.status === 'approved' && <span class="pill on">Verified exhibitor</span>}
-        {stamped && <span class="pill gold">Stamped</span>}{met && <span class="pill gold">Met in person</span>}
+        {met ? <span class="pill gold">Scanned ✓{cp ? ' · checkpoint done' : ''}</span> : stamped ? <span class="pill gold">Visited</span> : null}
       </div>
       {st?.offer && <p class="lead">{st.offer}</p>}
       {st?.link && <a class="btn" href={st.link} target="_blank" rel="noopener noreferrer nofollow">Visit their page</a>}
@@ -40,7 +41,8 @@ export function BoothSheet({ engine }: Eng) {
         <div class="stack"><button class="btn primary big" onClick={() => (modal.value = 'mybooth')}>Open my booth</button><button class="btn big" onClick={() => (modal.value = 'claim')}>Edit booth profile</button></div>
       ) : (
         <div class="stack">
-          {boothAction(b) === 'stamp' && near && <button class="btn primary big" disabled={busy} onClick={() => run(() => engine()!.stamp(b), 'Could not stamp')}>Stamp this booth · +{POINTS.stamp}</button>}
+          {boothAction(b) === 'stamp' && near && <button class="btn primary big" disabled={busy} onClick={() => run(() => engine()!.stamp(b), 'Could not swap cards')}>Swap card · +{POINTS.stamp + (left ? 0 : POINTS.leaveCard)}</button>}
+          {cp && !cp.done && <p class="fine">{met ? 'Scanned.' : 'For the checkpoint: scan the Mission X QR on their counter.'}</p>}
           {!near && <button class="btn big" onClick={() => guideTo(b, title)}>Guide me here</button>}
 
           {!met && (
@@ -59,8 +61,8 @@ export function BoothSheet({ engine }: Eng) {
           {st && m.passport && (
             <div class="box">
               <strong>{left ? `You swapped cards with ${st.company}` : `Swap cards with ${st.company}?`}</strong>
-              <p class="fine">They receive only what you tick. You can take it back any time from My contacts.</p>
-              <FieldPicker value={fields} onChange={setFields} />
+              <p class="fine">{visitor ? 'They receive your card: name, company, role, phone and email. You can take it back any time from My contacts.' : 'They receive only what you tick. You can take it back any time from My contacts.'}</p>
+              {!visitor && <FieldPicker value={fields} onChange={setFields} />}
               <div class="stack">
                 <button class="btn primary big" disabled={busy} onClick={() => run(() => api.leaveCard(b.id, fields), 'Could not leave your card')}>{left ? 'Update what they see' : `Swap card · +${POINTS.leaveCard}`}</button>
                 {left && <button class="btn big" disabled={busy} onClick={() => run(() => api.takeBackCard(b.id), 'Could not undo')}>Take it back</button>}
@@ -216,9 +218,15 @@ export function SwapSheet() {
   }, [mode]);
   useEffect(() => { if (m.links > swapsAtOpen.current) { swapsAtOpen.current = m.links; toast('Cards swapped', 'Their card is in My contacts', 'xp'); void fresh(); } }, [m.links]);
 
+  const visitor = m.cls !== 'exhibitor';
   const look = async (raw: string) => {
     const c = (raw.match(/[?&]l=([A-Za-z0-9]{8})/)?.[1] ?? raw).trim().toUpperCase();
-    try { setPeek({ code: c, p: await api.swapPeek(c) }); } catch (e) { fail(e, 'That code did not work'); }
+    try {
+      const p = await api.swapPeek(c);
+      // a visitor's scan swaps on the spot with the saved defaults; an exhibitor still chooses what to hand over
+      if (visitor && !p.alreadyLinked) { setBusy(true); await api.swap(c, m.sharePrefs); api.track('swap'); setBusy(false); modal.value = 'contacts'; return; }
+      setPeek({ code: c, p });
+    } catch (e) { setBusy(false); fail(e, 'That code did not work'); }
   };
   useEffect(() => { const c = pendingLink.value; if (c && m.passport) { pendingLink.value = null; void look(c); } }, []);
   const doSwap = async () => { if (!peek) return; setBusy(true); try { await api.swap(peek.code, mine); api.track('swap'); setPeek(null); modal.value = 'contacts'; } catch (e) { fail(e, 'Could not swap cards'); } setBusy(false); };
@@ -261,12 +269,6 @@ export function SwapSheet() {
 
 /* ------------------------------------------------------------------ my contacts */
 
-function vcardHref(c: Contact): string {
-  const v = (s: string) => s.replace(/([,;\\])/g, '\\$1'), k = c.card;
-  const lines = ['BEGIN:VCARD', 'VERSION:3.0', `FN:${v(k.name ?? c.title)}`, k.company && `ORG:${v(k.company)}`, k.role && `TITLE:${v(k.role)}`, k.phone && `TEL;TYPE=CELL:${v(k.phone)}`, k.email && `EMAIL:${v(k.email)}`, c.note && `NOTE:${v(c.note)}`, 'END:VCARD'].filter(Boolean);
-  return 'data:text/vcard;charset=utf-8,' + encodeURIComponent(lines.join('\r\n'));
-}
-
 export function ContactsSheet() {
   const [list, setList] = useState<Contact[] | null>(null);
   const load = () => api.contacts().then(setList, () => setList([]));
@@ -279,11 +281,17 @@ export function ContactsSheet() {
           <div key={c.key} class="contact">
             <div class="rowb"><strong>{c.title}{c.verified && <em> · met in person</em>}</strong><span class="pill">{c.kind === 'person' ? 'Person' : 'Booth'}</span></div>
             <span class="sub">{c.sub}</span>
+            <dl class="carddl">
+              {c.card.name && c.card.name !== c.title && <><dt>Name</dt><dd>{c.card.name}</dd></>}
+              {c.card.company && <><dt>Company</dt><dd>{c.card.company}</dd></>}
+              {c.card.role && <><dt>Role</dt><dd>{c.card.role}</dd></>}
+              {c.card.phone && <><dt>Phone</dt><dd><a href={`tel:${c.card.phone}`}>{c.card.phone}</a></dd></>}
+              {c.card.email && <><dt>Email</dt><dd><a href={`mailto:${c.card.email}`}>{c.card.email}</a></dd></>}
+            </dl>
             <div class="pills">
-              {c.card.phone && <a class="chip" href={`https://wa.me/${c.card.phone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer">WhatsApp</a>}
+              {c.card.phone && <a class="chip" href={waLink(c.card.phone)} target="_blank" rel="noopener noreferrer">WhatsApp</a>}
               {c.card.email && <a class="chip" href={`mailto:${c.card.email}`}>Email</a>}
               {c.link && <a class="chip" href={c.link} target="_blank" rel="noopener noreferrer nofollow">Their page</a>}
-              {c.kind === 'person' && c.card.name && <a class="chip" href={vcardHref(c)} download={`${c.card.name}.vcf`}>Save to phone</a>}
               <button class="chip ghostbtn" onClick={() => revoke(c)}>Take back my card</button>
             </div>
             <textarea rows={2} maxLength={500} placeholder="Private note — follow up about…" aria-label={`Note about ${c.title}`} defaultValue={c.note} onBlur={(e) => { const t = (e.target as HTMLTextAreaElement).value; if (t !== c.note) { c.note = t; void api.note(c.key, t).catch((x) => fail(x, 'Note not saved')); } }} />
@@ -304,7 +312,6 @@ export function MenuSheet() {
     <Sheet k={`${m.callsign} · ${online.value} here now`} title="Menu">
       <div class="menu">
         {drop.value && !drop.value.done && <button class="wide" onClick={() => { const d = drop.value!; guideTarget.value = { x: d.x, y: d.y, label: d.label }; guideOn.value = true; modal.value = null; }}><strong>Booth of the day · +{drop.value.bonus}</strong><small>{drop.value.label} · scan its QR at the real booth today</small></button>}
-        {m.passport && <a href={m.passport.url} target="_blank" rel="noopener"><strong>My card</strong><small>Your digital business card · link and QR</small></a>}
         {m.cls !== 'exhibitor' && m.passport && <button onClick={go('prize')}><strong>My prize code</strong><small>{m.docked ? 'Tote bag claimed at Lean X Digital' : 'Show it at Lean X Digital, Booth 8H18A, for your tote bag'}</small></button>}
         {(m.cls === 'exhibitor' || m.hosting.length > 0) && <button onClick={go(m.passport ? 'mybooth' : 'card')}><strong>My booth</strong><small>{m.hosting.length ? m.hosting.join(', ') + ' · QR and leads' : 'Bring it online'}</small></button>}
         <button onClick={go('swap')}><strong>Swap cards</strong><small>Met someone? Exchange cards · +{POINTS.swap} each</small></button>
