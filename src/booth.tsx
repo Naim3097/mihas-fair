@@ -62,12 +62,7 @@ function Booth({ b, onChange }: { b: HostStation; onChange: () => void }) {
     pullScans();
     call<{ url: string }>('GET', `/api/host/qr?station=${q(b.id)}`).then((r) => !stop && setPrintable(r.data.url), () => {});
     const c = setInterval(pullScans, 15_000);
-    // while this page is open, its host stands at the booth in the game (the server forgets anyone quiet for 15 s)
-    const stand = () => { if (!document.hidden) void call('POST', '/api/host/presence', { station: b.id }).catch(() => {}); };
-    stand();
-    const s = setInterval(stand, 5_000);
-    document.addEventListener('visibilitychange', stand);
-    return () => { stop = true; clearInterval(c); clearInterval(s); document.removeEventListener('visibilitychange', stand); };
+    return () => { stop = true; clearInterval(c); };
   }, [b.id]);
   useEffect(() => { if (!printing) return; const done = () => setPrinting(false); addEventListener('afterprint', done); print(); return () => removeEventListener('afterprint', done); }, [printing]);
 
@@ -87,7 +82,6 @@ function Booth({ b, onChange }: { b: HostStation; onChange: () => void }) {
       <section class={'sheet wide status ' + b.status}>
         <div class="row"><h2>{b.company} <small>Booth {b.id}</small></h2><span class={'badge ' + b.status}>{b.status === 'approved' ? 'Approved · you are a checkpoint' : b.status === 'pending' ? 'Waiting for approval' : b.status}</span></div>
         {b.status !== 'approved' && <p class="fine">Lean X Digital checks every booth before it becomes a checkpoint in the game. Your booth, logo and photo are already in the game, visitors can already scan your QR, and you will see them below.</p>}
-        <p class="fine">While this page is open you are standing at your booth in the game, where visitors can walk up and swap cards with you. Keep it open on the counter screen; a locked phone steps away.</p>
       </section>
 
       <div class="dash">
