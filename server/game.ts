@@ -27,6 +27,8 @@ export interface GameHooks {
   onImplausible?(id: string, detail: string): Promise<void>;
   /** exhibitor player id → company, for the label over their hologram */
   companies?(): Promise<Map<string, string>>;
+  /** Is (x, y) where one of this player's booths stands its host (server/stations.ts)? A jump away from it is allowed. */
+  atCounter?(id: string, x: number, y: number): Promise<boolean>;
   /** Whose booths this player works: themselves, or the owner of the booth team they joined (server/team.ts). */
   teamOwner?(id: string): Promise<string>;
   /** The checkpoint mission (server/checkpoints.ts). */
@@ -232,7 +234,12 @@ export class Game {
     const t = this.now();
     const deck = false, sigma = 0; // no GPS: every avatar is walked in the virtual hall, none follows a real person's steps
     const pose = (POSES as readonly string[]).includes(pos.pose ?? '') ? pos.pose : '';
-    const moved = await this.presence.update(await this.hologramOf(id, { x: pos.x, y: pos.y, h: pos.h, deck, sigma, pose }), t, isSpawn);
+    const holo = await this.hologramOf(id, { x: pos.x, y: pos.y, h: pos.h, deck, sigma, pose });
+    let moved = await this.presence.update(holo, t, isSpawn);
+    if (moved == null) { // too fast: unless they were standing at their own counter (the dashboard put them there) and are now back in the game
+      const prev = await this.presence.position(id, t);
+      if (prev && (await this.hooks.atCounter?.(id, prev.x, prev.y))) moved = await this.presence.update(holo, t, true);
+    }
     const events: XpEvent[] = [];
     if (moved != null) {
       events.push(...(await this.discover(id, pos.x, pos.y, t, deck ? 'onsite' : 'remote')));

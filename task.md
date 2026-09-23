@@ -64,6 +64,9 @@ Status: everything below is pushed to GitHub `main` and live. The 23 September i
   - The prize code (QR + 6 characters) is now shown in the game: the mission card's **Show my prize code** in chapter 3, or menu → **My prize code**. The crew scans it at `/crew.html` → Prize codes.
   - Lean X's own QR no longer starts anything: scanned, it says how many checkpoints are left, or that the tote bag is here.
 
+- [x] Onboard exhibitor, tapi visitor tak nampak avatar dia dalam game — `COMMIT`
+  - The avatar was only there while the game tab was in front: "Open my dashboard" opens a new tab, so the game tab went to the background and stopped sending positions (the server forgets anyone quiet for 15 s). Now the dashboard itself keeps its host standing at the booth: behind the counter, facing the aisle, labelled with the company, and the booth shows "At the counter now". Going back to the game tab from there is not refused as a teleport. A locked phone still steps away, so exhibitors keep the dashboard open on the counter screen.
+
 ## Still to do
 
 - Nothing on the list. Approve or register exhibitors so visitors have 3 checkpoints.
