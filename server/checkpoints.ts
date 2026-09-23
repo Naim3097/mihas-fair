@@ -16,11 +16,13 @@ export class Checkpoints {
   private approved: { at: number; rows: { station_id: string; company: string; owner_id: string }[] } = { at: -1e9, rows: [] };
   constructor(private g: Game, private team: BoothTeam) {}
 
-  /** Booths the crew has approved, Lean X's own excepted. Cached briefly: every /me asks. */
+  /** Booths the crew has approved, Lean X's own excepted, and only ones a real exhibitor stands behind (their owner has a
+   *  card): a row that got in some other way must never send a visitor to a counter with no Mission X QR. Cached briefly: every /me asks. */
   private async approvedBooths(): Promise<{ station_id: string; company: string; owner_id: string }[]> {
     const t = this.g.now();
     if (t - this.approved.at < 10_000) return this.approved.rows;
-    const rows = await this.g.db.all<{ station_id: string; company: string; owner_id: string }>("SELECT station_id, company, owner_id FROM stations WHERE status = 'approved' AND station_id != ?", [this.g.level.hero.id]);
+    const rows = await this.g.db.all<{ station_id: string; company: string; owner_id: string }>(
+      "SELECT s.station_id, s.company, s.owner_id FROM stations s WHERE s.status = 'approved' AND s.station_id != ? AND EXISTS (SELECT 1 FROM passports p WHERE p.player_id = s.owner_id)", [this.g.level.hero.id]);
     this.approved = { at: t, rows };
     return rows;
   }

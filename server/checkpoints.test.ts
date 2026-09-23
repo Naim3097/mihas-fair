@@ -212,3 +212,19 @@ test('release: the next owner of a booth starts clean — no old logo, photo, sc
   assert.equal((await first.call('GET', '/api/host/scans?station=7C17')).status, 403, 'and the old owner is out');
   assert.ok((await v.me()).stamps.includes('7C17'), 'the visitor keeps their stamp and points');
 });
+
+test('a booth row with no exhibitor behind it (no card) is shown to the crew and never handed out as a checkpoint', async () => {
+  const r = await rig();
+  const ex = await exhibitors(r, ['7C17']);
+  await r.crew.call('POST', '/api/crew/stations/status', { stationId: '7C17', status: 'approved' });
+  // a stray row, the way a seed script once made them: an owner who never filled in a card
+  const ghost = await r.services.game.createGuest();
+  await r.services.game.db.run("INSERT INTO stations (station_id, owner_id, company, offer, link, color, status, claimed_at) VALUES ('7H18', ?, 'Ghost Co', '', '', 0, 'approved', 1)", [ghost]);
+  r.tick(20_000);
+  const rows = (await r.crew.call('GET', '/api/crew/stations')).json.data as { id: string; ownerName: string }[];
+  assert.deepEqual(rows.map((x) => [x.id, x.ownerName]).sort(), [['7C17', 'Owner 7C17'], ['7H18', '']], 'the crew sees the stray booth, with no owner name');
+  const v = r.user(); await v.register('Ben Tan', 'visitor');
+  await v.call('POST', '/api/stamp', { stationId: level.hero.id, proof: 'beacon', beacon: await r.beacon(level.hero.id) });
+  assert.deepEqual((await v.me()).mission.checkpoints.map((c) => c.stationId), ['7C17'], 'only the real exhibitor is a checkpoint');
+  void ex;
+});

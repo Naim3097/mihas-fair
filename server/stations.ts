@@ -187,10 +187,11 @@ export class Stations {
 
   async crewList(): Promise<CrewStationRow[]> {
     const rows = await this.g.db.all<StationRow & Pics & { callsign: string; name: string; pcompany: string }>(
-      `SELECT s.*, pl.callsign, p.name, p.company AS pcompany, l.updated_at AS logo_at, ph.updated_at AS photo_at FROM stations s JOIN players pl ON pl.id = s.owner_id JOIN passports p ON p.player_id = s.owner_id
+      // LEFT JOIN on the card: a booth whose owner never made one (a stray row from a script) must still be seen here, so the crew can release it
+      `SELECT s.*, pl.callsign, p.name, p.company AS pcompany, l.updated_at AS logo_at, ph.updated_at AS photo_at FROM stations s JOIN players pl ON pl.id = s.owner_id LEFT JOIN passports p ON p.player_id = s.owner_id
        ${PICS} ORDER BY s.claimed_at DESC`);
     const counts = await this.counts(rows.map((r) => r.station_id)), t = this.g.now();
-    return rows.map((r) => ({ ...this.view(r, counts.get(r.station_id)!, t), visits: counts.get(r.station_id)!.stamps, ownerCallsign: r.callsign, ownerName: r.name, ownerCompany: r.pcompany, claimedAt: r.claimed_at }));
+    return rows.map((r) => ({ ...this.view(r, counts.get(r.station_id)!, t), visits: counts.get(r.station_id)!.stamps, ownerCallsign: r.callsign, ownerName: r.name ?? '', ownerCompany: r.pcompany ?? '', claimedAt: r.claimed_at }));
   }
 
   async crewSetStatus(stationId: string, status: string): Promise<void> {
