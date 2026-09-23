@@ -77,6 +77,9 @@ input::placeholder,textarea::placeholder{color:var(--ink-3)}textarea{font-size:1
 .door .go{grid-row:1 / span 2;grid-column:3;font-size:20px;color:var(--ink-3)}.door.on{border-color:var(--blue);box-shadow:inset 0 0 0 1px var(--blue)}.door:disabled{opacity:.6}
 
 /* ---- in play ---- */
+.topstack{position:absolute;top:calc(12px + var(--safe-t));left:calc(12px + var(--safe-l));width:min(340px,calc(var(--vw) - 24px - var(--safe-l) - var(--safe-r)));display:grid;gap:8px;justify-items:start;pointer-events:none}.topstack>*{pointer-events:auto}
+.topstack .objective{position:static;width:100%}.topstack .objective.mini{width:auto}
+.topstack .toasts{position:static;transform:none;left:auto;top:auto;justify-items:start;max-width:100%}
 .objective{position:absolute;top:calc(12px + var(--safe-t));left:calc(12px + var(--safe-l));width:min(340px,calc(var(--vw) - 24px - var(--safe-l) - var(--safe-r)));background:var(--surface);border-radius:var(--r-m);padding:12px 14px;box-shadow:var(--shadow)}
 .objective .top{display:flex;justify-content:space-between;align-items:center;gap:10px}
 .score{font-weight:800;font-size:14px;font-variant-numeric:tabular-nums;display:inline-flex;align-items:center;gap:6px}.score::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--gold)}
@@ -236,7 +239,7 @@ input::placeholder,textarea::placeholder{color:var(--ink-3)}textarea{font-size:1
 @media (hover:none){.chip kbd,.btn kbd{display:none}}
 /* short screens (a phone held sideways): everything a size down */
 @media (max-height:520px){
-  .objective{top:calc(8px + var(--safe-t));left:calc(8px + var(--safe-l));padding:8px 12px}.objective h2{font-size:16px}.objective .go-row{margin-top:6px;padding-top:6px}
+  .topstack{top:calc(8px + var(--safe-t));left:calc(8px + var(--safe-l))}.objective{padding:8px 12px}.objective h2{font-size:16px}.objective .go-row{margin-top:6px;padding-top:6px}
   .objective.mini{padding:4px 4px 4px 12px}
   .dock{bottom:calc(8px + var(--safe-b));right:calc(8px + var(--safe-r));gap:8px}.dock button{width:42px;height:42px}.dock svg{width:19px;height:19px}
   .action{bottom:calc(8px + var(--safe-b))}.action .btn.big{min-height:42px;padding:8px 16px;font-size:15px}

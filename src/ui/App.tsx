@@ -37,7 +37,7 @@ export function App({ engine }: Eng) {
       {m === 'scan' && <ScanSheet />}
       {m === 'jointeam' && <JoinTeamSheet engine={engine} />}
       {m === 'handoff' && <HandoffSheet engine={engine} />}
-      <Toasts />
+      {phase.value !== 'play' && <Toasts />}
     </>
   );
 }
@@ -164,7 +164,8 @@ function Hud({ engine }: Eng) {
 
   return (
     <>
-      {/* top-left: what to do now. One card, nothing else up here — or, folded away, one slim line. */}
+      {/* top-left: what to do now, and under it whatever the game has to say. One column, so a toast never lands on the mission card. */}
+      <div class="topstack">
       {mini ? (
         <div class="objective mini" role="button" tabIndex={0} aria-label="Show the mission" onClick={() => setMini(false)}>
           {!goal && !next && <div class="dots" aria-hidden="true">{j.steps.map((s) => <i key={s.n} class={s.done ? 'on' : s === j.now ? 'now' : ''} />)}</div>}
@@ -204,6 +205,8 @@ function Hud({ engine }: Eng) {
         )}
       </div>
       )}
+      <Toasts />
+      </div>
 
       {/* bottom-right, under the thumb: the three things you can always do */}
       <div class="dock">
