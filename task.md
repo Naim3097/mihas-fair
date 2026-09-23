@@ -83,6 +83,25 @@ Status: everything below is pushed to GitHub `main` and live. The 23 September i
 - [x] Booth QRs boleh print bulk — `9719265`
   - **Booth QRs**: add booths to a print run with **All online booths**, **Hall 8 / 7 / 6**, a pasted list of booth numbers (e.g. `7C17, 7C19, 6A25`; numbers not on the plan are dropped), or **Add to print** on a search result. **Print N cards** prints one A4 card per booth, the same counter card the exhibitor's dashboard prints, with the company name once registered. Checked in Chrome on the isolated local copy.
 
-## Still to do
+## Still to do — feedback of 23 September (afternoon)
 
-- Nothing on the list. Approve or register exhibitors so visitors have 3 checkpoints.
+Checked against the code; the cause is noted where found. Nothing here is built yet.
+
+- [ ] Dah scan tapi masih keluar "scan", tak keluar "done scan" (visitor)
+  - Cause: the booth sheet hides its "Scan booth QR" box only on `met`, which the server sets for the exhibitor's *live* QR (`proof: 'host'`), not for the printed one (`proof: 'beacon'`). After scanning a printed QR the sheet still asks for a scan, and the mission card keeps its "Scan QR" button for the whole chapter. Fix: after either QR, the sheet and the card show "Scanned ✓" for that booth and drop the scan prompt.
+- [ ] Auto swap card terus lepas scan; tak perlu tunjuk detail apa nak share (visitor)
+  - Now: after a scan the booth sheet opens with the field picker and a "Swap card" button. Fix: `handleScan` leaves the card straight away with the saved defaults (every field, `13fc051`), shows "Cards swapped with <company>", and no picker. Same in the swap-with-a-person flow: no "What do you share" step for visitors (the defaults apply; changeable in the menu).
+- [ ] "Scan now" transparent pill to remind the user to scan (visitor)
+  - Now: only a toast on arrival ("You are at …, scan the QR") that fades. Fix: while the player stands at one of their unscanned checkpoints, a translucent "Scan now" pill at the bottom of the screen that opens the scanner; gone once scanned.
+- [ ] Checkpoint ada laser beam / spotlight macam game
+  - Now: only the current goal gets a faint blue floor wash (`world.mark('goal')`). Fix: every unscanned checkpoint gets a tall light beam from its booth (visible across the hall, gentle pulse, gold when it is the next one); the beam goes out when scanned.
+- [ ] "Take me there" untuk checkpoint ketiga (UOB) takde
+  - Cause: once the trail has delivered the player to a checkpoint, `reachCheckpoint` drops it from the open list for the session, so if they walk off without scanning (or it was the last one) there is nothing to point to and the button disappears; with "Skip this one" gone there is no way back. Fix: a reached-but-unscanned checkpoint comes back as a target once the player is more than ~15 m from it, and the mission card's checkpoint list gets its own "Take me there" per booth.
+- [ ] "Stamp" is swap info
+  - Now: at a checkpoint in the game the button is "Stamp" (a virtual stamp, `proof: 'virtual'`, no card exchange); "Swap card" is a separate button on the sheet. Fix: one button, "Swap card", which leaves the card with the exhibitor and stamps the booth in one go; no separate "Stamp" wording anywhere for visitors.
+- [ ] Detail winner tak complete (crew · prize code)
+  - Now: `CrewTicketView` carries name, role, company, callsign and the checkpoint count. Fix: add phone, email and the list of checkpoints they scanned (company · booth · time), so the crew can confirm the winner and reach them.
+- [ ] "My card" tunjuk digital card, tak perlu
+  - Now: menu → "My card" opens the public card page (`/p/<slug>`) in a new tab. Fix: remove it from the menu; the card is shown as the swap code under Swap cards → Show my code.
+- [ ] Swap card detail tak complete; orang yang scan tak perlu "Save to phone"; WhatsApp tak boleh
+  - Now: a contact in My contacts shows title, a one-line sub, and chips (WhatsApp, Email, Their page, Save to phone, Take back). Fix: show every field they shared (name, company, role, phone, email) in full; drop "Save to phone" on the scanner's side (My contacts) and "Save contact" on the public card page. WhatsApp: the link is `wa.me/<digits of the number as typed>`, so a number typed the Malaysian way (`012…`) gives `wa.me/012…`, which WhatsApp rejects — normalise to `60…` (drop the leading 0, add 60 when there is no country code) in the contact chips, the public card page and the crew's WhatsApp buttons.
