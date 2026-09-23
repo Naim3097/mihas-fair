@@ -41,7 +41,7 @@ export function pickQuality(): Quality {
  *  every 12 s keeps them in the "here now" count (15 s window) at a sixth of the load; a stamp still sends its own. */
 /** Everyone sees everyone, so everyone reports where they are this often (~330 req/s for 1,000 players). */
 const PING_MS = 3000, TRAIL_STEP = 1.5, TRAIL_MAX = 220, BOOTH_LABELS = 6, BOOTH_LABEL_RANGE = 12, ARRIVAL_FRESH_MS = 10 * 60_000;
-const CAM = { dist: 4.6, min: 2.4, max: 12, pitch: 0.3 };
+const CAM = { dist: 6.4, min: 2.4, max: 12, pitch: 0.38 }; // a step back and up from 4.6 / 0.3: more of the hall, the avatar a third of the height, still over the partitions
 const CAM_SEES_PAST = new Set(['wall', 'furniture', 'booth', 'island']);
 const EMOTE = { wave: { clip: 'wave', ms: 2600 }, cheer: { clip: 'victory', ms: 2600 }, dance: { clip: 'dance', ms: 5200 } } as const;
 

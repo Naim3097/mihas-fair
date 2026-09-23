@@ -124,7 +124,7 @@ function SeatNote() {
 function Hud({ engine }: Eng) {
   const m = me.value!, j = journey.value!, st = nearStation.value, has = st && stampedSet.value.has(st.id), view = st ? stationMap.value.get(st.id) : undefined;
   const [stamping, setStamping] = useState(false), [open, setOpen] = useState(false), [tray, setTray] = useState(false);
-  const [mini, setMiniState] = useState(() => { try { const v = localStorage.getItem('mx_hud'); if (v) return v === 'mini'; } catch { /* private mode */ } return innerHeight < 520; });
+  const [mini, setMiniState] = useState(() => { try { const v = localStorage.getItem('mx_hud'); if (v) return v === 'mini'; } catch { /* private mode */ } return innerHeight < 520 || innerWidth < 640; }); // phones start with the slim line: the hall is what matters, the card is a tap away
   const setMini = (v: boolean) => { setMiniState(v); try { localStorage.setItem('mx_hud', v ? 'mini' : 'full'); } catch { /* private mode */ } };
   // "Take me there" folds the card away so the walk can be watched; the slim line keeps the distance, Pause and Stop
   const walking = autoWalk.value === 'going';
