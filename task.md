@@ -112,6 +112,9 @@ All nine, in one commit. Checked in Chrome on the isolated local copy: beams, th
 - [x] Buang "Whoever scans you receives" dan checklist; swap card bagi semua terus — `ac815f3`
   - Swap cards → Show my code has no checklist; scanning someone swaps at once. A swap is the whole card both ways (name, company, role, phone, email), enforced on the server.
 
+- [x] Order checkpoint fix buat masa ini: UOB, printdaddy, Aura Biocare — `05fdd2f`
+  - `CHECKPOINT_ORDER = ['8H17B', '6A21', '6A25']` in `shared/rules.ts`: the mission card lists them in that order and the trail leads to the first one not scanned. A booth not on the list (approved later) comes after. Edit the list to change the route; empty it for nearest-first.
+
 ## Still to do
 
 - Nothing on the list. Approve or register exhibitors so visitors have 3 checkpoints.
