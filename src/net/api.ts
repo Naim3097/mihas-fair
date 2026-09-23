@@ -1,4 +1,4 @@
-import type { BoothTeamPeek, HandoffPeek } from '../../shared/types';
+import type { BoothTeamPeek, BoothTeamView, HandoffPeek } from '../../shared/types';
 import type { ApiResult, Contact, Hologram, HostCode, HostLead, HostStation, LinkCode, LinkPeek, PassportInput, PresencePing, StampRequest, StationClaimInput, StationView, TodayView } from '../../shared/types';
 import type { Role } from '../../shared/rules';
 import type { ShareField } from '../../shared/rules';
@@ -38,6 +38,8 @@ export const api = {
   takeBackCard: (stationId: string) => call<null>('POST', '/api/station/unshare', { stationId }),
   myBooths: () => call<HostStation[]>('GET', '/api/host/stations'),
   boothQr: (stationId: string) => call<HostCode>('GET', `/api/host/code?station=${q(stationId)}`),
+  /** The booth team: the owner sees the invitation link for colleagues. */
+  team: () => call<BoothTeamView>('GET', '/api/host/team', undefined, true),
   teamPeek: (code: string) => call<BoothTeamPeek>('GET', `/api/booth-team/peek?code=${q(code)}`, undefined, true),
   teamJoin: (code: string) => call<BoothTeamPeek>('POST', '/api/booth-team/join', { code }),
   /** The crew registered this exhibitor at the counter: the link makes that account this phone's. */

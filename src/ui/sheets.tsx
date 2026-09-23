@@ -6,7 +6,7 @@ import { handleScan } from '../scan';
 import { shrink } from './images';
 import { Camera, FieldPicker, Qr, Sheet, useCountdown } from './common';
 import { POINTS, ROLE_INFO, type ShareField } from '../../shared/rules';
-import type { Booth, Contact, LinkCode, LinkPeek } from '../../shared/types';
+import type { Booth, BoothTeamView, Contact, LinkCode, LinkPeek } from '../../shared/types';
 import { LinkDemoHint, StationDemoHint } from '../demo/Tour';
 import { boothAction, referral, setReferral, drop, guideOn, guideTarget, journey, level, me, modal, myBooths, nearStation, online, panelStation, pendingLink, stampedSet, stationMap, stations, toast } from '../state';
 
@@ -139,12 +139,15 @@ function BoothPicker() {
 export function MyBoothSheet() {
   const m = me.value!, mine = myBooths.value, [loaded, setLoaded] = useState(false), [sel, setSel] = useState<string | null>(null), [adding, setAdding] = useState(false);
   const [qr, setQr] = useState<string | null>(null), j = journey.value;
+  const [team, setTeam] = useState<BoothTeamView | null>(null), [copied, setCopied] = useState(false);
+  const copyTeam = async () => { if (!team?.link) return; try { await navigator.clipboard.writeText(team.link); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* the link is on screen */ } };
 
   useEffect(() => { void refreshMyBooths().then(() => setLoaded(true)); }, []);
   useEffect(() => { if (!sel && mine[0]) setSel(mine[0].id); }, [mine]);
   useEffect(() => { // the fixed QR: the same one the exhibitor prints; the counts refresh while this is open
     if (!sel) return; let stop = false;
     api.fixedQr(sel).then((r) => !stop && setQr(r.url), (e) => fail(e, 'Could not load your booth QR'));
+    api.team().then((t) => !stop && setTeam(t), () => setTeam(null));
     void refreshStations();
     const t = setInterval(() => void refreshMyBooths(), 20_000);
     return () => { stop = true; clearInterval(t); };
@@ -178,6 +181,19 @@ export function MyBoothSheet() {
               </div>
             </div>
           </div>
+          {team?.owner && team.link && (
+            <div class="teamrow">
+              <Qr text={team.link} label="Booth team QR" />
+              <div>
+                <strong>Your booth team{team.members.length ? ` · ${team.members.length + 1} people` : ''}</strong>
+                <p class="fine">Colleagues working the booth with you: let them scan this, or send them the link. Each joins on their own phone with their own card and sees the same dashboard.</p>
+                <div class="two">
+                  <button class="btn" onClick={copyTeam}>{copied ? 'Link copied' : 'Copy team link'}</button>
+                  <a class="btn" href={`https://wa.me/?text=${encodeURIComponent(`Join our ${team.company} booth team in Mission X (MIHAS 2026): ${team.link}`)}`} target="_blank" rel="noopener">Send on WhatsApp</a>
+                </div>
+              </div>
+            </div>
+          )}
         </>
       )}
     </Sheet>

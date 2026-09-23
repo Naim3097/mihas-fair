@@ -67,6 +67,9 @@ Status: everything below is pushed to GitHub `main` and live. The 23 September i
 - [x] Onboard exhibitor, tapi visitor tak nampak avatar dia dalam game — `849686f`
   - The avatar was only there while the game tab was in front: "Open my dashboard" opens a new tab, so the game tab went to the background and stopped sending positions (the server forgets anyone quiet for 15 s). Now the dashboard itself keeps its host standing at the booth: behind the counter, facing the aisle, labelled with the company, and the booth shows "At the counter now". Going back to the game tab from there is not refused as a teleport. A locked phone still steps away, so exhibitors keep the dashboard open on the counter screen.
 
+- [x] Dalam dashboard Roy tak ada QR untuk share pada teammate — `COMMIT`
+  - It was there, on the dashboard below the QR and photo cards ("Your booth team": QR, link, WhatsApp), so on a phone it sits below the fold; the in-game **My booth** sheet had no team link at all. Now the sheet shows the same team QR, **Copy team link** and **Send on WhatsApp** under the booth QR, for the owner. Checked in Chrome on an isolated local copy: hand-over link → Continue as Roy → My booth shows the team QR; the dashboard shows the team card; a curl visitor sees Roy at his counter, labelled UOB.
+
 ## Still to do
 
 - Nothing on the list. Approve or register exhibitors so visitors have 3 checkpoints.
