@@ -74,6 +74,9 @@ Status: everything below is pushed to GitHub `main` and live. The 23 September i
 - [x] Visitor pun kekal di tempat terakhir dia berhenti, macam exhibitor — `ce36ea8`
   - Anyone whose phone goes quiet (locked, another app, the dashboard closed) keeps standing where they stopped, still and out of any pose, for 12 hours (`PRESENCE_LINGER_MS` in `shared/rules.ts`): there all show day, gone by tomorrow. "N in the expo now" counts them. Coming back hours later lands wherever the game puts you. This also removes the dashboard caveat: an exhibitor stays at the counter after closing it.
 
+- [x] Buang butang "skip" masa join game — `e0aa062`
+  - It was **Skip this one** on the mission card, beside **Scan QR**: it moved the trail to the next checkpoint, but read as skipping a QR scan. Gone. The trail still leads to the nearest unscanned checkpoint and moves on by itself.
+
 ## Still to do
 
 - Nothing on the list. Approve or register exhibitors so visitors have 3 checkpoints.
