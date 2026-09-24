@@ -6,7 +6,7 @@
   "scripts": {
     "data": "node tools/build-floor.mjs",
     "dev": "concurrently -k -n api,web -c cyan,yellow \"npm:dev:api\" \"npm:dev:web\"",
-    "dev:api": "node --env-file-if-exists=.env --watch-path=server --watch-path=shared --watch-path=content --import tsx server/node.ts",
+    "dev:api": "tsx watch --clear-screen=false --env-file-if-exists=.env server/node.ts",
     "dev:web": "vite",
     "build": "tsc --noEmit && vite build",
     "start": "tsx server/node.ts",
