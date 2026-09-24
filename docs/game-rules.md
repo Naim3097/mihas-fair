@@ -105,6 +105,13 @@ Our crew confirms each booth ("verified exhibitor") and removes one that is not 
 
 "Mission X", "Find the X" and the astronaut stay: they are the brand.
 
+## Stars and Warp (the Playground's, beside the points)
+
+Stars are the Playground's own: they buy kits (Skates 100, Jetpack 250), worn in the halls too, and **Warp** (400), a
+ride through the sky to any booth on Mission X, once a minute, when it is 30 m away or more. Runs pay stars, and so does
+meeting people: **leaving your card at an exhibitor's booth pays 20 ★, once a booth.** Stars never become points.
+Both are behind crew switches (`sky`, `warp`), off on the live site until the crew turns them on.
+
 ## What keeps it honest (players never need to read this)
 
 - The server decides everything; the app only asks. Every point is a row in a history that the crew can void and restore.
@@ -114,6 +121,9 @@ Our crew confirms each booth ("verified exhibitor") and removes one that is not 
 - Before a prize is announced the crew reviews the top of the board: who was at MIHAS, who scanned a live QR, who came
   to our booth, who jumped impossibly. Nothing in the game is decided by chance.
 - Cards are shared field by field, by choice, and can be taken back.
+- Warp is the server's move: it checks the booth, the distance and the minute, and puts the body there itself.
+  A jump that no warp explains is flagged as ever.
+- Orbit 2's seeds change how the tiles move, never what a run pays.
 
 ## Switched off
 

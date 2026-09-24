@@ -47,7 +47,7 @@ export function BoothSheet({ engine }: Eng) {
           {boothAction(b) === 'stamp' && near && <button class="btn primary big" disabled={busy} onClick={() => run(() => engine()!.stamp(b), 'Could not swap cards')}>Swap card · +{POINTS.stamp + (left ? 0 : POINTS.leaveCard)}{st && !left && switches.value.sky ? ` · +${MET_STARS} ★` : ''}</button>}
           {cp && !cp.done && <p class="fine">{met ? 'Scanned.' : 'For the checkpoint: scan the Mission X QR on their counter.'}</p>}
           {!near && <button class="btn big" onClick={() => guideTo(b, title)}>Guide me here</button>}
-          {!near && <WarpButton booth={b} engine={engine} primary />}
+          {!near && <WarpButton booth={b} engine={engine} big />}
 
           {!met && (
             <div class="box">

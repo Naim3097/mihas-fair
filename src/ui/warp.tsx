@@ -10,13 +10,13 @@ import { useCountdown } from './common';
 /** Can this booth be warped to at all: on Mission X (a booth online or set up by the crew), or the X at Booth 7E17? */
 export const onMissionX = (b: Booth): boolean => b.id === level.value?.hero.id || stationMap.value.has(b.id);
 
-/** `primary`: the booth sheet's own call; otherwise a quiet button beside the way of walking there. */
-export function WarpButton({ booth, engine, primary }: { booth: Booth | null; engine: () => Engine | null; primary?: boolean }) {
+/** A quiet button beside the way of walking there (never a sheet's one blue button); `big` in a sheet's stack. */
+export function WarpButton({ booth, engine, big }: { booth: Booth | null; engine: () => Engine | null; big?: boolean }) {
   const left = useCountdown(warpNextAt.value), eng = engine();
   if (!booth || !eng || riding.value || !switches.value.warp || !pgUnlocks.value.includes('warp') || !onMissionX(booth)) return null;
   const p = eng.position; if (Math.hypot(booth.x - p.x, booth.y - p.y) < WARP_MIN_M) return null; // nearer: walk
   return (
-    <button class={'btn' + (primary ? ' primary big' : '')} disabled={left > 0} title="Warp: a ride through the sky to this booth" onClick={(e) => { e.stopPropagation(); void eng.warp(booth); }}>
+    <button class={'btn' + (big ? ' big' : '')} disabled={left > 0} title="Warp: a ride through the sky to this booth" onClick={(e) => { e.stopPropagation(); void eng.warp(booth); }}>
       {left > 0 ? `Warp · ${left} s` : 'Warp'}
     </button>
   );

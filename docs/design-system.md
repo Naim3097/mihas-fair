@@ -89,6 +89,11 @@ the pixel ratio in the corner. It is the tool for the real-phone pass.
 
 ## Interface rules
 
+- **An action is offered only where it can be used.** Warp shows beside the way of walking somewhere (the map's
+  search, a guided trail, a booth's sheet) only when it is owned, switched on, and the booth is 30 m away or more. It
+  is never shown in the folded mission line, where it would squeeze out the name of the place. The orbit chip on the
+  pad appears only once Orbit 2 is open.
+
 - **One thing at a time.** Top-left: one card — chapter, title, progress, and the distance/"Take me there" row when a
   trail is showing. Tap it on a phone to read the full instruction. Points sit in its corner. Nothing else up there.
 - **Thumb zone.** Bottom-centre: the one thing you can do right here (stamp, get card, lift). Bottom-right: the three

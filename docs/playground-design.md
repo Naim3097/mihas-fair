@@ -109,12 +109,17 @@ the shared controller (a "heavy landing" that reads as weight; if it reads as la
   so no kit reads as a teleport and no rule of the mission, the QR scans or the points changes: presence, stamps and
   "at a booth" go on reading the plan position. A chip above the dock switches among the kits owned once there are
   two; the Jetpack adds a Fly button (hold) with its fuel. Other people see a flyer on the floor for now.
+- **One universe (24 Sep):** the pad floats over the X; at Booth 7E17 a lift rises beside it and one ride carries
+  Nexo up or down, the camera cutting on a view both worlds share. A card left at an exhibitor's booth pays 20 stars
+  here (once a booth), and 400 stars buy **Warp**, a ride through the sky to any booth on Mission X. Behind the crew's
+  `sky` and `warp` switches, off on the live site until turned on: `docs/one-universe.md`.
 
 ### What is not in it
 
 No lives, no timer but O₂, no enemies, no player against player, no purchases with money, no randomness in what the
 course pays, no other players' bodies in the course (a ghost of your own best run is a later idea), no ramps, no
-moving platforms, no rails. One course to start; a second is data, not code.
+rails. One course; **Orbit 2** (24 Sep) plays it with its tiles moving, a new seed each run, and pays exactly what
+Orbit 1 pays: `docs/one-universe.md`.
 
 ## Mechanics
 
