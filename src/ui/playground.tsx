@@ -35,7 +35,7 @@ export function PlaygroundHud({ notices }: { notices?: ComponentChildren }) {
             <div class="top"><span class="k">Playground · {gear.name}</span><span class="right"><span class="score" title="Score">{score.toLocaleString()}</span></span></div>
             <div class="o2"><i style={{ width: `${Math.min(100, (pgO2.value / O2_CAP) * 100)}%` }} class={pgO2.value <= 8 ? 'low' : ''} /></div>
             {gear.movement.thrust && <div class="fuel" title="Fuel"><i style={{ width: `${Math.min(100, pgFuel.value)}%` }} class={pgFuel.value <= 20 ? 'low' : ''} /></div>}
-            <div class="runrow"><span class="air">{pgO2.value} s of air</span><span class="stars">★ {pgRunStars.value}</span>{pgCombo.value > 1 && <span class="combo">×{pgCombo.value}</span>}</div>
+            <div class="runrow"><span class="air">{pgO2.value} s of air</span><span class="stars">★ {pgRunStars.value}</span>{pgCombo.value > 1 && <span class="combo">×{pgCombo.value}</span>}<button class="chip restart" title="Back to the start" onClick={() => c?.restart()}>Restart</button></div>
           </>
         ) : (
           <>

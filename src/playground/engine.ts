@@ -89,7 +89,7 @@ export class PlaygroundEngine implements Scene {
     void Promise.all([loadNexo(), loadNexoLibrary()]).then(([g, lib]) => { if (this.disposed) return; this.gltf = g; this.lib = lib; this.actor?.dispose(); this.actor = this.makeActor(); });
     const s = this.store.get(); this.gear = s.gear; // the gear before the body, so the first body wears it
     this.actor = this.makeActor(); this.publishStore(); pgStore.value = this.store; this.markOwned();
-    pgControls.value = { jump: () => this.jump(), hold: (on) => this.stage.input.hold(on), again: () => this.again(), leave: () => this.leaveRequested() };
+    pgControls.value = { jump: () => this.jump(), hold: (on) => this.stage.input.hold(on), again: () => this.again(), restart: () => this.restart(), leave: () => this.leaveRequested() };
     // the server's word on the balance and the gear, whenever it comes: republish, and step off a gear no longer owned
     this.stops.push(this.store.onChange(() => { this.publishStore(); this.markOwned(); if (!this.store.get().unlocks.includes(this.gear)) this.setGear('boots'); }));
     // a tab going away mid-run sends the run so far
@@ -140,6 +140,9 @@ export class PlaygroundEngine implements Scene {
   }
   /** The summary's Again: back on the pad, straight over the line. */
   again() { this.toPad(); pgMode.value = 'pad'; pgSummary.value = null; }
+  /** Restart, from the run card or the menu: a fall puts you back at the last ring, this puts you back at the start.
+   *  The run under way ends where it stands — recorded, its stars kept — and the body is on the pad, the line a step ahead. */
+  restart() { if (this.run && !this.run.ended) { this.run.leave(); this.finish(); } this.again(); sfx('tap'); }
   jump() { if (pgMode.value === 'summary') return; this.stage.input.press('jump'); }
 
   /* ---------------- the frame ---------------- */
