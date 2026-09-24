@@ -13,6 +13,8 @@ export interface EngineApi {
   resumeWalk(): void;
   stopWalk(): void;
   useLift(to: Lift): void;
+  /** Up to the Playground: a ride from here to its pad over the X, where the world changes. */
+  launch(): void;
   /** Where the player stands, in floor-plan metres. */
   readonly position: P2;
   levelOf(p: P2): number;

@@ -301,7 +301,7 @@ export function ContactsSheet() {
 /* ------------------------------------------------------------------ the menu */
 
 
-export function MenuSheet() {
+export function MenuSheet({ engine }: Eng) {
   const m = me.value!, go = (x: typeof modal.value) => () => (modal.value = x);
   const switchRole = async () => { const to = m.cls === 'exhibitor' ? 'visitor' : 'exhibitor'; try { await api.start(to); modal.value = to === 'exhibitor' ? (m.passport ? 'mybooth' : 'card') : null; } catch (e) { fail(e, 'Could not switch'); } };
   return (
@@ -313,8 +313,8 @@ export function MenuSheet() {
         <button onClick={go('swap')}><strong>Swap cards</strong><small>Met someone? Exchange cards · +{POINTS.swap} each</small></button>
         <button onClick={go('contacts')}><strong>My contacts</strong><small>{m.links} people · {m.shared.length} booths</small></button>
         {world.value === 'playground'
-          ? <button class="wide" onClick={() => { pgControls.value?.leave(); world.value = 'fair'; modal.value = null; }}><strong>Back to the fair</strong><small>A run under way ends here</small></button>
-          : <button onClick={() => { world.value = 'playground'; modal.value = null; }}><strong>Playground</strong><small>Earn Skates and a Jetpack to wear in the halls · beside the X</small></button>}
+          ? <button class="wide" onClick={() => { modal.value = null; pgControls.value?.down(); }}><strong>Down to the fair</strong><small>A run under way ends here</small></button>
+          : <button onClick={() => { modal.value = null; engine()?.launch(); }}><strong>Playground</strong><small>Right above the X · runs for stars, kits for the halls</small></button>}
         {world.value === 'playground' && <button onClick={go('pgboards')}><strong>Boards</strong><small>Today's best runs, and all-time</small></button>}
         {world.value === 'playground' && <button onClick={() => { pgControls.value?.restart(); modal.value = null; }}><strong>Start over</strong><small>Back on the pad · a run under way ends where it stands</small></button>}
         {world.value !== 'playground' && <button onClick={go('map')}><strong>Map</strong><small>Halls 6–8 · search · places to go</small></button>}

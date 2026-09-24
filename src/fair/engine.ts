@@ -17,7 +17,7 @@ import { NavGrid, dotsAlong, nearestOnPath, pathLength, type P2 } from '../game/
 import { BoothPicker } from '../game/pick';
 import { placeAt, type Seat } from '../game/places';
 import { RemoteTrack } from '../game/remote';
-import { atLaunchPad, kitHint, autoWalk, boothAction, currentCp, currentDeck, REACHED_RESET_M, unreachCheckpoint, distToGoal, goalVia, guideOn, guideTarget, herePlace, markSeen, me, modal, moveHint, myBooths, nearLift, nearStation, online, panelStation, photoShot, reachCheckpoint, reachedCps, seated, seen, stampedSet, stationMap, stations, toast, trailCheckpoint } from '../state';
+import { atLaunchPad, kitHint, riding, world, autoWalk, boothAction, currentCp, currentDeck, REACHED_RESET_M, unreachCheckpoint, distToGoal, goalVia, guideOn, guideTarget, herePlace, markSeen, me, modal, moveHint, myBooths, nearLift, nearStation, online, panelStation, photoShot, reachCheckpoint, reachedCps, seated, seen, stampedSet, stationMap, stations, toast, trailCheckpoint } from '../state';
 import type { Library } from '../ceritera/game/anim';
 import { CameraRig } from '../ceritera/game/camera';
 import type { Intent } from '../ceritera/game/controller';
@@ -38,6 +38,9 @@ import { NexoActor, loadKit, loadNexo, loadNexoLibrary, loadNexoLod, type Kit, t
 import { FAIR_MOVEMENT } from './movement';
 import { Reach } from './reach';
 import { FAIR, FairWorld } from './world';
+import { SKY_VIEW, ridePoint, rideSeconds, rideView, skyAnchor, type P3, type Ride } from '../universe';
+
+type View = { dist: number; pitch: number; yaw: number };
 
 /** Players at MIHAS meet each other, so their position goes out every 2 s. A player from elsewhere is seen by nobody:
  *  every 12 s keeps them in the "here now" count (15 s window) at a sixth of the load; a stamp still sends its own. */
@@ -45,8 +48,10 @@ import { FAIR, FairWorld } from './world';
 const PING_MS = 3000, TRAIL_STEP = 1.5, TRAIL_MAX = 220, BOOTH_LABELS = 6, BOOTH_LABEL_RANGE = 12, ARRIVAL_FRESH_MS = 10 * 60_000;
 const CAM = { dist: 6.4, min: 2.4, max: 12, pitch: 0.38 }; // a step back and up from 4.6 / 0.3: more of the hall, the avatar a third of the height, still over the partitions
 const CAM_SEES_PAST = new Set(['wall', 'furniture', 'booth', 'island']);
-/** The camera settles in from above over this long at the start; coming back from the Playground, a shorter, closer settle. */
-const INTRO = { dist: 30, pitch: 0.6, s: 1.6 }, RETURN = { up: 9, tilt: 0.28, s: 1.2 };
+/** The camera settles in from above over this long at the start; coming back down from the Playground, from the view at
+ *  the top of the ride (src/universe.ts) onto the body, over this long. */
+const INTRO = { dist: 30, pitch: 0.6, s: 1.6 }, RETURN = { s: 1.6 };
+const STILL = v3();
 /** Flying: the camera tips with the climb and the fall (radians per m/s of vertical speed, clamped), the field of view opens a
  *  touch while the thrust fires, and near the ceiling the pitch flattens so the camera stays under the glass instead of being
  *  jammed in by it. All of it additive over the player's own orbit, and gone once the feet are down. */
@@ -114,6 +119,12 @@ export class FairEngine implements EngineApi, Scene {
   private lastYaw = 0; private thrustOn = false; private fuelAt = 0; private tmpV = new THREE.Vector3();
   /** The booths' state changed while another world had the stage: taken on resume, not rebuilt behind a run. */
   private behind = false;
+  /** A ride through the sky under way (src/universe.ts): up to the Playground, or across to another booth. The body waits
+   *  on the floor; Nexo and the camera follow the ride; `done` runs once, at its end. */
+  private ride: { r: Ride; t: number; from: View; to: View; wide: number; tip: number; done: () => void; ended: boolean } | null = null;
+  private ridePt: P3 = { x: 0, y: 0, z: 0 };
+  /** The camera as it was before a ride up, for the settle back down onto the body. */
+  private beforeSky: View | null = null;
   private stops: (() => void)[] = [];
 
   constructor(private stage: Stage, private level: LevelData, private quality: Quality) {
@@ -149,7 +160,7 @@ export class FairEngine implements EngineApi, Scene {
       onZoom: (f) => { if (this.intro) { const to = this.intro.to; this.intro = null; this.rig.pitch = to.pitch; this.rig.dist = to.dist; } this.rig.dist = THREE.MathUtils.clamp(this.rig.dist * f, CAM.min, CAM.max); },
       onHover: (at) => this.hover(at),
       onKey: (a) => { if (a === 'interact') void this.interact(); else if (a === 'map') modal.value = 'map'; else this.emote(a); },
-      enabled: () => !modal.value,
+      enabled: () => !modal.value && !this.ride,
     };
     this.stops.push(effect(() => { if (modal.value && stage.scene === this) { this.input.release(); this.hover(null); } }));
 
@@ -182,9 +193,43 @@ export class FairEngine implements EngineApi, Scene {
   /** The stage is back with the fair: say where we are at once, look around afresh. */
   resume() {
     this.pingAt = 0; this.proxAt = 0; this.hover(null);
-    // back from the Playground: the camera settles down onto the body from a little above, the way the fair itself begins
-    if (this.started && !this.intro) { const to = { dist: this.rig.dist, pitch: this.rig.pitch }; this.settle({ dist: to.dist + RETURN.up, pitch: Math.min(1.1, to.pitch + RETURN.tilt) }, to, RETURN.s); this.rig.snapBehind(this.rig.yaw); }
+    if (this.ride) { this.ride = null; this.player?.setFlight(false); } // it ended at the top, where the Playground took over
+    riding.value = false;
+    // back from the Playground: the camera comes down from the sky onto the body, the way it went up
+    if (this.started) {
+      const to = this.beforeSky ?? { dist: CAM.dist, pitch: CAM.pitch, yaw: this.rig.yaw }; this.beforeSky = null; this.intro = null;
+      this.rig.snapBehind(to.yaw); this.settle({ dist: SKY_VIEW.dist, pitch: SKY_VIEW.pitch }, to, RETURN.s);
+    }
     if (this.behind) { this.behind = false; this.world.setStamped(stampedSet.value); this.world.setStations(stations.value); } }
+
+  /* ---------------- rides: up to the Playground, and (Warp) across the fair ---------------- */
+
+  /** Up to the Playground: the body lifts off and rides to the pad over the X, the camera climbing to the view the
+   *  Playground begins on; the world changes there. From the lift at the X, or from the menu anywhere. */
+  launch() {
+    if (!this.started || this.ride) return;
+    if (this.seat) this.stand();
+    this.dropRoute(); this.seatGoal = null; this.input.release(); this.hover(null);
+    const b = this.sim.player.body, from = { x: b.pos.x, y: b.pos.y, z: b.pos.z }, to = skyAnchor(this.level);
+    // from the lift at the X the way is up beside the pad and across onto it; from anywhere else, up over the course first
+    const d = this.world.dockPos, atLift = Math.hypot(from.x - d.x, from.z - d.z) < 6;
+    this.beforeSky = { dist: this.rig.dist, pitch: this.rig.pitch, yaw: this.rig.yaw }; this.intro = null;
+    this.ride = { r: { from, to, arc: atLift ? 2.5 : 14, rise: 0.55, s: rideSeconds(from, to) }, t: 0, from: { ...this.beforeSky }, to: { ...SKY_VIEW }, wide: 4, tip: 0.08, done: () => { world.value = 'playground'; }, ended: false };
+    riding.value = true; sfx('liftUp'); api.track('launch', { from: atLaunchPad.value ? 'x' : 'menu' });
+  }
+
+  /** The ride's clock: where it is now; its end, once. The input is read and dropped, so nothing waits to fire after it. */
+  private stepRide(dt: number) {
+    const rd = this.ride!; rd.t = Math.min(rd.r.s, rd.t + dt); ridePoint(rd.r, rd.t / rd.r.s, this.ridePt); this.input.poll();
+    if (rd.t >= rd.r.s && !rd.ended) { rd.ended = true; rd.done(); }
+  }
+  /** The camera on a ride: its distance, tilt and heading eased from where they were to where the ride ends (no lag,
+   *  so the top of a ride up is exactly the view the Playground begins on), looking at the rider. */
+  private rideCamera(dt: number) {
+    const rd = this.ride!, v = rideView(rd.from, rd.to, rd.t / rd.r.s, rd.wide, rd.tip);
+    this.rig.dist = v.dist; this.rig.pitch = v.pitch; this.rig.snapBehind(v.yaw);
+    this.rig.update(dt, this.ridePt, STILL, null, false);
+  }
 
   /* ---------------- the kits: the Playground's gear, worn here ---------------- */
 
@@ -283,12 +328,13 @@ export class FairEngine implements EngineApi, Scene {
         this.rig.dist = i.from.dist + (i.to.dist - i.from.dist) * e; this.rig.pitch = i.from.pitch + (i.to.pitch - i.from.pitch) * e;
         if (k >= 1) this.intro = null;
       }
-      const p = this.sim.player, it = this.intent(dt);
-      if (this.seat) {
+      const p = this.sim.player, riding = !!this.ride, it = riding ? null : this.intent(dt);
+      if (riding) this.stepRide(dt);
+      else if (it && this.seat) {
         if (it.move.x || it.move.y || it.jump || it.thrust || this.route.length) this.stand();
         else { const w = toWorld(this.seat.x, this.seat.y, this.seat.z); p.body.pos.x = w.x; p.body.pos.y = w.y; p.body.pos.z = w.z; p.yaw = this.seat.h; }
       }
-      if (!this.seat) {
+      if (it && !this.seat) {
         this.sim.camYaw = this.rig.yaw; this.sim.step(it, dt);
         p.stamina = p.vit.stamina; p.spirit = p.vit.spirit; // no stamina at a fair: sprint as long as you like
         if (this.kit === 'jetpack' && p.body.pos.y > FLY_CEILING) { p.body.pos.y = FLY_CEILING; if (p.body.vel.y > 0) p.body.vel.y = 0; } // over the partitions, under the glass
@@ -301,7 +347,8 @@ export class FairEngine implements EngineApi, Scene {
         this.player.setLean(skating ? THREE.MathUtils.clamp(yawRate * 0.08 * Math.min(1, sp / 6), -0.35, 0.35) : 0);
         this.player.setFlight(flying); this.player.setThrust(p.thrusting ? 1 : 0);
         const lean = flying ? Math.min(1, sp / 7) * 0.35 : b.grounded ? Math.min(0.8, sp / 11) * (skating ? 0.22 : 0.16) : 0;
-        this.player.place(b.pos.x, b.pos.y, b.pos.z, p.yaw, lean); this.player.attend(this.nearestFace(b.pos.x, b.pos.z, 6)); this.player.applySim(p.anim, dt, sp);
+        if (riding) { const q = this.ridePt; this.player.setFlight(true); this.player.setThrust(0); this.player.place(q.x, q.y, q.z, p.yaw, 0.3); this.player.attend(null); this.player.applySim(p.anim, dt, 0); } // riding the sky: in the flight pose, where the ride is
+        else { this.player.place(b.pos.x, b.pos.y, b.pos.z, p.yaw, lean); this.player.attend(this.nearestFace(b.pos.x, b.pos.z, 6)); this.player.applySim(p.anim, dt, sp); }
         // the kit's trails: two ribbons from the skates' ankles, the exhaust from the jetpack while it fires
         if (skating && b.grounded && sp > 4 && this.player.feet(this.feet)) for (let k = 0; k < 2; k++) { const f = this.feet[k]!; this.ribbons[k]!.push(f.x, b.pos.y + 0.03, f.z, b.vel.x, b.vel.z); }
         if (p.thrusting && this.player.back(this.tmpV)) this.exhaust.push(this.tmpV.x, this.tmpV.y, this.tmpV.z, b.vel.x || 0.01, b.vel.z);
@@ -309,8 +356,8 @@ export class FairEngine implements EngineApi, Scene {
       for (const r of this.ribbons) r.update(dt); this.exhaust.update(dt);
       if (this.kit === 'jetpack' && now - this.fuelAt > 100) { this.fuelAt = now; const f = Math.round(p.fuel); if (pgFuel.value !== f) pgFuel.value = f; }
       this.sounds(sp, b.grounded, dt);
-      this.updateCamera(dt);
-      this.world.followSun(b.pos.x, b.pos.z);
+      if (riding) this.rideCamera(dt); else this.updateCamera(dt);
+      this.world.followSun(riding ? this.ridePt.x : b.pos.x, riding ? this.ridePt.z : b.pos.z);
     }
     this.updatePing(dt); this.updateLabels();
     this.renderer.render(this.world.scene, this.camera);
@@ -674,7 +721,7 @@ export class FairEngine implements EngineApi, Scene {
       const kit: Kit = h.kit ?? 'boots'; if (o.kit !== kit) { o.kit = kit; o.actor.setLocomotion(kit === 'skates' ? 'skate' : 'walk'); } // dressed in updateHolos, by distance
       // the first kit seen on someone else, by a player who has none: the sighting is the teaching; one line names it, once per phone
       if (kit !== 'boots' && (this.kits?.get().unlocks.length ?? 1) <= 1 && Math.hypot(h.x - me0.x, h.y - me0.y) < 25 && markSeen('hint:kit-seen'))
-        toast(kit === 'jetpack' ? 'That is a Jetpack from the Playground' : 'Those are Skates from the Playground', 'Beside the X: its stars buy the kits, worn here in the halls', 'info', 6000);
+        toast(kit === 'jetpack' ? 'That is a Jetpack from the Playground' : 'Those are Skates from the Playground', 'Right above the X: its stars buy the kits, worn here in the halls', 'info', 6000);
       const snap = { t: now, x: h.x, y: h.y, h: h.h, z: h.z || 0 }; if (o.pose === 'sit') o.track.place(snap); else o.track.push(snap);
       o.tx = h.x; o.ty = h.y; o.seen = now;
     }
@@ -734,7 +781,7 @@ export class FairEngine implements EngineApi, Scene {
       const b = this.sim.player.body, mine = this.role() === 'exhibitor' ? (myBooths.value[0]?.company || me.value?.callsign || '') : (me.value?.callsign ?? '');
       if (this.myLabel.textContent !== mine) this.myLabel.textContent = mine;
       this.myLabel.classList.toggle('exhib', this.role() === 'exhibitor');
-      place(this.myLabel, p.set(b.pos.x, b.pos.y + 2.05, b.pos.z), 0, true);
+      const at = this.ride ? this.ridePt : b.pos; place(this.myLabel, p.set(at.x, at.y + 2.05, at.z), 0, true);
       if (this.hovered) place(this.tip, this.tipPos, 0, true); else write(this.tip, '0');
       // the body's own patch of screen: no place name is written across the helmet
       const feet = v.set(b.pos.x, b.pos.y, b.pos.z).project(this.camera), head = p.set(b.pos.x, b.pos.y + 2.0, b.pos.z).project(this.camera);
@@ -743,10 +790,12 @@ export class FairEngine implements EngineApi, Scene {
         taken.push([cx - half, Math.min(fy, hy), cx + half, Math.max(fy, hy)]);
       }
     } else { write(this.myLabel, '0'); write(this.tip, '0'); }
-    const hero = this.labelEls.find((x) => x.l.kind === 'hero'); if (hero) place(hero.el, hero.l.pos, 0, true);
-    for (const s of this.boothEls) { if (s.booth) place(s.el, s.pos, 52); else write(s.el, '0'); }
-    for (const o of this.holos.values()) { if (!o.actor.root.visible) { write(o.label, '0'); continue; } const w2 = toWorld(o.track.x, o.track.y, 2.05 + o.track.z); place(o.label, p.set(w2.x, w2.y, w2.z), 40); } // the name rides up with a flyer
-    for (const { el, l } of this.labelEls) if (l.kind !== 'hero') place(el, l.pos, l.kind === 'gate' ? 110 : 80);
+    // on a ride through the sky the hall's names step aside: they would float through the Playground overhead
+    const away = !!this.ride;
+    const hero = this.labelEls.find((x) => x.l.kind === 'hero'); if (hero) { if (away) write(hero.el, '0'); else place(hero.el, hero.l.pos, 0, true); }
+    for (const s of this.boothEls) { if (s.booth && !away) place(s.el, s.pos, 52); else write(s.el, '0'); }
+    for (const o of this.holos.values()) { if (!o.actor.root.visible || away) { write(o.label, '0'); continue; } const w2 = toWorld(o.track.x, o.track.y, 2.05 + o.track.z); place(o.label, p.set(w2.x, w2.y, w2.z), 40); } // the name rides up with a flyer
+    for (const { el, l } of this.labelEls) if (l.kind !== 'hero') { if (away) write(el, '0'); else place(el, l.pos, l.kind === 'gate' ? 110 : 80); }
   }
 
   /* ---------------- resolution: start sharp, give a little only if the phone cannot keep up ---------------- */

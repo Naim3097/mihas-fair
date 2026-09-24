@@ -7,9 +7,15 @@ import { Light } from '../fair/light';
 import { loadKit } from '../fair/nexo';
 import { FAIR } from '../fair/palette';
 import { Sky } from '../fair/sky';
-import { SLAB, type Course, type Gear, type Pickup, type PickupKind } from './course';
+import { type Course, type Gear, type Pickup, type PickupKind } from './course';
 import { GEAR } from './gear';
 import { Ribbon } from './ribbon';
+import { Slabs, paintX } from './slabs';
+import type { LevelData } from '../../shared/types';
+import type { Box } from '../ceritera/game/physics';
+import { DECK_MARGIN, fairLevelData, rectBox } from '../fair/level';
+import { climbRings, makeRings } from '../fair/sky-lift';
+import { PAD_FROM_DOCK, SKY_Y, skyAnchor } from '../universe';
 
 const INK = 0x1b2130, WHITE = 0xffffff;
 const TINT: Record<Gear, number> = { boots: 0xffffff, skates: FAIR.accent, jetpack: FAIR.orange };
@@ -25,6 +31,8 @@ export class PlaygroundWorld {
   readonly light: Light;
   readonly labels: WorldLabel[] = [];
   readonly marker: THREE.Mesh;
+  /** the platforms, two instanced meshes */
+  readonly slabs: Slabs;
   /** the two ribbons the skates leave */
   readonly ribbons: [Ribbon, Ribbon];
   /** the jetpack's exhaust while the thrust is on */
@@ -43,11 +51,14 @@ export class PlaygroundWorld {
   /** the gear stands' discs, and the one swelling for a purchase */
   private discs: Partial<Record<Gear, THREE.Mesh>> = {}; private pop: { mesh: THREE.Mesh; t: number } | null = null;
 
-  constructor(private course: Course, lean: boolean, shadows: boolean) {
+  /** `level`: the fair's floor plan, drawn far below (null in a test with no fair). */
+  constructor(private course: Course, lean: boolean, shadows: boolean, level: LevelData | null = null) {
     this.scene.background = new THREE.Color(FAIR.space);
     this.light = new Light(this.scene, lean, shadows);
     this.sky = new Sky(lean); this.scene.add(this.sky.dome);
-    this.platforms(); this.fixtures();
+    this.slabs = new Slabs(course.platforms.length);
+    this.platforms(); this.fixtures(); this.theX();
+    if (level) this.below(level);
     this.meshes = this.pickups();
     this.phase = new Float32Array(course.pickups.length).map(() => Math.random() * 6.28);
     this.collected = new Uint8Array(course.pickups.length);
@@ -68,16 +79,9 @@ export class PlaygroundWorld {
     this.scene.add(m); return m;
   }
 
-  /** Every platform: an ink slab, a white top a hair smaller, so the edge reads from above and from the side. */
-  private platforms() {
-    const P = this.course.platforms, unit = new THREE.BoxGeometry(1, 1, 1);
-    const slab = new THREE.InstancedMesh(unit, flat(INK), P.length), top = new THREE.InstancedMesh(unit, flat(WHITE), P.length), M = this.tmpM;
-    P.forEach((p, i) => {
-      M.makeScale(p.x1 - p.x0 + 0.2, SLAB - 0.05, p.z1 - p.z0 + 0.2).setPosition((p.x0 + p.x1) / 2, p.y - 0.05 - (SLAB - 0.05) / 2, (p.z0 + p.z1) / 2); slab.setMatrixAt(i, M);
-      M.makeScale(p.x1 - p.x0, 0.05, p.z1 - p.z0).setPosition((p.x0 + p.x1) / 2, p.y - 0.025, (p.z0 + p.z1) / 2); top.setMatrixAt(i, M);
-    });
-    for (const m of [slab, top]) { m.castShadow = true; m.receiveShadow = true; m.computeBoundingSphere(); this.scene.add(m); }
-  }
+  /** Every platform: an ink slab, a white top a hair smaller, so the edge reads from above and from the side (the fair
+   *  draws the same course in its sky with the same two meshes). */
+  private platforms() { this.slabs.fill(this.course.platforms); this.slabs.shadows(true, true); this.slabs.addTo(this.scene); }
 
   /** Rings, pads, stands, the portal, the start line and the gate. */
   private fixtures() {
@@ -103,12 +107,38 @@ export class PlaygroundWorld {
     }
     const portal = new THREE.Mesh(new THREE.CylinderGeometry(c.portal.r, c.portal.r, 0.08, 40), flat(FAIR.blue, 0.2)); portal.position.set(c.portal.x, 0.04, c.portal.z); this.scene.add(portal);
     const halo = new THREE.Mesh(new THREE.TorusGeometry(c.portal.r + 0.2, 0.06, 8, 40).rotateX(-Math.PI / 2), flat(FAIR.blue)); halo.position.set(c.portal.x, 0.12, c.portal.z); this.scene.add(halo);
-    this.labels.push({ text: 'Back to the fair', pos: new THREE.Vector3(c.portal.x, 1.6, c.portal.z), kind: 'portal' });
+    this.labels.push({ text: 'Down to the fair', pos: new THREE.Vector3(c.portal.x, 1.6, c.portal.z), kind: 'portal' });
     const line = new THREE.Mesh(new THREE.PlaneGeometry(0.16, c.start.z1 - c.start.z0).rotateX(-Math.PI / 2), blue); line.position.set(c.start.x, c.start.y + 0.03, (c.start.z0 + c.start.z1) / 2); line.renderOrder = 2; this.scene.add(line);
     // the gate: two posts and a beam, like the fair's hall gates
     const g = c.gate, post = new THREE.BoxGeometry(0.35, 5, 0.35), beam = new THREE.BoxGeometry(0.35, 0.35, g.z1 - g.z0 + 0.35), ink = flat(INK);
     for (const z of [g.z0, g.z1]) { const m = new THREE.Mesh(post, ink); m.position.set(g.x, g.y + 2.5, z); m.castShadow = true; this.scene.add(m); }
     const b = new THREE.Mesh(beam, ink); b.position.set(g.x, g.y + 5.17, (g.z0 + g.z1) / 2); b.castShadow = true; this.scene.add(b);
+  }
+
+  /** The X, painted on the pad where the body stands: the pad floats over the X in the fair. */
+  private theX() { paintX(this.scene, this.course.spawn.x, 0, this.course.spawn.z); }
+
+  /** The fair far below, as the fair draws it: MITEC's slab, the halls' carpets and low walls, every booth a white block,
+   *  in the course's own metres (the pad is straight above the X's dock, nothing turned between the worlds), one draw
+   *  call; and the way up, its rings coming up from the X to the pad. */
+  private rings: THREE.InstancedMesh | null = null;
+  private below(level: LevelData) {
+    const lv = fairLevelData(level), a = skyAnchor(lv), boxes: { b: Box; color: number }[] = [];
+    for (const d of lv.decks) {
+      const r = { x0: d.x0 - DECK_MARGIN, y0: d.y0 - DECK_MARGIN, x1: d.x1 + DECK_MARGIN, y1: d.y1 + DECK_MARGIN };
+      boxes.push({ b: rectBox(r, -1, 0), color: FAIR.floor }, { b: rectBox({ x0: r.x0 - 0.3, y0: r.y0 - 0.3, x1: r.x1 + 0.3, y1: r.y1 + 0.3 }, -1.09, -0.91), color: FAIR.frame });
+    }
+    for (const h of lv.halls) boxes.push({ b: rectBox(h, 0, 0.02), color: FAIR.hall });
+    for (const w of lv.walls) boxes.push({ b: rectBox({ x0: w.x0, y0: w.y0, x1: Math.max(w.x1, w.x0 + 0.4), y1: Math.max(w.y1, w.y0 + 0.4) }, 0, 0.8), color: FAIR.curb });
+    const depth = new Map(lv.decks.map((d) => [d.level, d.boothD])), bw = lv.booth.w / 2;
+    for (const b of lv.booths) { const bd = (depth.get(b.deck) ?? lv.booth.d) / 2; boxes.push({ b: rectBox({ x0: b.x - bw, y0: b.y - bd, x1: b.x + bw, y1: b.y + bd }, 0, lv.booth.h), color: FAIR.booth }); }
+    const m = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: 0xffffff }), boxes.length), M = this.tmpM, C = new THREE.Color();
+    boxes.forEach(({ b, color }, i) => {
+      M.makeScale(b.max.x - b.min.x, b.max.y - b.min.y, b.max.z - b.min.z).setPosition((b.min.x + b.max.x) / 2 - a.x, (b.min.y + b.max.y) / 2 - a.y, (b.min.z + b.max.z) / 2 - a.z);
+      m.setMatrixAt(i, M); m.setColorAt(i, C.set(color));
+    });
+    m.computeBoundingSphere(); this.scene.add(m);
+    this.rings = makeRings(); this.scene.add(this.rings);
   }
 
   /** Stars, bubbles, cells and the diamond, one instanced mesh each. */
@@ -131,6 +161,7 @@ export class PlaygroundWorld {
   /** Spin, bob, breathe; the pops of what was just collected. */
   update(t: number, dt: number) {
     this.sky.update(t);
+    if (this.rings) climbRings(this.rings, -PAD_FROM_DOCK.x, -PAD_FROM_DOCK.z, -SKY_Y, 0, t, this.tmpM); // up from the X's dock, beside the pad
     for (const s of this.showcase) { s.obj.rotation.y = t * 0.6; s.obj.position.y = s.y + Math.sin(t * 1.3) * 0.04; }
     if (this.pop) { this.pop.t += dt; const k = this.pop.t / 0.5, s = k < 1 ? 1 + Math.sin(k * Math.PI) * 0.3 : 1; this.pop.mesh.scale.set(s, 1, s); if (k >= 1) this.pop = null; }
     const K = this.course.pickups, M = this.tmpM, Q = this.tmpQ, P = this.tmpP, S = this.tmpS;

@@ -13,6 +13,10 @@ import { css } from '../theme';
 import { DECK_MARGIN, GLASS_H, toWorld, wallRect, type FairLevel } from './level';
 import { Light } from './light';
 import { Sky } from './sky';
+import { buildCourse } from '../playground/course';
+import { Slabs, paintX } from '../playground/slabs';
+import { SKY_Y, skyAnchor } from '../universe';
+import { climbRings, makeRings } from './sky-lift';
 
 export { FAIR };
 const TONE: Record<Tone, number> = { white: 0xffffff, soft: 0xeceff3, mid: FAIR.inkSoft, ink: FAIR.ink, area: FAIR.area };
@@ -44,6 +48,32 @@ export class FairWorld {
     this.light = new Light(this.scene, lean, shadows);
     this.sky = new Sky(lean); this.scene.add(this.sky.dome); this.sky.onVideo = (tex) => this.booths?.setScreen(tex);
     this.levels(fair); this.glass(fair); this.furnish(); this.gates(); this.lifts(); this.stands(fair); this.theX();
+    this.skyLift(); this.skyCourse();
+  }
+
+  /** The way up: a lift disc on the X's dock, and rings of light climbing from it to the Playground's pad overhead. */
+  private rings!: THREE.InstancedMesh;
+  /** where the way up rises from: the X's dock */
+  readonly dockPos = new THREE.Vector3();
+  private skyLift() {
+    const dock = W(this.level.hero.dock.x, this.level.hero.dock.y), m = this.flat(FAIR.blue), mi = this.flat(0xffffff);
+    const a = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 0.12, 40), m), b = new THREE.Mesh(new THREE.CylinderGeometry(1.08, 1.08, 0.14, 40), mi);
+    a.position.set(dock.x, 0.06, dock.z); b.position.set(dock.x, 0.08, dock.z); a.receiveShadow = b.receiveShadow = true; this.scene.add(a, b);
+    this.dockPos.copy(dock); this.rings = makeRings(); this.scene.add(this.rings);
+    this.labels.push({ text: 'Playground ↑', pos: dock.clone().setY(3.2), kind: 'lift' });
+  }
+
+  /** The Playground itself, overhead: its platforms as the Playground draws them, and the pad's marks (the stands'
+   *  discs, the portal, the X), so the view the ride up ends on is the view the Playground begins on. */
+  private skyCourse() {
+    const a = skyAnchor(this.level), c = buildCourse(), slabs = new Slabs(c.platforms.length);
+    slabs.fill(c.platforms, a.x, a.y, a.z); slabs.shadows(false, false); slabs.addTo(this.scene);
+    const tint: Record<string, number> = { boots: 0xffffff, skates: FAIR.accent, jetpack: FAIR.orange }, M = this.tmpM, C = new THREE.Color();
+    const discs = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1, 0.08, 40), new THREE.MeshLambertMaterial({ color: 0xffffff }), c.stands.length + 1);
+    c.stands.forEach((st, i) => { discs.setMatrixAt(i, M.makeScale(1.4, 1, 1.4).setPosition(a.x + st.x, a.y + 0.04, a.z + st.z)); discs.setColorAt(i, C.set(tint[st.gear] ?? FAIR.blue)); });
+    discs.setMatrixAt(c.stands.length, M.makeScale(c.portal.r, 1, c.portal.r).setPosition(a.x + c.portal.x, a.y + 0.04, a.z + c.portal.z)); discs.setColorAt(c.stands.length, C.set(FAIR.blue));
+    discs.computeBoundingSphere(); this.scene.add(discs);
+    paintX(this.scene, a.x + c.spawn.x, a.y, a.z + c.spawn.z);
   }
 
   private flat(color: number) { return new THREE.MeshLambertMaterial({ color }); }
@@ -240,6 +270,7 @@ export class FairWorld {
 
   update(t: number, _dt: number) {
     this.sky.update(t);
+    climbRings(this.rings, this.dockPos.x, this.dockPos.z, 0, SKY_Y, t, this.tmpM);
     const { X, ring } = this.heroBits;
     X.rotation.y = t * 0.6; X.position.y = 8.5 + Math.sin(t * 1.2) * 0.25;
     const k = (t * 0.35) % 1, s = 3 + k * 9; ring.scale.set(s, 1, s); (ring.material as THREE.MeshBasicMaterial).opacity = (1 - k) * 0.55;

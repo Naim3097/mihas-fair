@@ -16,7 +16,8 @@ import type { Library } from '../ceritera/game/anim';
 import type { FairSink } from '../fair/input';
 import { NexoActor, loadKit, loadNexo, loadNexoLibrary } from '../fair/nexo';
 import type { Quality, Scene, Stage } from '../fair/stage';
-import { modal, toast } from '../state';
+import { level, modal, riding, toast, world } from '../state';
+import { SKY_VIEW } from '../universe';
 import { api } from '../net/api';
 import { buzz, sfx, type Sfx as SfxName } from '../sfx';
 import { FALL_Y, JUMP_PAD, PickupIndex, buildCourse, courseBoxes, crossed, platformUnder, sectionAt, type Course, type Gear, type Section } from './course';
@@ -27,8 +28,8 @@ import type { PlaygroundStore } from './store';
 import { PlaygroundWorld } from './world';
 
 const ORBIT_HOLD_MS = 1500, CAM = { min: 2.6, max: 9 };
-/** Stepping in from the fair: the camera starts here and settles down onto the body (the rig eases distance and tilt itself). */
-const ENTER = { dist: 15, pitch: 0.78 };
+/** Down to the fair: how long the camera takes to rise to the view the ride between the worlds shares (src/universe.ts). */
+const RISE_S = 0.7;
 /** The star's chime, a step higher for each combo level. */
 const CHIME: SfxName[] = ['chime1', 'chime2', 'chime3', 'chime4'];
 /** The air's warning, once a run, at this many seconds left. */
@@ -64,6 +65,8 @@ export class PlaygroundEngine implements Scene {
   /** the pinch's scale on the gear's camera distance */
   private zoom = 1;
   private tmpV = new THREE.Vector3(); private thrustOn = false;
+  /** Down to the fair under way: the camera rising to the shared view above. */
+  private leaving: { t: number; from: { dist: number; pitch: number } } | null = null;
   private stops: (() => void)[] = [];
 
   constructor(private stage: Stage, private quality: Quality, store: PlaygroundStore) {
@@ -71,9 +74,10 @@ export class PlaygroundEngine implements Scene {
     this.course = buildCourse();
     const boxes = courseBoxes(this.course);
     this.sim = new Sim('pengembara', classByKey('pengembara')!.base, { size: 200, boxes, props: [], spawn: { pos: v3(this.course.spawn.x, this.course.spawn.y, this.course.spawn.z), yaw: this.course.spawn.yaw }, enemies: [], lanterns: [] }, 1, GEAR.boots.movement);
-    this.world = new PlaygroundWorld(this.course, quality === 'low', stage.shadowsWanted);
+    this.world = new PlaygroundWorld(this.course, quality === 'low', stage.shadowsWanted, level.value);
     this.index = new PickupIndex(this.course.pickups);
-    this.rig = new CameraRig(this.camera, this.sim.world);
+    // the glass ceiling keeps a body under the shadow map's reach; the camera may look down from above it (a ride's view)
+    this.rig = new CameraRig(this.camera, this.sim.world, (b) => b.tag !== 'ceiling');
     this.rig.dist = GEAR.boots.camera.dist; this.rig.pitch = GEAR.boots.camera.pitch; this.rig.snapBehind(this.course.spawn.yaw);
     this.sink = {
       onTap: () => this.jump(),
@@ -91,7 +95,7 @@ export class PlaygroundEngine implements Scene {
     void Promise.all([loadNexo(), loadNexoLibrary()]).then(([g, lib]) => { if (this.disposed) return; this.gltf = g; this.lib = lib; this.actor?.dispose(); this.actor = this.makeActor(); });
     const s = this.store.get(); this.gear = s.gear; // the gear before the body, so the first body wears it
     this.actor = this.makeActor(); this.publishStore(); pgStore.value = this.store; this.markOwned();
-    pgControls.value = { jump: () => this.jump(), hold: (on) => this.stage.input.hold(on), again: () => this.again(), restart: () => this.restart(), leave: () => this.leaveRequested() };
+    pgControls.value = { jump: () => this.jump(), hold: (on) => this.stage.input.hold(on), again: () => this.again(), restart: () => this.restart(), leave: () => this.leaveRequested(), down: () => this.down() };
     // the server's word on the balance and the gear, whenever it comes: republish, and step off a gear no longer owned
     this.stops.push(this.store.onChange(() => { this.publishStore(); this.markOwned(); if (!this.store.get().unlocks.includes(this.gear)) this.setGear('boots'); }));
     // a tab going away mid-run sends the run so far
@@ -110,18 +114,28 @@ export class PlaygroundEngine implements Scene {
 
   /* ---------------- entering, leaving, the pad ---------------- */
 
-  /** On the pad, facing the course, with the gear last chosen. */
+  /** On the pad, facing the course, with the gear last chosen. The ride up from the fair ended on the view above the pad
+   *  (src/universe.ts); the camera starts on that same view here and comes down onto the body, so the change of world
+   *  does not show. */
   enter() {
-    this.stage.use(this);
+    this.stage.use(this); this.leaving = null; riding.value = false;
     this.gear = this.store.get().gear; // the kit worn in the fair is the gear here
     this.toPad(); pgMode.value = 'pad'; pgSummary.value = null;
-    this.rig.dist = ENTER.dist; this.rig.pitch = ENTER.pitch; this.rig.snapBehind(this.course.spawn.yaw); // from above, settling, rather than a cut
+    this.rig.dist = SKY_VIEW.dist; this.rig.pitch = SKY_VIEW.pitch; this.rig.snapBehind(SKY_VIEW.yaw);
     if (this.store.get().runs === 0) pgHint.value = true;
+  }
+  /** Down to the fair: a run under way ends (said in a word), the sheet goes, the camera rises to the shared view above,
+   *  and the fair takes the stage there and comes down onto the body. */
+  down() {
+    if (this.leaving || this.stage.scene !== this) return;
+    this.leaveRequested();
+    pgSummary.value = null; pgStandNote.value = null; if (pgMode.value !== 'run') pgMode.value = 'pad'; this.stage.input.release();
+    this.leaving = { t: 0, from: { dist: this.rig.dist, pitch: this.rig.pitch } }; riding.value = true; sfx('liftDown');
   }
   /** Leaving from the menu or Back: a run under way ends as if the air had run out, recorded, and said in a word since the summary is not seen. */
   leaveRequested() { if (this.run && !this.run.ended) { this.run.leave(); this.finish(); const s = pgSummary.value; if (s) toast(`Run over: ${s.score.toLocaleString()} points`, `${s.stars} ★ banked`, 'xp'); } }
   /** The fair takes the stage back; nothing here is thrown away. */
-  onLeft() { pgNearPortal.value = false; pgFade.value = false; }
+  onLeft() { pgNearPortal.value = false; pgFade.value = false; this.leaving = null; }
 
   private toPad() {
     const s = this.course.spawn; this.teleport(s.x, s.y, s.z, s.yaw); this.rig.snapBehind(s.yaw); this.section = null;
@@ -154,7 +168,7 @@ export class PlaygroundEngine implements Scene {
     const t = now / 1000, p = this.sim.player;
     this.world.update(t, dt);
     const it = this.stage.input.poll();
-    if (pgMode.value === 'summary') { it.move.x = it.move.y = 0; it.jump = false; it.thrust = false; }
+    if (pgMode.value === 'summary' || this.leaving) { it.move.x = it.move.y = 0; it.jump = false; it.thrust = false; }
     this.acc += dt; let n = 0;
     while (this.acc >= STEP - 1e-9 && n < 6) {
       const step = n === 0 ? it : heldOnly(it);
@@ -278,6 +292,13 @@ export class PlaygroundEngine implements Scene {
    *  player has just dragged to look. The gear sets the distance and the tilt. */
   private updateCamera(dt: number) {
     const p = this.sim.player, pos = p.body.pos, g = GEAR[this.gear].camera;
+    if (this.leaving) { // rising to the view the ride down begins from, no lag, then the fair takes over
+      const l = this.leaving; l.t += dt; const k = Math.min(1, l.t / RISE_S), e = 1 - Math.pow(1 - k, 3);
+      this.rig.dist = l.from.dist + (SKY_VIEW.dist - l.from.dist) * e; this.rig.pitch = l.from.pitch + (SKY_VIEW.pitch - l.from.pitch) * e; this.rig.snapBehind(this.rig.yaw);
+      this.rig.update(dt, pos, p.body.vel, null, false);
+      if (k >= 1) { this.leaving = null; world.value = 'fair'; }
+      return;
+    }
     const sec = sectionAt(this.course, pos.x, pos.z, this.gear); if (sec) this.section = sec;
     if (performance.now() - this.orbitAt > ORBIT_HOLD_MS) {
       const base = this.section?.yaw ?? p.yaw, want = base + angleDiff(base, p.yaw) * 0.25;

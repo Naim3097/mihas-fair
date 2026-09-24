@@ -6,7 +6,7 @@ import { GEAR } from '../playground/gear';
 import { pgBalance, pgBest, pgCombo, pgControls, pgFade, pgFuel, pgGear, pgHint, pgMode, pgNearPortal, pgO2, pgRunStars, pgScore, pgStandNote, pgStore, pgSummary, pgUnlocks } from '../playground/state';
 import { O2_CAP } from '../playground/run';
 import type { BoardRange, BoardRow } from '../playground/store';
-import { me, modal, world } from '../state';
+import { me, modal, riding } from '../state';
 import { Sheet } from './common';
 
 const FINE_POINTER = typeof matchMedia === 'function' && matchMedia('(hover:hover) and (pointer:fine)').matches;
@@ -25,6 +25,7 @@ function useRolling(value: number, ms = 500): number {
 /** notices: the toasts and the connection line, shown in the column under the run card as the fair shows them under its card. */
 export function PlaygroundHud({ notices }: { notices?: ComponentChildren }) {
   const mode = pgMode.value, c = pgControls.value, score = useRolling(pgScore.value), gear = GEAR[pgGear.value];
+  if (riding.value) return <div class="topstack">{notices}</div>; // on the way down: nothing but what is being said
   const next = (['skates', 'jetpack'] as const).find((g) => !pgUnlocks.value.includes(g));
   return (
     <>
@@ -51,7 +52,7 @@ export function PlaygroundHud({ notices }: { notices?: ComponentChildren }) {
       {pgHint.value && mode !== 'summary' && <p class="hint pghint" role="status">{pgGear.value === 'jetpack' ? (FINE_POINTER ? <>Walk with <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>, hold <kbd>Space</kbd> to climb and let go to drop.</> : 'Drag the lower left to walk. Hold the button to climb, let go to drop.') : FINE_POINTER ? <>Walk with <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>, jump with <kbd>Space</kbd>: once more in the air for the long gaps.</> : 'Drag the lower left to walk. Tap anywhere, or the button, to jump: once more in the air for the long gaps.'}</p>}
 
       <div class="dock pgdock">
-        {pgNearPortal.value && mode !== 'run' && <button class="chip act" onClick={() => { c?.leave(); world.value = 'fair'; }}>Back to the fair ›</button>}
+        {pgNearPortal.value && mode !== 'run' && <button class="chip act" onClick={() => c?.down()}>Down to the fair ›</button>}
         <button aria-label="Menu" data-tip="Menu" onClick={() => (modal.value = 'menu')}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg></button>
       </div>
       {mode !== 'summary' && <button class="jumpbtn" aria-label={pgGear.value === 'jetpack' ? 'Fly (hold)' : 'Jump'} onPointerDown={(e) => { e.preventDefault(); c?.jump(); c?.hold(true); }} onPointerUp={() => c?.hold(false)} onPointerCancel={() => c?.hold(false)} onPointerLeave={() => c?.hold(false)}>{pgGear.value === 'jetpack' ? 'Fly' : 'Jump'}{FINE_POINTER && <kbd>Space</kbd>}</button>}
@@ -80,7 +81,7 @@ function Summary() {
       ) : <p class="fine">Every kit is yours. Chase the best run.</p>}
       <div class="stack">
         <button class="btn primary big" onClick={() => c?.again()}>Again</button>
-        <div class="row2"><button class="btn big" onClick={() => (modal.value = 'pgboards')}>Boards</button><button class="btn big" onClick={() => { c?.leave(); world.value = 'fair'; }}>Back to the fair</button></div>
+        <div class="row2"><button class="btn big" onClick={() => (modal.value = 'pgboards')}>Boards</button><button class="btn big" onClick={() => c?.down()}>Down to the fair</button></div>
       </div>
     </Sheet>
   );

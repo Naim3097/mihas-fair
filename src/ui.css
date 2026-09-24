@@ -107,6 +107,7 @@ input::placeholder,textarea::placeholder{color:var(--ink-3)}textarea{resize:vert
 .fuelmini{display:block;width:34px;height:4px;border-radius:2px;background:rgba(255,255,255,.35);overflow:hidden}.fuelmini i{display:block;height:100%;background:#fff;transition:width .12s linear}
 .dock .demo{width:auto;height:30px;padding:0 12px;border-radius:999px;font-size:11.5px;font-weight:700;color:var(--ink-2);box-shadow:none;border:1px dashed var(--line-2);background:var(--surface)}
 .action{position:absolute;left:50%;bottom:calc(16px + var(--safe-b));transform:translateX(-50%);width:min(360px,calc(var(--vw) - 160px));display:grid;gap:8px;justify-items:stretch}
+.action{transition:opacity .2s}.action.away{opacity:0;visibility:hidden;transition:opacity .2s,visibility 0s .2s} /* a ride through the sky: the buttons of where you were step aside */
 /* the row sits over the touch-stick zone: only its buttons catch a finger, the space between them goes to the world */
 #ui .action,#ui .action .chiprow,#ui .action .liftrow,#ui .action .hint{pointer-events:none}#ui .action .btn,#ui .action .chip,#ui .action .note{pointer-events:auto}
 .action .btn.big{box-shadow:var(--shadow)}.action .chip{justify-self:center;box-shadow:var(--shadow);border-color:transparent;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

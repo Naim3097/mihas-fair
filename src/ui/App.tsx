@@ -3,7 +3,7 @@ import type { EngineApi as Engine } from '../game/engine-api';
 import { api, ApiError } from '../net/api';
 import { CHECKPOINTS, POINTS, ROLE_INFO, chapters, type Role } from '../../shared/rules';
 import type { BoothTeamPeek, HandoffPeek, PassportInput } from '../../shared/types';
-import { markSeen, kitHint, afterCard, autoWalk, boothAction, currentCp, gate, handoff, referral, unreachCheckpoint, setGate, teamInvite, atLaunchPad, bootError, bootNote, distToGoal, goalVia, guideOn, guideTarget, herePlace, journey, level, me, modal, moveHint, nearLift, nearStation, offline, online, panelStation, phase, seated, stampedSet, stationMap, toast, toasts, world } from '../state';
+import { markSeen, kitHint, riding, afterCard, autoWalk, boothAction, currentCp, gate, handoff, referral, unreachCheckpoint, setGate, teamInvite, atLaunchPad, bootError, bootNote, distToGoal, goalVia, guideOn, guideTarget, herePlace, journey, level, me, modal, moveHint, nearLift, nearStation, offline, online, panelStation, phase, seated, stampedSet, stationMap, toast, toasts, world } from '../state';
 import { BoardsSheet, PlaygroundHud } from './playground';
 import { GEAR } from '../playground/gear';
 import { pgControls, pgFuel, pgGear, pgStore, pgUnlocks } from '../playground/state';
@@ -35,7 +35,7 @@ export function App({ engine }: Eng) {
       {m === 'contacts' && <ContactsSheet />}
       {m === 'map' && <MapSheet engine={engine} />}
       {m === 'photo' && <PhotoSheet />}
-      {m === 'menu' && <MenuSheet />}
+      {m === 'menu' && <MenuSheet engine={engine} />}
       {m === 'pgboards' && <BoardsSheet />}
       {m === 'tour' && <TourSheet />}
       {m === 'scan' && <ScanSheet />}
@@ -244,8 +244,8 @@ function Hud({ engine }: Eng) {
       </div>
 
       {/* bottom-centre: the one thing you can do right here */}
-      <div class="action">
-        {kitHint.value && !moveHint.value && !sitting && <p class="hint" role="status">Stars from the Playground buy Skates and a Jetpack — worn here, in the halls, for everyone to see.</p>}
+      <div class={'action' + (riding.value ? ' away' : '')}>
+        {kitHint.value && !moveHint.value && !sitting && <p class="hint" role="status">The Playground is right above the X. Its stars buy Skates and a Jetpack, worn here in the halls for everyone to see.</p>}
         {moveHint.value && !sitting && <p class="hint" role="status">{FINE_POINTER ? <>Click where you want to go, or use <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>. Drag to look around, scroll to zoom.</> : 'Tap where you want to go, or drag the lower left of the screen. Drag elsewhere to look around.'}</p>}
         {sitting && <SeatNote />}
         {sitting && <button class="btn big" onClick={() => eng?.stand()}>Stand up<kbd>E</kbd></button>}
@@ -253,7 +253,7 @@ function Hud({ engine }: Eng) {
         {cpHere && !sitting && <button class="scanpill" onClick={() => (modal.value = 'scan')}>Scan now<small>the Mission X QR on their counter · your checkpoint</small></button>}
         {atLaunchPad.value && !m.passport && <button class="btn primary big" onClick={() => (modal.value = 'card')}>Get my free card</button>}
         {atLaunchPad.value && toClaim && <button class="btn primary big" onClick={() => (modal.value = 'prize')}>Show my prize code</button>}
-        {atLaunchPad.value && m.passport && <button class="chip" onClick={() => { kitHint.value = false; markSeen('hint:kit'); world.value = 'playground'; }}>{pgUnlocks.value.length > 1 ? 'Playground ›' : 'Playground · Skates & Jetpack ›'}</button>}
+        {atLaunchPad.value && m.passport && <div class="liftrow"><button class="btn lift" onClick={() => { kitHint.value = false; markSeen('hint:kit'); eng?.launch(); }}>Playground ↑<small>{pgUnlocks.value.length > 1 ? 'Right above you' : 'Stars for Skates and a Jetpack'}</small></button></div>}
         {/* walking up to a booth that is online: who they are and what they are offering, before tapping in */}
         {!sitting && !atLaunchPad.value && st && view && (view.offer || view.link || view.logo) && (
           <div class="nearcard" role="button" tabIndex={0} onClick={() => { panelStation.value = st; modal.value = 'booth'; }}>
@@ -341,6 +341,7 @@ function Finish() {
           <h2>All checkpoints done.</h2>
           <p class="lead">You made your digital business card, met every exhibitor on your list in person, and picked up your tote bag at Lean X Digital.</p>
           <p class="lead">That is a customer journey. Building them is what <b>Lean X Digital</b> does for businesses.</p>
+          <p class="fine">Next: the Playground, right above the X.</p>
           <a class="btn primary big" href="https://www.nexova.my" target="_blank" rel="noopener" onClick={() => api.track('cta_nexova')}>See what we could build for you</a>
           <button class="btn big" style={{ marginTop: '8px' }} onClick={close}>Keep playing</button>
         </>
@@ -364,7 +365,7 @@ function Rules() {
       <ol class="rules">{chapters({ started: false, card: false, checkpoints: 0, target: 0, claimed: false }).map((c) => <li key={c.n}><strong>{c.title}</strong><span>{c.todo}</span></li>)}</ol>
       <p class="fine">After the mission it is free play: walk the halls, stamp booths, meet people.</p>
       <table class="points"><tbody>{rows.map(([what, n]) => <tr key={what}><td>{what}</td><td>+{n}</td></tr>)}</tbody></table>
-      <p class="fine">The Playground, beside the X: a run for stars. Stars buy Skates and a Jetpack, worn back here in the halls — skate the aisles, fly over the partitions — and everyone sees them on you.</p>
+      <p class="fine">The Playground floats right above the X: take the lift at the X up for a run across its platforms. Its stars buy Skates and a Jetpack, worn back here in the halls — skate the aisles, fly over the partitions — and everyone sees them on you.</p>
       <p class="fine">Exhibitors: bring your booth online, put its QR on your counter, and everyone who scans it lands on your dashboard — free.</p>
     </Sheet>
   );

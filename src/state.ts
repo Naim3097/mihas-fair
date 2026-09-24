@@ -14,6 +14,9 @@ export type Modal = null | 'card' | 'prize' | 'claimed' | 'complete' | 'booth' |
  *  Off until the server has said, so nothing appears and then vanishes. */
 export const switches = signal<Switches>({ sky: false, warp: false });
 
+/** A ride through the sky is under way (up to the Playground, or a warp): the buttons of where you were step aside. */
+export const riding = signal(false);
+
 export const phase = signal<Phase>('boot');
 export const level = signal<LevelData | null>(null);
 export const bootError = signal('');

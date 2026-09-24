@@ -28,5 +28,5 @@ export const pgNearPortal = signal(false);
 /** The store behind the boards and the balance, once the engine has one. */
 export const pgStore = signal<PlaygroundStore | null>(null);
 /** What the interface can ask the engine for. */
-export interface PgControls { jump(): void; hold(on: boolean): void; again(): void; /** back to the pad, the run under way given up */ restart(): void; leave(): void }
+export interface PgControls { jump(): void; hold(on: boolean): void; again(): void; /** back to the pad, the run under way given up */ restart(): void; leave(): void; /** down to the fair: the run under way ends, the camera rises, the fair takes the stage */ down(): void }
 export const pgControls = signal<PgControls | null>(null);
