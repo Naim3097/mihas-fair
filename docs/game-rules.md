@@ -62,7 +62,13 @@ The rules above are the whole game. Everything below is play: it costs nothing, 
   While you sit, one true sentence about the show at a time (`src/game/facts.ts` — counted from the floor plan and the
   official exhibitor list, never written by hand).
 - **Photo.** Your astronaut, waving, with the place behind them and a caption band. Made on the device; share or save.
-- **Expression.** Wave, cheer, dance, jump. Other players see it (it travels with your position; nothing else does).
+- **Expression.** Wave, cheer, dance, jump. Other players see it (it travels with your position, as the kit on your
+  body and your height on a jetpack do; nothing else).
+- **The Playground**, beside the X: a run for stars (`docs/playground-design.md`). Stars buy Skates and a Jetpack,
+  worn back in the halls — the skates glide the aisles, the jetpack flies over the partitions, under the glass — and
+  everyone sees them on you: a skater leans into the turn, a flyer climbs with the flames lit and leaves a shadow on
+  the floor. The server keeps a kit only when it was paid for. One line at the X says so, once; one more the first
+  time a kit is seen on someone else.
 - **The map.** All three levels of MITEC: stamped booths in gold, online booths in green, lifts, the X, you. Tap
   anywhere to be guided there. Search and the list of places live in the same sheet.
 - **Arriving.** Walking into a hall or a place for the first time says what it is: "Hall 3 · Level 1 — 232 booths ·

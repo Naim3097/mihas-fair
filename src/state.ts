@@ -86,6 +86,8 @@ export const herePlace = signal<Place | null>(null);
 export const seated = signal(false);
 /** Shown once, right after landing, until the player has walked a few steps: how to move. */
 export const moveHint = signal(false);
+/** Shown once, at the X, to a player with no kit yet: what the Playground's stars buy, and that it is worn here. */
+export const kitHint = signal(false);
 /** The photo just taken, as a data URL. */
 export const photoShot = signal<string | null>(null);
 /** Halls and places this browser has walked into: "hall:7", "place:cafe". A memory, not a score. */

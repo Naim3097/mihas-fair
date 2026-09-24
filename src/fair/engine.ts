@@ -17,7 +17,7 @@ import { NavGrid, dotsAlong, nearestOnPath, pathLength, type P2 } from '../game/
 import { BoothPicker } from '../game/pick';
 import { placeAt, type Seat } from '../game/places';
 import { RemoteTrack } from '../game/remote';
-import { atLaunchPad, autoWalk, boothAction, currentCp, currentDeck, REACHED_RESET_M, unreachCheckpoint, distToGoal, goalVia, guideOn, guideTarget, herePlace, markSeen, me, modal, moveHint, myBooths, nearLift, nearStation, online, panelStation, photoShot, reachCheckpoint, reachedCps, seated, seen, stampedSet, stationMap, stations, toast, trailCheckpoint } from '../state';
+import { atLaunchPad, kitHint, autoWalk, boothAction, currentCp, currentDeck, REACHED_RESET_M, unreachCheckpoint, distToGoal, goalVia, guideOn, guideTarget, herePlace, markSeen, me, modal, moveHint, myBooths, nearLift, nearStation, online, panelStation, photoShot, reachCheckpoint, reachedCps, seated, seen, stampedSet, stationMap, stations, toast, trailCheckpoint } from '../state';
 import type { Library } from '../ceritera/game/anim';
 import { CameraRig } from '../ceritera/game/camera';
 import type { Intent } from '../ceritera/game/controller';
@@ -598,7 +598,12 @@ export class FairEngine implements EngineApi, Scene {
     if (herePlace.value !== place) { herePlace.value = place; if (place && markSeen(`place:${place.id}`)) toast(place.name, place.blurb, 'info', 4800); }
 
     const dock = this.level.hero.dock, near = Math.hypot(dock.x - pos.x, dock.y - pos.y) < 4.2;
-    if (atLaunchPad.value !== near) atLaunchPad.value = near;
+    if (atLaunchPad.value !== near) {
+      atLaunchPad.value = near;
+      // at the X with no kit yet: one line, once, on what the Playground is for; gone, and remembered, on walking away
+      if (near && me.value?.passport && (this.kits?.get().unlocks.length ?? 1) <= 1 && !seen.value.has('hint:kit')) kitHint.value = true;
+      else if (!near && kitHint.value) { kitHint.value = false; markSeen('hint:kit'); }
+    }
     const lift = this.level.lifts.find((l) => Math.hypot(l.x - pos.x, l.y - pos.y) < 3.4) ?? null;
     if ((nearLift.value?.here ?? null) !== lift) nearLift.value = lift ? { here: lift, others: this.level.lifts.filter((l) => l.id === lift.id && l.deck !== lift.deck).sort((a, b) => a.deck - b.deck) } : null;
     const lv = this.levelOf(pos); if (currentDeck.value !== lv) currentDeck.value = lv;
@@ -652,6 +657,7 @@ export class FairEngine implements EngineApi, Scene {
   }
 
   private applyHolos(list: Hologram[], now: number) {
+    const me0 = this.position;
     // how many other people a phone draws: twelve, six once the quality ladder has taken the shadows away
     for (const h of list.slice(0, this.quality === 'high' ? 24 : this.stage.level >= 3 ? 6 : 12)) {
       let o = this.holos.get(h.id);
@@ -666,6 +672,9 @@ export class FairEngine implements EngineApi, Scene {
       o.label.classList.toggle('exhib', h.cls === 'exhibitor');
       o.pose = h.pose ?? '';
       const kit: Kit = h.kit ?? 'boots'; if (o.kit !== kit) { o.kit = kit; o.actor.setLocomotion(kit === 'skates' ? 'skate' : 'walk'); } // dressed in updateHolos, by distance
+      // the first kit seen on someone else, by a player who has none: the sighting is the teaching; one line names it, once per phone
+      if (kit !== 'boots' && (this.kits?.get().unlocks.length ?? 1) <= 1 && Math.hypot(h.x - me0.x, h.y - me0.y) < 25 && markSeen('hint:kit-seen'))
+        toast(kit === 'jetpack' ? 'That is a Jetpack from the Playground' : 'Those are Skates from the Playground', 'Beside the X: its stars buy the kits, worn here in the halls', 'info', 6000);
       const snap = { t: now, x: h.x, y: h.y, h: h.h, z: h.z || 0 }; if (o.pose === 'sit') o.track.place(snap); else o.track.push(snap);
       o.tx = h.x; o.ty = h.y; o.seen = now;
     }
