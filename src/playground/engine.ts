@@ -27,6 +27,8 @@ import type { PlaygroundStore } from './store';
 import { PlaygroundWorld } from './world';
 
 const ORBIT_HOLD_MS = 1500, CAM = { min: 2.6, max: 9 };
+/** Stepping in from the fair: the camera starts here and settles down onto the body (the rig eases distance and tilt itself). */
+const ENTER = { dist: 15, pitch: 0.78 };
 /** The star's chime, a step higher for each combo level. */
 const CHIME: SfxName[] = ['chime1', 'chime2', 'chime3', 'chime4'];
 /** The air's warning, once a run, at this many seconds left. */
@@ -113,6 +115,7 @@ export class PlaygroundEngine implements Scene {
     this.stage.use(this);
     this.gear = this.store.get().gear; // the kit worn in the fair is the gear here
     this.toPad(); pgMode.value = 'pad'; pgSummary.value = null;
+    this.rig.dist = ENTER.dist; this.rig.pitch = ENTER.pitch; this.rig.snapBehind(this.course.spawn.yaw); // from above, settling, rather than a cut
     if (this.store.get().runs === 0) pgHint.value = true;
   }
   /** Leaving from the menu or Back: a run under way ends as if the air had run out, recorded, and said in a word since the summary is not seen. */

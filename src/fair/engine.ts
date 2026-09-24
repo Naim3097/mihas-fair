@@ -33,7 +33,7 @@ import { pgFuel } from '../playground/state';
 import type { PlaygroundStore } from '../playground/store';
 import { Ribbon } from '../playground/ribbon';
 export { pickQuality, type Quality } from './stage';
-import { CX, CY, buildFairLevel, fixY, toPlan, toWorld, type FairLevel } from './level';
+import { CX, CY, GLASS_H, buildFairLevel, fixY, toPlan, toWorld, type FairLevel } from './level';
 import { NexoActor, loadKit, loadNexo, loadNexoLibrary, loadNexoLod, type Kit, type NexoRole } from './nexo';
 import { FAIR_MOVEMENT } from './movement';
 import { Reach } from './reach';
@@ -45,8 +45,12 @@ import { FAIR, FairWorld } from './world';
 const PING_MS = 3000, TRAIL_STEP = 1.5, TRAIL_MAX = 220, BOOTH_LABELS = 6, BOOTH_LABEL_RANGE = 12, ARRIVAL_FRESH_MS = 10 * 60_000;
 const CAM = { dist: 6.4, min: 2.4, max: 12, pitch: 0.38 }; // a step back and up from 4.6 / 0.3: more of the hall, the avatar a third of the height, still over the partitions
 const CAM_SEES_PAST = new Set(['wall', 'furniture', 'booth', 'island']);
-/** The camera settles in from above over this long at the start. */
-const INTRO = { dist: 30, pitch: 0.6, s: 1.6 };
+/** The camera settles in from above over this long at the start; coming back from the Playground, a shorter, closer settle. */
+const INTRO = { dist: 30, pitch: 0.6, s: 1.6 }, RETURN = { up: 9, tilt: 0.28, s: 1.2 };
+/** Flying: the camera tips with the climb and the fall (radians per m/s of vertical speed, clamped), the field of view opens a
+ *  touch while the thrust fires, and near the ceiling the pitch flattens so the camera stays under the glass instead of being
+ *  jammed in by it. All of it additive over the player's own orbit, and gone once the feet are down. */
+const FLIGHT_CAM = { tilt: 0.15, up: -0.17, down: 0.12, kick: 3, clearance: 0.6 };
 /** A finger's tolerance when picking a booth (CSS px). */
 const TAP_TOL = 14;
 const EMOTE = { wave: { clip: 'wave', ms: 2600 }, cheer: { clip: 'victory', ms: 2600 }, dance: { clip: 'dance', ms: 5200 } } as const;
@@ -99,7 +103,11 @@ export class FairEngine implements EngineApi, Scene {
   private pose: Pose = ''; private poseUntil = 0;
   private seat: Seat | null = null; private seatGoal: Seat | null = null; private wantBeforeSit = CAM.dist;
   private liftT = 1; private hallNow: number | null = null; private walked = 0; private picked: Booth | null = null;
-  private stepAcc = 0; private introT = -1; private orbit = 0.6;
+  private stepAcc = 0; private orbit = 0.6;
+  /** the camera's settle from above: at the start of a session, and on the way back from the Playground */
+  private intro: { t: number; s: number; from: { dist: number; pitch: number }; to: { dist: number; pitch: number } } | null = null;
+  /** the pitch the flight has added over the player's own, so landing gives it back exactly */
+  private flightPitch = 0;
   /** the kit worn: the Playground's gear on the fair's floor, from the store both worlds share */
   private kit: Gear = 'boots'; private kits: PlaygroundStore | null = null;
   private ribbons: [Ribbon, Ribbon]; private exhaust: Ribbon; private feet: [THREE.Vector3, THREE.Vector3] = [new THREE.Vector3(), new THREE.Vector3()];
@@ -138,7 +146,7 @@ export class FairEngine implements EngineApi, Scene {
     this.sink = {
       onTap: (x, y, coarse) => this.tapMove(x, y, coarse),
       onOrbit: (dx, dy) => this.rig.turn(dx * 2.2, dy * 1.6),
-      onZoom: (f) => { if (this.introT >= 0) { this.introT = -1; this.rig.pitch = CAM.pitch; this.rig.dist = CAM.dist; } this.rig.dist = THREE.MathUtils.clamp(this.rig.dist * f, CAM.min, CAM.max); },
+      onZoom: (f) => { if (this.intro) { const to = this.intro.to; this.intro = null; this.rig.pitch = to.pitch; this.rig.dist = to.dist; } this.rig.dist = THREE.MathUtils.clamp(this.rig.dist * f, CAM.min, CAM.max); },
       onHover: (at) => this.hover(at),
       onKey: (a) => { if (a === 'interact') void this.interact(); else if (a === 'map') modal.value = 'map'; else this.emote(a); },
       enabled: () => !modal.value,
@@ -172,7 +180,11 @@ export class FairEngine implements EngineApi, Scene {
   }
 
   /** The stage is back with the fair: say where we are at once, look around afresh. */
-  resume() { this.pingAt = 0; this.proxAt = 0; this.hover(null); if (this.behind) { this.behind = false; this.world.setStamped(stampedSet.value); this.world.setStations(stations.value); } }
+  resume() {
+    this.pingAt = 0; this.proxAt = 0; this.hover(null);
+    // back from the Playground: the camera settles down onto the body from a little above, the way the fair itself begins
+    if (this.started && !this.intro) { const to = { dist: this.rig.dist, pitch: this.rig.pitch }; this.settle({ dist: to.dist + RETURN.up, pitch: Math.min(1.1, to.pitch + RETURN.tilt) }, to, RETURN.s); this.rig.snapBehind(this.rig.yaw); }
+    if (this.behind) { this.behind = false; this.world.setStamped(stampedSet.value); this.world.setStations(stations.value); } }
 
   /* ---------------- the kits: the Playground's gear, worn here ---------------- */
 
@@ -244,7 +256,7 @@ export class FairEngine implements EngineApi, Scene {
     this.teleport(x, y, yaw);
     if (!this.player) this.player = this.makeActor(this.role(), true);
     this.started = true;
-    this.rig.dist = INTRO.dist; this.rig.pitch = INTRO.pitch; this.rig.snapBehind(yaw); this.introT = 0;
+    this.settle(INTRO, CAM, INTRO.s); this.rig.snapBehind(yaw);
     this.walked = 0; if (!seen.value.has('hint:move')) moveHint.value = true;
     this.firstPing = true; this.pingAt = 0; this.trailAt = 0;
     const a = me.value?.anchor;
@@ -266,10 +278,10 @@ export class FairEngine implements EngineApi, Scene {
       this.camera.position.set(h.x + Math.sin(this.orbit) * 26, 10, h.z + Math.cos(this.orbit) * 26); this.camera.lookAt(h.x, 3.5, h.z);
       this.world.followSun(h.x, h.z);
     } else {
-      if (this.introT >= 0) { // settle in from above, easing out, rather than cut
-        this.introT += dt; const k = Math.min(1, this.introT / INTRO.s), e = 1 - Math.pow(1 - k, 3);
-        this.rig.dist = INTRO.dist + (CAM.dist - INTRO.dist) * e; this.rig.pitch = INTRO.pitch + (CAM.pitch - INTRO.pitch) * e;
-        if (k >= 1) this.introT = -1;
+      if (this.intro) { // settle in from above, easing out, rather than cut
+        const i = this.intro; i.t += dt; const k = Math.min(1, i.t / i.s), e = 1 - Math.pow(1 - k, 3);
+        this.rig.dist = i.from.dist + (i.to.dist - i.from.dist) * e; this.rig.pitch = i.from.pitch + (i.to.pitch - i.from.pitch) * e;
+        if (k >= 1) this.intro = null;
       }
       const p = this.sim.player, it = this.intent(dt);
       if (this.seat) {
@@ -534,10 +546,24 @@ export class FairEngine implements EngineApi, Scene {
 
   /* ---------------- camera ---------------- */
 
+  /** A settle of the camera from one distance and tilt to another, eased out over `s` seconds. */
+  private settle(from: { dist: number; pitch: number }, to: { dist: number; pitch: number }, s: number) { this.rig.dist = from.dist; this.rig.pitch = from.pitch; this.intro = { t: 0, s, from, to }; }
+
   private updateCamera(dt: number) {
     if (this.liftT < 1) { this.liftT = Math.min(1, this.liftT + dt / 1.5); this.rig.dist = CAM.dist + 26 * Math.sin(Math.PI * this.liftT); }
-    const p = this.sim.player;
-    this.rig.update(dt, p.body.pos, p.body.vel, null, false); // no wider view on a run: it read as a zoom every time a tap set off
+    const p = this.sim.player, b = p.body, flying = this.kit === 'jetpack' && !b.grounded && !this.seat;
+    if (!this.intro) { // the flight's tilt, over the player's own pitch: on with the climb, off with the landing
+      const base = this.rig.pitch - this.flightPitch;
+      let want = flying ? THREE.MathUtils.clamp(-(b.vel.y / 6.5) * FLIGHT_CAM.tilt, FLIGHT_CAM.up, FLIGHT_CAM.down) : 0;
+      if (flying) { // under the glass: the camera's height is the target's plus sin(pitch) · dist
+        const roof = Math.asin(THREE.MathUtils.clamp((GLASS_H - FLIGHT_CAM.clearance - (b.pos.y + 1.35)) / Math.max(0.1, this.rig.dist), 0.05, 1));
+        want = Math.min(want, roof - base);
+      }
+      this.flightPitch = THREE.MathUtils.damp(this.flightPitch, want, 3, dt);
+      this.rig.pitch = base + this.flightPitch;
+      if (flying && p.thrusting) this.rig.kick(FLIGHT_CAM.kick);
+    }
+    this.rig.update(dt, b.pos, b.vel, null, false); // no wider view on a run: it read as a zoom every time a tap set off
   }
 
   /* ---------------- what is next to the player: a booth, the X, a lift; and which booth names to show ---------------- */
