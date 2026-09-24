@@ -159,7 +159,8 @@ export const stationMap = computed(() => new Map(stations.value.map((s) => [s.id
 export function boothAction(b: Booth | null): 'stamp' | 'swap' | null {
   const m = me.value; if (!b || !m || b.id === level.value?.hero.id || m.hosting.includes(b.id)) return null;
   if (m.mission.checkpoints.some((c) => c.stationId === b.id)) return stampedSet.value.has(b.id) ? null : 'stamp';
-  return stationMap.value.has(b.id) ? 'swap' : null;
+  const st = stationMap.value.get(b.id);
+  return st && st.status !== 'prepared' ? 'swap' : null; // a prepared booth has a name and a logo, but nobody behind the counter yet
 }
 
 /** The journey. Visitors: three chapters. Exhibitors: three steps on their own booth. `now` is the one thing to do next. */

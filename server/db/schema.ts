@@ -376,6 +376,13 @@ CREATE TABLE IF NOT EXISTS station_photos (
   data        TEXT NOT NULL,
   updated_at  INTEGER NOT NULL
 );
+-- A booth the crew set up before its exhibitor registered: the company name on the sign (the logo and photo sit in the
+-- image tables under the same booth number). Gone when the exhibitor brings the booth online, or when the crew releases it.
+CREATE TABLE IF NOT EXISTS booth_prep (
+  station_id  TEXT PRIMARY KEY,
+  company     TEXT NOT NULL,
+  created_at  INTEGER NOT NULL
+);
 
 -- ---------------------------------------------------------------- Playground
 -- The second world beside the X. A token opens a run (used once, not two within a few seconds); the run is recorded

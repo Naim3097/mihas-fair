@@ -15,7 +15,7 @@ export async function handleScan(text: string): Promise<boolean> {
     else await api.stamp({ stationId: s.stationId, proof: 'beacon', beacon: s.token });
     // An online booth you have not left your card with yet: cards are swapped on the spot, with the saved defaults
     const booth = level.value?.booths.find((b) => b.id === s.stationId), st = booth && stationMap.value.get(booth.id), m = me.value;
-    if (booth && st && m?.passport && !m.shared.includes(booth.id)) {
+    if (booth && st && st.status !== 'prepared' && m?.passport && !m.shared.includes(booth.id)) {
       try { await api.leaveCard(booth.id, m.sharePrefs); toast(`Cards swapped with ${st.company}`, 'They have your card. Take it back any time from My contacts.', 'xp', 5000); }
       catch { panelStation.value = booth; modal.value = 'booth'; }
     }

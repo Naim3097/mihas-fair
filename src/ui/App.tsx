@@ -271,7 +271,7 @@ function Hud({ engine }: Eng) {
             {!atLaunchPad.value && act === 'stamp' && <button class="chip act" disabled={stamping} onClick={doStamp}>{stamping ? 'Swapping…' : `Swap card · +${POINTS.stamp + (m.shared.includes(st!.id) ? 0 : POINTS.leaveCard)}`}{!stamping && <kbd>E</kbd>}</button>}
             {!atLaunchPad.value && act === 'swap' && <button class="chip act" onClick={() => { panelStation.value = st; modal.value = 'booth'; }}>{m.shared.includes(st!.id) ? 'Card swapped ✓' : `Swap card · +${POINTS.leaveCard}`}<kbd>E</kbd></button>}
             {!atLaunchPad.value && !act && st && m.scanned.includes(st.id) && <span class="chip done">Scanned ✓</span>}
-            {!atLaunchPad.value && st && <button class={'chip' + (has ? ' on' : '')} onClick={() => { panelStation.value = st; modal.value = 'booth'; }}>{stName}{view ? (view.hosted ? ' · at the counter' : ' · online') : ''} ›</button>}
+            {!atLaunchPad.value && st && <button class={'chip' + (has ? ' on' : '')} onClick={() => { panelStation.value = st; modal.value = 'booth'; }}>{stName}{view && view.status !== 'prepared' ? (view.hosted ? ' · at the counter' : ' · online') : ''} ›</button>}
           </div>
         )}
       </div>

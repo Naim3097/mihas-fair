@@ -9,10 +9,14 @@ import { HOST_ONLINE_MS, HOST_WINDOW_MS, MAX_STATIONS_PER_OWNER, POINTS, SXP, st
 
 interface StationRow { station_id: string; owner_id: string; company: string; offer: string; link: string; color: number; status: StationStatus; claimed_at: number; host_seen_at: number | null; host_ms: number }
 interface Counts { stamps: number; shares: number; verified: number }
+interface PrepRow { station_id: string; company: string; created_at: number }
 type Pics = { logo_at?: number | null; photo_at?: number | null };
 const pic = (r: { station_id: string } & Pics, kind: 'logo' | 'photo') => { const at = kind === 'logo' ? r.logo_at : r.photo_at; return at != null ? `/api/${kind}/${encodeURIComponent(r.station_id)}?v=${at}` : null; };
 /** Joins the image timestamps onto station rows (alias s). */
 const PICS = 'LEFT JOIN station_logos l ON l.station_id = s.station_id LEFT JOIN station_photos ph ON ph.station_id = s.station_id';
+/** Booths the crew prepared that nobody has brought online yet, with their image timestamps. */
+const PREPS = `SELECT p.*, l.updated_at AS logo_at, ph.updated_at AS photo_at FROM booth_prep p LEFT JOIN station_logos l ON l.station_id = p.station_id LEFT JOIN station_photos ph ON ph.station_id = p.station_id
+  WHERE NOT EXISTS (SELECT 1 FROM stations s WHERE s.station_id = p.station_id) ORDER BY p.created_at DESC`;
 
 function cleanLink(raw: unknown): string {
   const s = cleanText(raw, 200);
@@ -56,6 +60,11 @@ export class Stations {
     return { id: r.station_id, company: r.company, offer: r.offer, link: r.link, color: r.color, status: r.status, hosted: r.host_seen_at != null && t - r.host_seen_at < HOST_ONLINE_MS, level: stationLevel(this.sxp(r, c)), logo: pic(r, 'logo'), photo: pic(r, 'photo') };
   }
 
+  /** A prepared booth as players see it: the name, logo and photo the crew put up; nothing to swap cards with yet. */
+  private prepView(r: PrepRow & Pics): StationView {
+    return { id: r.station_id, company: r.company, offer: '', link: '', color: 0x1e9e6a, status: 'prepared', hosted: false, level: 0, logo: pic(r, 'logo'), photo: pic(r, 'photo') };
+  }
+
   private owners: { at: number; map: Map<string, string> } = { at: -1e9, map: new Map() };
   /** Who owns which company, for the label over an exhibitor's head. Cached briefly. */
   async ownerCompanies(): Promise<Map<string, string>> {
@@ -74,8 +83,8 @@ export class Stations {
     const t = this.g.now();
     if (t - this.cache.at < 5000) return this.cache.list;
     const rows = await this.g.db.all<StationRow & Pics>(`SELECT s.*, l.updated_at AS logo_at, ph.updated_at AS photo_at FROM stations s ${PICS} WHERE s.status != 'revoked'`);
-    const counts = await this.counts(rows.map((r) => r.station_id));
-    this.cache = { at: t, list: rows.map((r) => this.view(r, counts.get(r.station_id)!, t)) };
+    const counts = await this.counts(rows.map((r) => r.station_id)), preps = await this.g.db.all<PrepRow & Pics>(PREPS);
+    this.cache = { at: t, list: rows.map((r) => this.view(r, counts.get(r.station_id)!, t)).concat(preps.map((p) => this.prepView(p))) };
     return this.cache.list;
   }
 
@@ -84,7 +93,11 @@ export class Stations {
     if (!booth) throw new GameError('no_station', 'Unknown booth');
     if (booth.id === this.g.level.hero.id) throw new GameError('reserved', 'That one is ours — Lean X Digital');
     await this.g.requirePassport(id);
-    const company = cleanText(input.company, 80), offer = cleanText(input.offer, 120), link = cleanLink(input.link);
+    let company = cleanText(input.company, 80);
+    const offer = cleanText(input.offer, 120), link = cleanLink(input.link);
+    // the crew may have set the booth up first: then the company name is already on the sign
+    const prep = await this.g.db.get<{ company: string }>('SELECT company FROM booth_prep WHERE station_id = ?', [booth.id]);
+    if (company.length < 2 && prep) company = prep.company;
     if (company.length < 2) throw new GameError('company', 'Enter the company name shown on your booth');
     if (input.link && !link) throw new GameError('link', 'That link does not look like a web address');
     const color = Number.isInteger(input.color) && input.color >= 0 && input.color <= 0xffffff ? input.color : 0x17b6d6;
@@ -111,6 +124,7 @@ export class Stations {
     const first = (mine?.n ?? 0) === 0;
     const stmts: Stmt[] = [['INSERT INTO stations (station_id, owner_id, company, offer, link, color, status, claimed_at) VALUES (?,?,?,?,?,?,?,?)', [booth.id, id, company, offer, link, color, 'pending', t]]];
     if (first) stmts.push(...this.g.award(id, 'station_claim', POINTS.boothOnline, booth.id, null, t));
+    if (prep) stmts.push(['DELETE FROM booth_prep WHERE station_id = ?', [booth.id]]); // the logo and photo stay: they are filed under the booth number
     stmts.push(["UPDATE players SET cls = 'exhibitor' WHERE id = ?", [id]]); // whoever runs a booth is an exhibitor, whichever door they came in by
     await this.g.db.batch(stmts);
     this.cache.at = -1e9;
@@ -217,15 +231,31 @@ export class Stations {
       // LEFT JOIN on the card: a booth whose owner never made one (a stray row from a script) must still be seen here, so the crew can release it
       `SELECT s.*, pl.callsign, p.name, p.company AS pcompany, l.updated_at AS logo_at, ph.updated_at AS photo_at FROM stations s JOIN players pl ON pl.id = s.owner_id LEFT JOIN passports p ON p.player_id = s.owner_id
        ${PICS} ORDER BY s.claimed_at DESC`);
-    const counts = await this.counts(rows.map((r) => r.station_id)), t = this.g.now();
-    return rows.map((r) => ({ ...this.view(r, counts.get(r.station_id)!, t), visits: counts.get(r.station_id)!.stamps, ownerCallsign: r.callsign, ownerName: r.name ?? '', ownerCompany: r.pcompany ?? '', claimedAt: r.claimed_at }));
+    const counts = await this.counts(rows.map((r) => r.station_id)), t = this.g.now(), preps = await this.g.db.all<PrepRow & Pics>(PREPS);
+    return (preps.map((p) => ({ ...this.prepView(p), visits: 0, ownerCallsign: '', ownerName: '', ownerCompany: '', claimedAt: p.created_at })) as CrewStationRow[])
+      .concat(rows.map((r) => ({ ...this.view(r, counts.get(r.station_id)!, t), visits: counts.get(r.station_id)!.stamps, ownerCallsign: r.callsign, ownerName: r.name ?? '', ownerCompany: r.pcompany ?? '', claimedAt: r.claimed_at })));
+  }
+
+  /** Crew: set a booth up before its exhibitor registers — the company name now, the logo and photo through the image
+   *  upload. It shows in the world at once; the exhibitor later only adds their own details and the booth is theirs. */
+  async crewPrepare(rawId: unknown, rawCompany: unknown): Promise<void> {
+    const booth = this.g.stations.get(cleanText(rawId, 8).toUpperCase());
+    if (!booth) throw new GameError('no_station', 'No booth with that number in Halls 6–8');
+    if (booth.id === this.g.level.hero.id) throw new GameError('reserved', 'That one is ours — Lean X Digital');
+    const company = cleanText(rawCompany, 80);
+    if (company.length < 2) throw new GameError('company', 'Enter the company name on the booth');
+    const live = await this.g.db.get<{ company: string; status: string }>('SELECT company, status FROM stations WHERE station_id = ?', [booth.id]);
+    if (live && live.status !== 'revoked') throw new GameError('taken', `Booth ${booth.id} is already online as ${live.company} — its logo and photo go in the list below`, 409);
+    if (live) throw new GameError('revoked', `Booth ${booth.id} was revoked — release it first`, 409);
+    await this.g.db.run('INSERT INTO booth_prep (station_id, company, created_at) VALUES (?,?,?) ON CONFLICT(station_id) DO UPDATE SET company = excluded.company', [booth.id, company, this.g.now()]);
+    this.cache.at = -1e9;
   }
 
   async crewSetStatus(stationId: string, status: string): Promise<void> {
     // Release frees the booth for its real exhibitor. Everything filed under the booth number goes with the old owner: the
     // next person to register it must not inherit their logo and photo, or see the visitors who scanned or left a card.
     // Visitors keep their own checkpoint progress (the checkpoints table) and their points.
-    if (status === 'release') await this.g.db.batch(['stations', 'station_logos', 'station_photos', 'booth_scans', 'verified_contacts'].map((t) => [`DELETE FROM ${t} WHERE station_id = ?`, [stationId]] as Stmt)
+    if (status === 'release') await this.g.db.batch(['stations', 'booth_prep', 'station_logos', 'station_photos', 'booth_scans', 'verified_contacts'].map((t) => [`DELETE FROM ${t} WHERE station_id = ?`, [stationId]] as Stmt)
       .concat([['DELETE FROM card_shares WHERE to_station = ?', [stationId]]]));
     else if (status === 'approved' || status === 'revoked' || status === 'pending') await this.g.db.run('UPDATE stations SET status = ? WHERE station_id = ?', [status, stationId]);
     else throw new GameError('bad_status', 'Unknown status');

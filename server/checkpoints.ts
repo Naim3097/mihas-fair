@@ -116,11 +116,14 @@ export class Checkpoints {
     await this.store(stationId, kind, dataUrl);
   }
 
-  /** The crew, at the counter: the logo or photo for any booth that is online, whoever brought it online. */
+  /** The crew, at the counter: the logo or photo for any booth in the halls — online, whoever brought it online, or not
+   *  yet registered (set up ahead of the exhibitor; they inherit it when they bring the booth online). */
   async crewSetImage(stationId: string, kind: BoothImage, dataUrl: unknown): Promise<void> {
-    const r = await this.g.db.get<{ status: string }>('SELECT status FROM stations WHERE station_id = ?', [stationId]);
-    if (!r || r.status === 'revoked') throw new GameError('not_hosted', 'This booth is not online');
-    await this.store(stationId, kind, dataUrl);
+    const booth = this.g.stations.get(String(stationId ?? '').trim().toUpperCase());
+    if (!booth || booth.id === this.g.level.hero.id) throw new GameError('no_station', 'No booth with that number in Halls 6–8');
+    const r = await this.g.db.get<{ status: string }>('SELECT status FROM stations WHERE station_id = ?', [booth.id]);
+    if (r?.status === 'revoked') throw new GameError('not_hosted', 'This booth was revoked — release it first');
+    await this.store(booth.id, kind, dataUrl);
   }
 
   private async store(stationId: string, kind: BoothImage, dataUrl: unknown): Promise<void> {

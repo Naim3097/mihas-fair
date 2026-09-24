@@ -233,23 +233,61 @@ function ImageUpload({ stationId, kind, onDone, big }: { stationId: string; kind
   );
 }
 
-/** Anyone with a card can bring a booth online, so the crew checks them. */
+/** Anyone with a card can bring a booth online, so the crew checks them. The crew can also set a booth up ahead of its
+ *  exhibitor: name, logo and photo now; the exhibitor adds only their own details when they register. */
 function StationsTab() {
   const [rows, setRows] = useState<CrewStationRow[] | null>(null), [err, setErr] = useState('');
   const load = () => call<CrewStationRow[]>('GET', '/api/crew/stations').then(setRows, () => setRows([]));
   useEffect(() => { void load(); }, []);
   const set = async (stationId: string, status: string) => { setErr(''); try { await call('POST', '/api/crew/stations/status', { stationId, status }); await load(); } catch (x) { setErr((x as Error).message); } };
+  const online = rows?.filter((r) => r.status !== 'prepared').length;
   return (
+    <>
+    <PrepareBooth onDone={load} />
     <section class="sheet wide">
-      <div class="row"><h2>Booths online {rows ? `(${rows.length})` : ''}</h2><button class="btn" onClick={load}>Refresh</button></div>
-      <p class="fine">Approve = “verified exhibitor” badge. Revoke = the booth goes dark and that person cannot take it again. Release = remove them so the real exhibitor can bring the booth online; their logo, photo and the visitors who scanned or left a card are cleared, so the next owner starts clean. Logo and booth photo: upload them here for an exhibitor; they go on the booth in the game straight away, and the exhibitor can change them from their dashboard.</p>
+      <div class="row"><h2>Booths online {rows ? `(${online})` : ''}</h2><button class="btn" onClick={load}>Refresh</button></div>
+      <p class="fine">Approve = “verified exhibitor” badge. Revoke = the booth goes dark and that person cannot take it again. Release = remove them so the real exhibitor can bring the booth online; their logo, photo and the visitors who scanned or left a card are cleared, so the next owner starts clean. Logo and booth photo: upload them here for an exhibitor; they go on the booth in the game straight away, and the exhibitor can change them from their dashboard. <b>Prepared</b> booths sit at the top: set up by the crew, still waiting for their exhibitor to register.</p>
       {err && <p class="banner bad">{err}</p>}
       <div class="scroll"><table><thead><tr><th>Booth</th><th>Logo</th><th>Booth photo</th><th>Name shown</th><th>Brought online by</th><th>Their company</th><th>Status</th><th>Visits</th><th></th></tr></thead>
         <tbody>{(rows ?? []).map((r) => (
-          <tr key={r.id}><td>{r.id}</td><td class="logo">{r.logo ? <img class="thumb" src={r.logo} alt={`${r.company} logo`} /> : <small>none</small>}<ImageUpload stationId={r.id} kind="logo" onDone={load} /></td><td class="logo">{r.photo ? <img class="thumb" src={r.photo} alt={`${r.company} booth`} /> : <small>none</small>}<ImageUpload stationId={r.id} kind="photo" onDone={load} /></td><td>{r.company}</td><td>{r.ownerName ? <>{r.ownerName} <small>{r.ownerCallsign}</small></> : <span class="badge revoked">No card — not a real exhibitor</span>}</td><td>{r.ownerCompany}</td><td>{r.status}{r.hosted ? ' · at the counter' : ''}</td><td>{r.visits}</td>
-            <td class="acts">{r.status !== 'approved' && <button class="chip" onClick={() => set(r.id, 'approved')}>Approve</button>}{r.status !== 'revoked' && <button class="chip" onClick={() => set(r.id, 'revoked')}>Revoke</button>}<button class="chip" onClick={() => set(r.id, 'release')}>Release</button></td></tr>
+          <tr key={r.id}><td>{r.id}</td><td class="logo">{r.logo ? <img class="thumb" src={r.logo} alt={`${r.company} logo`} /> : <small>none</small>}<ImageUpload stationId={r.id} kind="logo" onDone={load} /></td><td class="logo">{r.photo ? <img class="thumb" src={r.photo} alt={`${r.company} booth`} /> : <small>none</small>}<ImageUpload stationId={r.id} kind="photo" onDone={load} /></td><td>{r.company}</td><td>{r.status === 'prepared' ? <small>Not registered yet — set up by the crew</small> : r.ownerName ? <>{r.ownerName} <small>{r.ownerCallsign}</small></> : <span class="badge revoked">No card — not a real exhibitor</span>}</td><td>{r.ownerCompany}</td><td>{r.status}{r.hosted ? ' · at the counter' : ''}</td><td>{r.visits}</td>
+            <td class="acts">{r.status === 'prepared' ? <button class="chip" onClick={() => set(r.id, 'release')}>Remove</button> : <>{r.status !== 'approved' && <button class="chip" onClick={() => set(r.id, 'approved')}>Approve</button>}{r.status !== 'revoked' && <button class="chip" onClick={() => set(r.id, 'revoked')}>Revoke</button>}<button class="chip" onClick={() => set(r.id, 'release')}>Release</button></>}</td></tr>
         ))}</tbody></table></div>
     </section>
+    </>
+  );
+}
+
+/** Setting a booth up before its exhibitor registers: the company name goes on the sign now, then the logo and the
+ *  photo. When the exhibitor brings the booth online they find all three in place and add only their own details. */
+function PrepareBooth({ onDone }: { onDone: () => void }) {
+  const [f, setF] = useState({ stationId: '', company: '' }), [booths, setBooths] = useState<{ id: string; name: string }[]>([]);
+  const [done, setDone] = useState<{ stationId: string; company: string } | null>(null), [err, setErr] = useState(''), [busy, setBusy] = useState(false);
+  useEffect(() => { call<{ id: string; name: string }[]>('GET', '/api/crew/beacons').then(setBooths, () => {}); }, []);
+  const T = f.stationId.trim().toUpperCase().replace(/\s+/g, ''), hits = T && !booths.some((b) => b.id === T) ? booths.filter((b) => b.id.startsWith(T)).slice(0, 8) : [];
+  const submit = async (e: Event) => {
+    e.preventDefault(); setErr(''); setBusy(true);
+    try { await call('POST', '/api/crew/stations/prepare', { stationId: T, company: f.company }); setDone({ stationId: T, company: f.company.trim() }); setF({ stationId: '', company: '' }); onDone(); }
+    catch (x) { setErr((x as Error).message); }
+    finally { setBusy(false); }
+  };
+  return (
+    <form class="sheet wide" onSubmit={submit}>
+      <h2>Prepare a booth</h2>
+      <p class="fine">For exhibitors who have not registered yet. Put their company name on the booth now, then their logo and booth photo below: all three are in the game straight away. When they register, the booth is theirs to bring online and only their own details are left to fill in.</p>
+      {done && <div class="banner ok" role="status">
+        <p style={{ margin: 0 }}>{done.company} · Booth {done.stationId} is set up and on the sign in the game. Now their images:</p>
+        <div class="logo-row"><p class="fine" style={{ margin: 0 }}><b>Their logo</b> · on their counter and the sign over their booth. A PNG with a transparent background looks best.</p><ImageUpload stationId={done.stationId} kind="logo" onDone={onDone} big /></div>
+        <div class="logo-row"><p class="fine" style={{ margin: 0 }}><b>Their booth photo</b> · the backdrop on the back wall of their virtual booth.</p><ImageUpload stationId={done.stationId} kind="photo" onDone={onDone} big /></div>
+      </div>}
+      <div class="frow">
+        <label>Booth number<input required maxLength={8} autocapitalize="characters" placeholder="e.g. 7C17" value={f.stationId} onInput={(e) => setF((p) => ({ ...p, stationId: (e.target as HTMLInputElement).value }))} />
+          {hits.length > 0 && <div class="hits">{hits.map((b) => <button type="button" key={b.id} class="chip" onClick={() => setF((p) => ({ ...p, stationId: b.id }))}>{b.id}</button>)}</div>}</label>
+        <label>Company name on the booth<input required maxLength={80} value={f.company} onInput={(e) => setF((p) => ({ ...p, company: (e.target as HTMLInputElement).value }))} /></label>
+      </div>
+      {err && <p class="banner bad" role="alert">{err}</p>}
+      <button class="btn primary big" disabled={busy}>{busy ? 'Saving…' : 'Put the name on the booth'}</button>
+    </form>
   );
 }
 

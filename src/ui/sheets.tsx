@@ -31,7 +31,7 @@ export function BoothSheet({ engine }: Eng) {
   return (
     <Sheet k={`Booth ${b.id} · Hall ${b.hall}`} title={title}>
       <div class="pills">
-        {st && <span class={'pill ' + (st.hosted ? 'live' : 'on')}>{st.hosted ? 'At the counter now' : 'Online'}</span>}
+        {st && st.status !== 'prepared' && <span class={'pill ' + (st.hosted ? 'live' : 'on')}>{st.hosted ? 'At the counter now' : 'Online'}</span>}
         {st?.status === 'approved' && <span class="pill on">Verified exhibitor</span>}
         {met ? <span class="pill gold">Scanned ✓{cp ? ' · checkpoint done' : ''}</span> : stamped ? <span class="pill gold">Visited</span> : null}
       </div>
@@ -72,7 +72,7 @@ export function BoothSheet({ engine }: Eng) {
           )}
           <StationDemoHint stationId={b.id} onDigits={setDigits} />
 
-          {!st && <button class="btn big" onClick={() => (modal.value = m.passport ? 'claim' : 'card')}>Exhibiting here? Bring this booth online</button>}
+          {(!st || st.status === 'prepared') && <button class="btn big" onClick={() => (modal.value = m.passport ? 'claim' : 'card')}>Exhibiting here? Bring this booth online</button>}
         </div>
       )}
     </Sheet>
@@ -82,7 +82,7 @@ export function BoothSheet({ engine }: Eng) {
 export function ClaimSheet() {
   // always about one booth: picked by its number when registering, or the one being edited
   const m = me.value!, sm = stationMap.value, chosen = panelStation.value;
-  const existing = chosen ? sm.get(chosen.id) : undefined, mine = !!chosen && m.hosting.includes(chosen.id);
+  const existing = chosen ? sm.get(chosen.id) : undefined, mine = !!chosen && m.hosting.includes(chosen.id), prepared = existing?.status === 'prepared'; // the crew set the booth up first
   const [f, setF] = useState({ company: existing?.company ?? m.passport?.company ?? '', offer: existing?.offer ?? '', link: existing?.link ?? '', color: existing?.color ?? 0x1e9e6a });
   const [logo, setLogo] = useState<File | null>(null), [photo, setPhoto] = useState<File | null>(null), [ref, setRef] = useState(referral.value);
   const firstBooth = m.hosting.length === 0; // an invitation counts for an exhibitor's first booth only
@@ -111,9 +111,9 @@ export function ClaimSheet() {
         <label>Company name on the booth<input required maxLength={80} value={f.company} onInput={put('company')} /><small class="fhint">It goes up on booth {chosen?.id ?? ''} in the game, next to the booth number, as soon as you save.</small></label>
         <label>One line for visitors<input maxLength={120} placeholder="e.g. Free samples at 3 pm" value={f.offer} onInput={put('offer')} /></label>
         <label>Website<input maxLength={200} inputMode="url" placeholder="yourcompany.com" value={f.link} onInput={put('link')} /></label>
-        <label>Logo<input type="file" accept="image/png,image/jpeg,image/webp" onChange={file(setLogo)} /><small class="fhint">On your counter and a sign over your booth in the game. PNG with a transparent background looks best.</small></label>
+        <label>Logo{prepared && existing?.logo && <span class="opt">already up — add one only to replace it</span>}<input type="file" accept="image/png,image/jpeg,image/webp" onChange={file(setLogo)} /><small class="fhint">On your counter and a sign over your booth in the game. PNG with a transparent background looks best.</small></label>
         {firstBooth && !mine && <label>Invited by another exhibitor? <span class="opt">optional</span><input maxLength={8} autocapitalize="characters" placeholder="Their referral code" value={ref} onInput={(e) => setRef((e.target as HTMLInputElement).value)} /><small class="fhint">{ref ? 'They get points for bringing you in — thank you.' : 'Leave empty if nobody invited you.'}</small></label>}
-        <label>Photo of your booth<input type="file" accept="image/png,image/jpeg,image/webp" onChange={file(setPhoto)} /><small class="fhint">Your booth's backdrop or a photo of it: it goes on the back wall of your virtual booth.</small></label>
+        <label>Photo of your booth{prepared && existing?.photo && <span class="opt">already up — add one only to replace it</span>}<input type="file" accept="image/png,image/jpeg,image/webp" onChange={file(setPhoto)} /><small class="fhint">Your booth's backdrop or a photo of it: it goes on the back wall of your virtual booth.</small></label>
         {err && <p class="err" role="alert">{err}</p>}
         <button class="btn primary big" disabled={busy}>{busy ? 'Saving…' : mine ? 'Save' : 'Bring it online'}</button>
         {!mine && <p class="fine">Your logo and photo go up in the game straight away — change them any time on your dashboard. Our crew checks every booth before it becomes a checkpoint.</p>}
@@ -132,7 +132,7 @@ function BoothPicker() {
     <>
       <label>Your booth number<input autofocus maxLength={8} autocapitalize="characters" value={q} placeholder="e.g. 7C17" onInput={(e) => setQ((e.target as HTMLInputElement).value)} /><small class="fhint">The number on your fascia board, Halls 6–8.</small></label>
       <div class="results">
-        {booths.map((b) => <button key={b.id} class="result" disabled={sm.has(b.id)} onClick={() => { panelStation.value = b; modal.value = 'claim'; }}><strong>Booth {b.id}</strong><small>Hall {b.hall}{sm.has(b.id) ? ` · already registered by ${sm.get(b.id)!.company}` : ''}</small></button>)}
+        {booths.map((b) => { const s = sm.get(b.id), taken = !!s && s.status !== 'prepared'; return <button key={b.id} class="result" disabled={taken} onClick={() => { panelStation.value = b; modal.value = 'claim'; }}><strong>Booth {b.id}</strong><small>Hall {b.hall}{taken ? ` · already registered by ${s.company}` : s ? ` · set up for ${s.company} — bring it online` : ''}</small></button>; })}
         {T && !booths.length && <p class="fine">No booth {T} in Halls 6–8. Check the number on your fascia board.</p>}
       </div>
     </>

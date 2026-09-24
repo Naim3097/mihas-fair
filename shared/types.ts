@@ -114,7 +114,8 @@ export interface CrewTicketView { callsign: string; name: string; company: strin
 
 /* ---------------- M2 ---------------- */
 
-export type StationStatus = 'pending' | 'approved' | 'revoked';
+/** prepared: the crew put the company, logo or photo up before the exhibitor registered; the booth is still free to bring online. */
+export type StationStatus = 'prepared' | 'pending' | 'approved' | 'revoked';
 /** Public view of a claimed station — what every player may see. */
 export interface StationView { id: string; company: string; offer: string; link: string; color: number; status: StationStatus; hosted: boolean; level: number; /** image URLs once the crew has approved the booth */ logo: string | null; photo: string | null }
 export interface StationClaimInput { stationId: string; company: string; offer: string; link: string; color: number; /** referral code of the exhibitor who invited them */ ref?: string }

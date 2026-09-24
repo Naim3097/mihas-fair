@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { createApp } from './app.js';
 import { buildServices } from './wire.js';
 import { testStores } from './test-db.js';
-import type { BoothScan, LevelData, Me, StationView } from '../shared/types.js';
+import type { BoothScan, CrewStationRow, LevelData, Me, StationView } from '../shared/types.js';
 import { CHECKPOINTS, chapters } from '../shared/rules.js';
 
 const root = resolve(import.meta.dirname, '..');
@@ -64,7 +64,7 @@ test('register at Lean X, scan its QR to start, get checkpoints, scan them — a
   assert.equal((await ex[0]!.u.call('POST', '/api/station/photo', { stationId: '7C17', image: PNG })).status, 200, 'and a photo of the booth');
   // the crew can put a logo on any booth that is online, for exhibitors registered at the counter
   assert.equal((await r.user().call('POST', '/api/crew/stations/image', { stationId: '7C19', kind: 'logo', image: PNG })).status, 401, 'crew only');
-  assert.equal((await r.crew.call('POST', '/api/crew/stations/image', { stationId: 'ZZ99', kind: 'logo', image: PNG })).json.code, 'not_hosted');
+  assert.equal((await r.crew.call('POST', '/api/crew/stations/image', { stationId: 'ZZ99', kind: 'logo', image: PNG })).json.code, 'no_station');
   assert.equal((await r.crew.call('POST', '/api/crew/stations/image', { stationId: '7C19', kind: 'logo', image: PNG })).status, 200);
   assert.equal(((await ex[1]!.u.call('GET', '/api/host/stations')).json.data as StationView[])[0]!.logo !== null, true, 'the exhibitor sees the logo the crew put up');
   assert.equal((await r.crew.call('POST', '/api/crew/stations/image', { stationId: '7C19', kind: 'photo', image: PNG })).status, 200, 'and the booth photo');
@@ -246,4 +246,48 @@ test('a booth row with no exhibitor behind it (no card) is shown to the crew and
   await v.call('POST', '/api/stamp', { stationId: level.hero.id, proof: 'beacon', beacon: await r.beacon(level.hero.id) });
   assert.deepEqual((await v.me()).mission.checkpoints.map((c) => c.stationId), ['7C17'], 'only the real exhibitor is a checkpoint');
   void ex;
+});
+
+test('the crew prepares a booth before its exhibitor registers: name, logo and photo are in the world, and the exhibitor inherits them', async () => {
+  const r = await rig();
+  assert.equal((await r.crew.call('POST', '/api/crew/stations/prepare', { stationId: 'ZZ99', company: 'Nobody' })).json.code, 'no_station');
+  assert.equal((await r.crew.call('POST', '/api/crew/stations/prepare', { stationId: level.hero.id, company: 'Nobody' })).json.code, 'reserved');
+  assert.equal((await r.crew.call('POST', '/api/crew/stations/prepare', { stationId: '7c19', company: 'A' })).json.code, 'company');
+  assert.equal((await r.user().call('POST', '/api/crew/stations/prepare', { stationId: '7C19', company: 'Afyaa Sdn Bhd' })).status, 401, 'crew only');
+  assert.equal((await r.crew.call('POST', '/api/crew/stations/prepare', { stationId: ' 7c19 ', company: 'Afyaa Sdn Bhd' })).status, 200);
+  assert.equal((await r.crew.call('POST', '/api/crew/stations/image', { stationId: '7C19', kind: 'logo', image: PNG })).status, 200, 'a logo before anyone registered');
+  assert.equal((await r.crew.call('POST', '/api/crew/stations/image', { stationId: '7C19', kind: 'photo', image: PNG })).status, 200, 'and the photo');
+
+  // in the world at once, as a prepared booth: name, logo and photo, but nobody behind the counter
+  let s = ((await r.user().call('GET', '/api/stations')).json.data as StationView[]).find((x) => x.id === '7C19')!;
+  assert.equal(s.status, 'prepared'); assert.equal(s.company, 'Afyaa Sdn Bhd'); assert.ok(s.logo && s.photo, 'logo and photo already up');
+  const crewRow = ((await r.crew.call('GET', '/api/crew/stations')).json.data as CrewStationRow[]).find((x) => x.id === '7C19')!;
+  assert.equal(crewRow.status, 'prepared'); assert.equal(crewRow.ownerName, '');
+  const v = r.user(); await v.register('Visitor One', 'visitor');
+  assert.equal((await v.call('POST', '/api/station/share', { stationId: '7C19', fields: ['name'] })).json.code, 'not_hosted', 'no card to leave: nobody runs it yet');
+  // the crew may correct the name; the images stay
+  assert.equal((await r.crew.call('POST', '/api/crew/stations/prepare', { stationId: '7C19', company: 'Afyaa' })).status, 200);
+  r.tick();
+  s = ((await r.user().call('GET', '/api/stations')).json.data as StationView[]).find((x) => x.id === '7C19')!;
+  assert.equal(s.company, 'Afyaa'); assert.ok(s.logo);
+
+  // the exhibitor registers with their own details only: the name, logo and photo are already theirs
+  const ex = r.user(); await ex.register('Owner 7C19', 'exhibitor');
+  const c = await ex.call('POST', '/api/station/claim', { stationId: '7C19', company: '', offer: 'Halal skincare', link: 'afyaa.com', color: 0x17b6d6 });
+  assert.equal(c.status, 200, c.json?.error);
+  r.tick();
+  s = ((await r.user().call('GET', '/api/stations')).json.data as StationView[]).find((x) => x.id === '7C19')!;
+  assert.equal(s.status, 'pending'); assert.equal(s.company, 'Afyaa'); assert.equal(s.offer, 'Halal skincare'); assert.ok(s.logo && s.photo, 'inherited');
+  assert.equal(((await r.user().call('GET', '/api/stations')).json.data as StationView[]).filter((x) => x.id === '7C19').length, 1, 'once in the list');
+  assert.equal((await r.crew.call('POST', '/api/crew/stations/prepare', { stationId: '7C19', company: 'Someone Else' })).json.code, 'taken', 'online now: not a prepared booth any more');
+  const mine = (await ex.call('GET', '/api/host/stations')).json.data as StationView[];
+  assert.equal(mine[0]!.company, 'Afyaa'); assert.ok(mine[0]!.logo, 'on their dashboard');
+
+  // a prepared booth the crew removes is gone with its images
+  assert.equal((await r.crew.call('POST', '/api/crew/stations/prepare', { stationId: '7C17', company: 'Gone Soon' })).status, 200);
+  assert.equal((await r.crew.call('POST', '/api/crew/stations/image', { stationId: '7C17', kind: 'logo', image: PNG })).status, 200);
+  assert.equal((await r.crew.call('POST', '/api/crew/stations/status', { stationId: '7C17', status: 'release' })).status, 200);
+  r.tick();
+  assert.equal(((await r.user().call('GET', '/api/stations')).json.data as StationView[]).find((x) => x.id === '7C17'), undefined);
+  assert.equal((await r.user().call('GET', '/api/logo/7C17')).status, 404);
 });

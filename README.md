@@ -25,7 +25,7 @@ npm run live       # prints http://<your LAN address>:8787/
 
 - `/` — the fair. Tap or click to walk, WASD or arrows, Shift walks, Space jumps, C rolls, E does the thing in
   front of you, 1 2 3 wave / cheer / dance, M the map, drag to look, pinch or wheel to zoom.
-- `/crew.html` — booth staff (the crew PIN): prize codes, leads, booth approval, printed QRs, and **Register** for signing an exhibitor up at the counter (they get a `/?join=CODE` link that hands them the account). `/screen.html` — the big screen for a stand.
+- `/crew.html` — booth staff (the crew PIN): prize codes, leads, booth approval, printed QRs, **Prepare a booth** (company name, logo and photo up before the exhibitor registers; they add only their own details later), and **Register** for signing an exhibitor up at the counter (they get a `/?join=CODE` link that hands them the account). `/screen.html` — the big screen for a stand.
 - `/p/<slug>` — a visitor's card page.
 
 ## Deploy
