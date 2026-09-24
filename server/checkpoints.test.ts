@@ -291,3 +291,19 @@ test('the crew prepares a booth before its exhibitor registers: name, logo and p
   assert.equal(((await r.user().call('GET', '/api/stations')).json.data as StationView[]).find((x) => x.id === '7C17'), undefined);
   assert.equal((await r.user().call('GET', '/api/logo/7C17')).status, 404);
 });
+
+test('over HTTP, a ping carries the kit and the height to everyone near: the route passes them on, the server keeps only what was paid for', async () => {
+  const r = await rig();
+  const flyer = r.user(), watcher = r.user();
+  await flyer.call('POST', '/api/start', { role: 'visitor' }); await watcher.call('POST', '/api/start', { role: 'visitor' });
+  const spot = { x: level.spawns.short.x, y: level.spawns.short.y, h: 0 };
+  await flyer.call('POST', '/api/presence', { ...spot, spawn: true, kit: 'jetpack', z: 3, pose: 'fly' });
+  let seen = ((await watcher.call('POST', '/api/presence', { ...spot, x: spot.x + 1, spawn: true })).json.data as { holograms: { kit?: string; z: number; pose?: string }[] }).holograms;
+  assert.equal(seen.length, 1); assert.equal(seen[0]!.kit, undefined, 'not paid for'); assert.equal(seen[0]!.z, 0);
+  const id = (await r.services.game.db.get<{ id: string }>('SELECT id FROM players ORDER BY created_at LIMIT 1'))!.id; // the flyer: the first guest made
+  await r.services.game.db.run('INSERT INTO playground_state (player_id, stars, unlocks, gear, updated_at) VALUES (?,?,?,?,?)', [id, 0, 'boots,jetpack', 'jetpack', 0]);
+  r.tick(31_000); // the ownership cache is half a minute old by now
+  await flyer.call('POST', '/api/presence', { ...spot, kit: 'jetpack', z: 3, pose: 'fly' });
+  seen = ((await watcher.call('POST', '/api/presence', { ...spot, x: spot.x + 1 })).json.data as { holograms: { kit?: string; z: number; pose?: string }[] }).holograms;
+  assert.equal(seen[0]!.kit, 'jetpack'); assert.equal(seen[0]!.z, 3); assert.equal(seen[0]!.pose, 'fly');
+});

@@ -103,3 +103,17 @@ Seeing it is the invitation. One quiet line, once, says where it comes from.
 - **Cost stays flat.** Two fields per ping, no new requests, kit models loaded once, far bodies undressed on phones.
 - **Not in this sweep.** The big screen keeps its dots (a second body implementation lives there); the exhaust
   ribbon of other people's jetpacks; any change to ping rate or holo caps.
+
+## Status — 24 Sep 2026, evening
+
+Done, in six commits, one per step. What the live check (two scripted guests on local SQLite, watched from Chrome)
+turned up beyond the plan:
+
+- The presence route rebuilt the ping field by field and dropped the kit and the height; the unit tests passed the
+  service directly and never saw it. Fixed, with a test over HTTP so the route cannot forget again.
+- Seen for real: the flyer overhead with the pack on its back and its name riding up with it; the skater gliding past
+  on its frames; the local player's own flight with the camera tipping over the halls and staying under the glass at
+  the ceiling; the ping carrying `pose: fly, kit: jetpack, z: 6.5`; both one-time lines recorded on the phone; the
+  settle into the Playground and back; the local presence table upgraded in place with its two new columns.
+- Not done: the phone-tier check at six bodies (only two players were on hand). The 30 m dressing rule is in the code
+  and covered by reading, not by a crowd.
