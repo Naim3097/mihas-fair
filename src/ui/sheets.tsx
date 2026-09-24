@@ -107,7 +107,7 @@ export function ClaimSheet() {
   return (
     <Sheet k={chosen ? where(chosen) : 'Register your booth'} title={mine ? 'Booth profile' : 'Light up your booth'} onClose={close}>
       <form onSubmit={submit}>
-        {!mine && <p class="lead">Your booth glows for every player with your name, logo and photo the moment you save; it becomes a checkpoint on their mission once we approve it; and everyone who scans your QR comes to you — free.</p>}
+        {!mine && <p class="lead">{prepared ? 'Our crew set this booth up for you, so it is approved the moment you save: your name, logo and photo for every player, a checkpoint on their missions, and everyone who scans your QR comes to you — free.' : 'Your booth glows for every player with your name, logo and photo the moment you save; it becomes a checkpoint on their mission once we approve it; and everyone who scans your QR comes to you — free.'}</p>}
         <label>Company name on the booth<input required maxLength={80} value={f.company} onInput={put('company')} /><small class="fhint">It goes up on booth {chosen?.id ?? ''} in the game, next to the booth number, as soon as you save.</small></label>
         <label>One line for visitors<input maxLength={120} placeholder="e.g. Free samples at 3 pm" value={f.offer} onInput={put('offer')} /></label>
         <label>Website<input maxLength={200} inputMode="url" placeholder="yourcompany.com" value={f.link} onInput={put('link')} /></label>
@@ -116,7 +116,7 @@ export function ClaimSheet() {
         <label>Photo of your booth{prepared && existing?.photo && <span class="opt">already up — add one only to replace it</span>}<input type="file" accept="image/png,image/jpeg,image/webp" onChange={file(setPhoto)} /><small class="fhint">Your booth's backdrop or a photo of it: it goes on the back wall of your virtual booth.</small></label>
         {err && <p class="err" role="alert">{err}</p>}
         <button class="btn primary big" disabled={busy}>{busy ? 'Saving…' : mine ? 'Save' : 'Bring it online'}</button>
-        {!mine && <p class="fine">Your logo and photo go up in the game straight away — change them any time on your dashboard. Our crew checks every booth before it becomes a checkpoint.</p>}
+        {!mine && <p class="fine">Your logo and photo go up in the game straight away — change them any time on your dashboard.{prepared ? '' : ' Our crew checks every booth before it becomes a checkpoint.'}</p>}
       </form>
     </Sheet>
   );

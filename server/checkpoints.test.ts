@@ -248,7 +248,7 @@ test('a booth row with no exhibitor behind it (no card) is shown to the crew and
   void ex;
 });
 
-test('the crew prepares a booth before its exhibitor registers: name, logo and photo are in the world, and the exhibitor inherits them', async () => {
+test('the crew prepares a booth before its exhibitor registers: name, logo and photo are in the world, and the exhibitor inherits them, approved', async () => {
   const r = await rig();
   assert.equal((await r.crew.call('POST', '/api/crew/stations/prepare', { stationId: 'ZZ99', company: 'Nobody' })).json.code, 'no_station');
   assert.equal((await r.crew.call('POST', '/api/crew/stations/prepare', { stationId: level.hero.id, company: 'Nobody' })).json.code, 'reserved');
@@ -277,7 +277,7 @@ test('the crew prepares a booth before its exhibitor registers: name, logo and p
   assert.equal(c.status, 200, c.json?.error);
   r.tick();
   s = ((await r.user().call('GET', '/api/stations')).json.data as StationView[]).find((x) => x.id === '7C19')!;
-  assert.equal(s.status, 'pending'); assert.equal(s.company, 'Afyaa'); assert.equal(s.offer, 'Halal skincare'); assert.ok(s.logo && s.photo, 'inherited');
+  assert.equal(s.status, 'approved', 'the crew checked it when they prepared it: approved on arrival'); assert.equal(s.company, 'Afyaa'); assert.equal(s.offer, 'Halal skincare'); assert.ok(s.logo && s.photo, 'inherited');
   assert.equal(((await r.user().call('GET', '/api/stations')).json.data as StationView[]).filter((x) => x.id === '7C19').length, 1, 'once in the list');
   assert.equal((await r.crew.call('POST', '/api/crew/stations/prepare', { stationId: '7C19', company: 'Someone Else' })).json.code, 'taken', 'online now: not a prepared booth any more');
   const mine = (await ex.call('GET', '/api/host/stations')).json.data as StationView[];

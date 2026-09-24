@@ -274,7 +274,7 @@ function PrepareBooth({ onDone }: { onDone: () => void }) {
   return (
     <form class="sheet wide" onSubmit={submit}>
       <h2>Prepare a booth</h2>
-      <p class="fine">For exhibitors who have not registered yet. Put their company name on the booth now, then their logo and booth photo below: all three are in the game straight away. When they register, the booth is theirs to bring online and only their own details are left to fill in.</p>
+      <p class="fine">For exhibitors who have not registered yet. Put their company name on the booth now, then their logo and booth photo below: all three are in the game straight away. When they register, the booth is theirs to bring online and only their own details are left to fill in — and it is approved as they save, since you checked it here.</p>
       {done && <div class="banner ok" role="status">
         <p style={{ margin: 0 }}>{done.company} · Booth {done.stationId} is set up and on the sign in the game. Now their images:</p>
         <div class="logo-row"><p class="fine" style={{ margin: 0 }}><b>Their logo</b> · on their counter and the sign over their booth. A PNG with a transparent background looks best.</p><ImageUpload stationId={done.stationId} kind="logo" onDone={onDone} big /></div>

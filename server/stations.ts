@@ -122,12 +122,14 @@ export class Stations {
     const mine = await this.g.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM stations WHERE owner_id = ? AND status != 'revoked'", [id]);
     if ((mine?.n ?? 0) >= MAX_STATIONS_PER_OWNER) throw new GameError('too_many', `One account can run up to ${MAX_STATIONS_PER_OWNER} booths`);
     const first = (mine?.n ?? 0) === 0;
-    const stmts: Stmt[] = [['INSERT INTO stations (station_id, owner_id, company, offer, link, color, status, claimed_at) VALUES (?,?,?,?,?,?,?,?)', [booth.id, id, company, offer, link, color, 'pending', t]]];
+    // a booth the crew prepared was checked by the crew already: it comes online approved, a checkpoint from the first minute
+    const stmts: Stmt[] = [['INSERT INTO stations (station_id, owner_id, company, offer, link, color, status, claimed_at) VALUES (?,?,?,?,?,?,?,?)', [booth.id, id, company, offer, link, color, prep ? 'approved' : 'pending', t]]];
     if (first) stmts.push(...this.g.award(id, 'station_claim', POINTS.boothOnline, booth.id, null, t));
     if (prep) stmts.push(['DELETE FROM booth_prep WHERE station_id = ?', [booth.id]]); // the logo and photo stay: they are filed under the booth number
     stmts.push(["UPDATE players SET cls = 'exhibitor' WHERE id = ?", [id]]); // whoever runs a booth is an exhibitor, whichever door they came in by
     await this.g.db.batch(stmts);
     this.cache.at = -1e9;
+    if (prep) this.onStatus(); // the pool of checkpoints grew
     if (first) await this.onFirstClaim(id, input.ref);
     return first ? [{ action: 'station_claim', xp: POINTS.boothOnline, target: company }] : [];
   }
@@ -237,7 +239,7 @@ export class Stations {
   }
 
   /** Crew: set a booth up before its exhibitor registers — the company name now, the logo and photo through the image
-   *  upload. It shows in the world at once; the exhibitor later only adds their own details and the booth is theirs. */
+   *  upload. It shows in the world at once; the exhibitor later only adds their own details and the booth is theirs, approved. */
   async crewPrepare(rawId: unknown, rawCompany: unknown): Promise<void> {
     const booth = this.g.stations.get(cleanText(rawId, 8).toUpperCase());
     if (!booth) throw new GameError('no_station', 'No booth with that number in Halls 6–8');
