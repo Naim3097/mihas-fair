@@ -2,8 +2,9 @@ import { useEffect, useState } from 'preact/hooks';
 import type { EngineApi as Engine } from '../game/engine-api';
 import { api, ApiError } from '../net/api';
 import { CHECKPOINTS, POINTS, ROLE_INFO, chapters, type Role } from '../../shared/rules';
+import { MET_STARS } from '../../shared/playground';
 import type { BoothTeamPeek, HandoffPeek, PassportInput } from '../../shared/types';
-import { markSeen, kitHint, riding, afterCard, autoWalk, boothAction, currentCp, gate, handoff, referral, unreachCheckpoint, setGate, teamInvite, atLaunchPad, bootError, bootNote, distToGoal, goalVia, guideOn, guideTarget, herePlace, journey, level, me, modal, moveHint, nearLift, nearStation, offline, online, panelStation, phase, seated, stampedSet, stationMap, toast, toasts, world } from '../state';
+import { markSeen, kitHint, riding, afterCard, autoWalk, boothAction, currentCp, gate, handoff, referral, unreachCheckpoint, setGate, teamInvite, atLaunchPad, bootError, bootNote, distToGoal, goalVia, guideOn, guideTarget, herePlace, journey, level, me, modal, moveHint, nearLift, nearStation, offline, online, panelStation, phase, seated, stampedSet, stationMap, switches, toast, toasts, world } from '../state';
 import { BoardsSheet, PlaygroundHud } from './playground';
 import { GEAR } from '../playground/gear';
 import { pgControls, pgFuel, pgGear, pgStore, pgUnlocks } from '../playground/state';
@@ -270,7 +271,7 @@ function Hud({ engine }: Eng) {
             {place?.verb === 'photo' && <button class="chip act" onClick={() => void eng?.photo()}>Take a photo<kbd>E</kbd></button>}
             {(place?.verb === 'sit' || place?.verb === 'watch') && !act && <button class="chip act" onClick={() => eng?.sit()}>{place.verb === 'watch' ? 'Sit and watch' : 'Sit down'}<kbd>E</kbd></button>}
             {!atLaunchPad.value && act === 'stamp' && <button class="chip act" disabled={stamping} onClick={doStamp}>{stamping ? 'Swapping…' : `Swap card · +${POINTS.stamp + (m.shared.includes(st!.id) ? 0 : POINTS.leaveCard)}`}{!stamping && <kbd>E</kbd>}</button>}
-            {!atLaunchPad.value && act === 'swap' && <button class="chip act" onClick={() => { panelStation.value = st; modal.value = 'booth'; }}>{m.shared.includes(st!.id) ? 'Card swapped ✓' : `Swap card · +${POINTS.leaveCard}`}<kbd>E</kbd></button>}
+            {!atLaunchPad.value && act === 'swap' && <button class="chip act" onClick={() => { panelStation.value = st; modal.value = 'booth'; }}>{m.shared.includes(st!.id) ? 'Card swapped ✓' : `Swap card · +${POINTS.leaveCard}${switches.value.sky ? ` · +${MET_STARS} ★` : ''}`}<kbd>E</kbd></button>}
             {!atLaunchPad.value && !act && st && m.scanned.includes(st.id) && <span class="chip done">Scanned ✓</span>}
             {!atLaunchPad.value && st && <button class={'chip' + (has ? ' on' : '')} onClick={() => { panelStation.value = st; modal.value = 'booth'; }}>{stName}{view && view.status !== 'prepared' ? (view.hosted ? ' · at the counter' : ' · online') : ''} ›</button>}
           </div>

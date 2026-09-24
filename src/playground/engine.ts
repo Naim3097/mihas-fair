@@ -129,7 +129,7 @@ export class PlaygroundEngine implements Scene {
    *  (src/universe.ts); the camera starts on that same view here and comes down onto the body, so the change of world
    *  does not show. */
   enter() {
-    this.stage.use(this); this.leaving = null; riding.value = false;
+    this.stage.use(this); this.leaving = null; riding.value = false; this.store.refresh(); // stars the fair paid since
     this.gear = this.store.get().gear; // the kit worn in the fair is the gear here
     this.toPad(); pgMode.value = 'pad'; pgSummary.value = null;
     this.rig.dist = SKY_VIEW.dist; this.rig.pitch = SKY_VIEW.pitch; this.rig.snapBehind(SKY_VIEW.yaw);

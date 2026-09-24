@@ -31,6 +31,7 @@ export function buildServices(o: { db: Db; secret: string; level: LevelData; pub
   stations.onStatus = () => checkpoints.forget();
   const referrals = new Referrals(game, team), onboarding = new Onboarding(game, stations, team), playground = new Playground(game, { daily: o.playgroundDaily === true, sky: async () => (await ops.flags()).sky });
   stations.onFirstClaim = (id, ref) => referrals.record(id, ref);
+  stations.onFirstShare = (id, t) => playground.metExhibitor(id, t); // a lead at the fair pays stars for the Playground
 
   game.hooks = {
     companies: () => stations.ownerCompanies(),

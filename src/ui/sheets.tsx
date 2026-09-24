@@ -7,9 +7,10 @@ import { shrink } from './images';
 import { Camera, FieldPicker, Qr, Sheet, useCountdown } from './common';
 import { pgControls } from '../playground/state';
 import { POINTS, ROLE_INFO, waLink, type ShareField } from '../../shared/rules';
+import { MET_STARS } from '../../shared/playground';
 import type { Booth, BoothTeamView, Contact, LinkCode, LinkPeek } from '../../shared/types';
 import { LinkDemoHint, StationDemoHint } from '../demo/Tour';
-import { boothAction, referral, setReferral, drop, guideOn, guideTarget, journey, level, me, modal, myBooths, nearStation, online, panelStation, pendingLink, stampedSet, stationMap, stations, toast, world } from '../state';
+import { boothAction, referral, setReferral, drop, guideOn, guideTarget, journey, level, me, modal, myBooths, nearStation, online, panelStation, pendingLink, stampedSet, stationMap, stations, switches, toast, world } from '../state';
 
 type Eng = { engine: () => Engine | null };
 const fail = (e: unknown, fallback: string) => toast(e instanceof ApiError ? e.message : fallback, undefined, 'warn', 4500);
@@ -42,7 +43,7 @@ export function BoothSheet({ engine }: Eng) {
         <div class="stack"><button class="btn primary big" onClick={() => (modal.value = 'mybooth')}>Open my booth</button><button class="btn big" onClick={() => (modal.value = 'claim')}>Edit booth profile</button></div>
       ) : (
         <div class="stack">
-          {boothAction(b) === 'stamp' && near && <button class="btn primary big" disabled={busy} onClick={() => run(() => engine()!.stamp(b), 'Could not swap cards')}>Swap card · +{POINTS.stamp + (left ? 0 : POINTS.leaveCard)}</button>}
+          {boothAction(b) === 'stamp' && near && <button class="btn primary big" disabled={busy} onClick={() => run(() => engine()!.stamp(b), 'Could not swap cards')}>Swap card · +{POINTS.stamp + (left ? 0 : POINTS.leaveCard)}{st && !left && switches.value.sky ? ` · +${MET_STARS} ★` : ''}</button>}
           {cp && !cp.done && <p class="fine">{met ? 'Scanned.' : 'For the checkpoint: scan the Mission X QR on their counter.'}</p>}
           {!near && <button class="btn big" onClick={() => guideTo(b, title)}>Guide me here</button>}
 
@@ -65,7 +66,7 @@ export function BoothSheet({ engine }: Eng) {
               <p class="fine">{visitor ? 'They receive your card: name, company, role, phone and email. You can take it back any time from My contacts.' : 'They receive only what you tick. You can take it back any time from My contacts.'}</p>
               {!visitor && <FieldPicker value={fields} onChange={setFields} />}
               <div class="stack">
-                <button class="btn primary big" disabled={busy} onClick={() => run(() => api.leaveCard(b.id, fields), 'Could not leave your card')}>{left ? 'Update what they see' : `Swap card · +${POINTS.leaveCard}`}</button>
+                <button class="btn primary big" disabled={busy} onClick={() => run(() => api.leaveCard(b.id, fields), 'Could not leave your card')}>{left ? 'Update what they see' : `Swap card · +${POINTS.leaveCard}${switches.value.sky ? ` · +${MET_STARS} ★` : ''}`}</button>
                 {left && <button class="btn big" disabled={busy} onClick={() => run(() => api.takeBackCard(b.id), 'Could not undo')}>Take it back</button>}
               </div>
             </div>

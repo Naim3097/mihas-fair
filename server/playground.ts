@@ -7,7 +7,7 @@
 import { Game, GameError, dayStart } from './game.js';
 import type { Stmt } from './db/types.js';
 import type { PlaygroundBest, PlaygroundBoardRow, PlaygroundGear, PlaygroundMe, PlaygroundOrbit, PlaygroundRunInput, PlaygroundRunResult, XpEvent } from '../shared/types.js';
-import { COMBO_MAX, COURSE_DIAMONDS, COURSE_STARS, DIAMOND, DIAMOND_STARS, GATE_BONUS_PER_S, KIT_NAME, KIT_PRICE, O2_CAP, STAR } from '../shared/playground.js';
+import { COMBO_MAX, COURSE_DIAMONDS, COURSE_STARS, DIAMOND, DIAMOND_STARS, GATE_BONUS_PER_S, KIT_NAME, KIT_PRICE, MET_STARS, O2_CAP, STAR } from '../shared/playground.js';
 
 const GEARS: PlaygroundGear[] = ['boots', 'skates', 'jetpack'];
 /** A token opens one run; another is not issued within this gap (Again after a short run must still work), and one
@@ -94,7 +94,16 @@ export class Playground {
     return { result: { ...(await this.me(id)), newBest }, events };
   }
 
-  /** Buy a gear with stars: refused when short, kept once bought. */
+  /** A card left at an exhibitor's booth for the first time (a lead for them) pays stars here, while the crew's switch
+   *  for it is on: the statements to go into the share's own batch, and the stars its event says. */
+  async metExhibitor(id: string, t: number): Promise<{ stmts: Stmt[]; stars: number } | null> {
+    if (!this.opts.sky || !(await this.opts.sky())) return null;
+    return {
+      stmts: [['INSERT INTO playground_state (player_id, stars, unlocks, gear, updated_at) VALUES (?,?,?,?,?) ON CONFLICT(player_id) DO UPDATE SET stars = playground_state.stars + excluded.stars, updated_at = excluded.updated_at', [id, MET_STARS, 'boots', 'boots', t]]],
+      stars: MET_STARS,
+    };
+  }
+
   /** Does the player own this kit? Cached briefly: the fair asks with every presence ping. */
   async owns(id: string, kit: PlaygroundGear): Promise<boolean> {
     const t = this.g.now(); let c = this.ownedCache.get(id);
@@ -102,6 +111,7 @@ export class Playground {
     return c.unlocks.includes(kit);
   }
 
+  /** Buy a gear with stars: refused when short, kept once bought. */
   async unlock(id: string, gear: string): Promise<PlaygroundMe> {
     if (!GEARS.includes(gear as PlaygroundGear) || gear === 'boots') throw new GameError('gear', 'No such gear');
     const g = gear as PlaygroundGear, s = await this.state(id), price = KIT_PRICE[g];

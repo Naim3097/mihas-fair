@@ -148,15 +148,17 @@ const ACTION_LABEL: Record<string, string> = {
   passport: 'Your card is ready', dock: 'Claimed at Booth 7E17', stamp: 'Stamped', scan: 'Scanned at the real booth', verified_contact: 'Met in person',
   share_station: 'Card left', link: 'Cards swapped', station_claim: 'Your booth is online', daily_drop: 'Booth of the day',
   mission_start: 'Mission started', checkpoint: 'Checkpoint', prize: 'Your tote bag is here', progress: 'Lean X Digital',
+  playground_daily: 'The Playground',
 };
 const BIG = new Set(['passport', 'dock', 'station_claim', 'link', 'mission_start', 'checkpoint', 'prize']);
 /** One action can pay several ways at once (a scan that is also the booth of the day). It is still one moment: one toast, one total. */
 export function showEvents(events: XpEvent[] | undefined) {
   const list = events ?? []; if (!list.length) return;
   const total = list.reduce((n, e) => n + e.xp, 0), labels = [...new Set(list.map((e) => ACTION_LABEL[e.action] ?? e.action))], target = list.find((e) => e.target)?.target, note = list.find((e) => e.note)?.note;
+  const stars = list.reduce((n, e) => n + (e.stars ?? 0), 0); // what it paid into the Playground as well, said in the same breath
   // heard and felt as well as read: a chime for points, a longer one for the moments the mission turns on
   if (list.some((e) => BIG.has(e.action))) { sfx('big'); buzz([18, 50, 18]); } else if (total > 0) { sfx('stamp'); buzz(14); }
-  if (total > 0) toast(`+${total} points`, [...labels, target, note].filter(Boolean).join(' · '), 'xp', note ? 5200 : 3400);
+  if (total > 0) toast(`+${total} points${stars ? ` · +${stars} ★` : ''}`, [...labels, target, note].filter(Boolean).join(' · '), 'xp', note ? 5200 : 3400);
   else toast(labels[0]!, target);
 }
 

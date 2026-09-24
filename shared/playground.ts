@@ -12,6 +12,10 @@ export const STAR = 10, COMBO_WINDOW = 1.2, COMBO_MAX = 4, DIAMOND = 300, DIAMON
 /** What the course holds: every star on every line, and the diamonds (src/playground/course.ts builds it). */
 export const COURSE_STARS = 217, COURSE_DIAMONDS = 3;
 
+/** Stars for the Playground each time a card is left at an exhibitor's booth (once a booth, while the crew's sky switch
+ *  is on): a lead at the fair pays into the world above it. */
+export const MET_STARS = 20;
+
 export type Kit = 'boots' | 'skates' | 'jetpack';
 /** What each kit costs in stars, and what it is called. */
 export const KIT_PRICE: Record<Kit, number> = { boots: 0, skates: 100, jetpack: 250 };

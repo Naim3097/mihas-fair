@@ -33,6 +33,9 @@ export class Stations {
   onStatus: () => void = () => {};
   /** Told when an exhibitor brings their first booth online, with the referral code they registered with. */
   onFirstClaim: (id: string, ref: unknown) => Promise<void> = async () => {};
+  /** Asked when a card is first left at a booth: what else it pays (the Playground's stars), as statements for the
+   *  share's own batch; null for nothing. */
+  onFirstShare: (id: string, t: number) => Promise<{ stmts: Stmt[]; stars: number } | null> = async () => null;
   constructor(private g: Game, private team: BoothTeam) {}
 
   private sxp(r: StationRow, c: Counts): number {
@@ -208,11 +211,13 @@ export class Stations {
       await this.g.db.run('UPDATE card_shares SET fields = ?, revoked_at = NULL, created_at = ? WHERE id = ?', [fields, t, prior.id]);
       return [];
     }
+    const also = await this.onFirstShare(id, t);
     await this.g.db.batch([
       ['INSERT INTO card_shares (from_player, to_station, fields, created_at) VALUES (?,?,?,?)', [id, stationId, fields, t]],
       ...this.g.award(id, 'share_station', POINTS.leaveCard, stationId, { fields }, t),
+      ...(also?.stmts ?? []),
     ]);
-    return [{ action: 'share_station', xp: POINTS.leaveCard, target: st.company }];
+    return [{ action: 'share_station', xp: POINTS.leaveCard, target: st.company, ...(also ? { stars: also.stars } : {}) }];
   }
 
   async revokeShare(id: string, stationId: string): Promise<void> {

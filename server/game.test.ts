@@ -7,6 +7,7 @@ import { buildServices } from './wire.js';
 import { testStores } from './test-db.js';
 import type { LevelData, Me } from '../shared/types.js';
 import { MISSION_STAMPS, POINTS, boothSteps, chapters } from '../shared/rules.js';
+import { MET_STARS } from '../shared/playground.js';
 
 const root = resolve(import.meta.dirname, '..');
 const level = JSON.parse(readFileSync(resolve(root, 'public/data/floor.json'), 'utf8')) as LevelData;
@@ -166,7 +167,7 @@ test('the exhibitor journey: light up, get scanned, lead', async () => {
 
   // 3 — lead: the visitor leaves their card, choosing the fields
   r = await call('POST', '/api/station/share', { stationId: '7C17', fields: ['name', 'company', 'email'] }, vis);
-  assert.deepEqual(r.json.events, [{ action: 'share_station', xp: POINTS.leaveCard, target: 'Kedai Kopi' }]);
+  assert.deepEqual(r.json.events, [{ action: 'share_station', xp: POINTS.leaveCard, target: 'Kedai Kopi', stars: MET_STARS }], 'with the sky switch on (as off the live site), the Playground\'s stars come with it');
   assert.equal(await steps(), 3);
   const leads = (await call('GET', '/api/host/leads?station=7C17', undefined, ex)).json.data as { name: string; email: string; phone: string; verified: boolean }[];
   assert.deepEqual(leads.map((l) => [l.name, l.email, l.phone, l.verified]), [['Aisyah Rahman', 'aisyah@example.com', '', true]]);

@@ -100,7 +100,8 @@ export interface PassportView {
   url: string;
 }
 
-export interface XpEvent { action: string; xp: number; target?: string; note?: string }
+/** `stars`: what the moment also paid into the Playground (a card left at an exhibitor's booth). */
+export interface XpEvent { action: string; xp: number; target?: string; note?: string; stars?: number }
 
 export interface ApiOk<T> { ok: true; data: T; me?: Me; events?: XpEvent[] }
 export interface ApiErr { ok: false; error: string; code: string }

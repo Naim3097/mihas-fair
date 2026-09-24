@@ -29,6 +29,8 @@ export interface PlaygroundStore {
   choose(gear: Gear): void;
   /** The orbit to play, chosen on the pad (this device's choice). */
   chooseOrbit(orbit: Orbit): void;
+  /** Ask again what counts (the fair pays stars too: a card left at an exhibitor's booth); nothing for a local store. */
+  refresh(): void;
   /** A finished run counts for its orbit's boards; any run counts as played. Returns whether it is its orbit's new best.
    *  `seed`: the seed Orbit 2's tiles moved by. */
   record(s: RunSummary, gear: Gear, orbit?: Orbit, seed?: number): boolean;
@@ -101,6 +103,7 @@ export class LocalStore implements PlaygroundStore {
   }
   choose(gear: Gear) { if (this.state.unlocks.includes(gear) && this.state.gear !== gear) { this.state.gear = gear; this.save(); this.changed(); } }
   chooseOrbit(orbit: Orbit) { if (this.state.orbit !== orbit) { this.state.orbit = orbit; this.save(); this.changed(); } }
+  refresh() { /* this device is all there is */ }
   record(s: RunSummary, gear: Gear, orbit: Orbit = 1, _seed?: number): boolean { // the seed is the server's to keep
     this.state.runs++;
     const finished = s.reason === 'gate', at = Date.now(), key = orbit === 2 ? 'best2' : 'best', was = this.state[key];
@@ -143,6 +146,7 @@ export class ApiStore implements PlaygroundStore {
   /** The kit chosen, here and on the server, so the next visit wears it too. */
   choose(gear: Gear) { if (this.cache.get().gear === gear) return; this.cache.choose(gear); void api.pgGear(gear).catch(() => {}); }
   chooseOrbit(orbit: Orbit) { this.cache.chooseOrbit(orbit); }
+  refresh() { void this.sync(); }
   beginRun() {
     const run = { token: null as string | null, asking: false }; this.current = run; this.ask(run);
   }
