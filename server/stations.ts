@@ -112,8 +112,8 @@ export class Stations {
       return [];
     }
     if (owner !== id) throw new GameError('not_owner', 'Only the person who registered your booth can add another one');
-    if (existing && existing.owner_id !== id) throw new GameError('taken', existing.status === 'revoked' ? 'This booth is locked — talk to the crew at 8H18A' : 'Someone already brought this booth online. If that is wrong, see the crew at 8H18A.', 409);
-    if (existing?.status === 'revoked') throw new GameError('revoked', 'This claim was removed by the crew — see us at 8H18A', 403);
+    if (existing && existing.owner_id !== id) throw new GameError('taken', existing.status === 'revoked' ? 'This booth is locked — talk to the crew at 7E17' : 'Someone already brought this booth online. If that is wrong, see the crew at 7E17.', 409);
+    if (existing?.status === 'revoked') throw new GameError('revoked', 'This claim was removed by the crew — see us at 7E17', 403);
     if (existing) { // owner editing their profile
       await this.g.db.run('UPDATE stations SET company = ?, offer = ?, link = ?, color = ? WHERE station_id = ?', [company, offer, link, color, booth.id]);
       this.cache.at = -1e9;

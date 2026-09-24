@@ -1,5 +1,5 @@
 // The MIHAS mission: make your card (that is the start — no need to come to Lean X first), scan the QR at the exhibitor
-// booths you were given, then claim your tote bag at Lean X Digital (8H18A). Checkpoints are drawn at random from the booths the crew has approved, up to CHECKPOINTS each,
+// booths you were given, then claim your tote bag at Lean X Digital (7E17). Checkpoints are drawn at random from the booths the crew has approved, up to CHECKPOINTS each,
 // and topped up as more exhibitors are approved. Every QR scan at an exhibitor's booth lands on that exhibitor's
 // dashboard with the visitor's name, phone and email: agreeing to that is part of registering.
 import { Game, GameError } from './game.js';
@@ -85,7 +85,7 @@ export class Checkpoints {
     await this.g.db.run('UPDATE checkpoints SET scanned_at = ? WHERE player_id = ? AND station_id = ?', [t, id, stationId]);
     const m = await this.view(id), done = m.checkpoints.filter((c) => c.done).length;
     const company = m.checkpoints.find((c) => c.stationId === stationId)?.company ?? stationId;
-    return [{ action: 'checkpoint', xp: 0, target: company, note: done >= m.target ? 'All checkpoints done — claim your prize at Booth 8H18A' : `${done} of ${m.target} checkpoints` }];
+    return [{ action: 'checkpoint', xp: 0, target: company, note: done >= m.target ? 'All checkpoints done — claim your prize at Booth 7E17' : `${done} of ${m.target} checkpoints` }];
   }
 
   /** The exhibitor's dashboard: everyone who scanned this booth's QR, newest first. Only the booth's owner may ask. */

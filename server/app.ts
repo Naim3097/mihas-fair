@@ -59,7 +59,7 @@ export function createApp({ game, stations, social, crews, venue, director, gc, 
     }
     c.set('playerId', id);
     if (c.req.method !== 'GET' && c.req.path !== '/api/presence' && c.req.path !== '/api/host/presence' && !writeLimit(id)) throw new GameError('rate', 'Slow down a little', 429);
-    if (c.req.method !== 'GET' && (await ops.isBanned(id))) throw new GameError('review', 'This player is under review — please see the crew at Booth 8H18A', 403);
+    if (c.req.method !== 'GET' && (await ops.isBanned(id))) throw new GameError('review', 'This player is under review — please see the crew at Booth 7E17', 403);
     await next();
   });
   const pid = (c: Context<Vars>) => c.get('playerId');

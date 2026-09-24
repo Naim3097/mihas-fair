@@ -10,7 +10,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const SRC = resolve(here, 'data/level2-source.json'); // vector extraction of Floor Plan V226 page 2, kept with the tools so the build is reproducible
 const OUT = resolve(here, '../public/data/floor.json');
 
-const HERO_ID = '8H18A';
+const HERO_ID = '7E17';
 
 // Special areas measured off the cleaned plan (22.2 px/m). kind: pad = walk-around block, zone = open floor you can enter.
 const areas = [
@@ -29,7 +29,7 @@ const areas = [
 
 // Booths carry only their number: the company on each booth comes from the exhibitor who registers it in the game, never
 // from a list (the organiser's list and the spreadsheet named the wrong companies). Our own booth is the one exception.
-const HERO_NAME = 'Lean X Digital · nexova';
+const HERO_NAME = 'leanxdigital';
 const raw = JSON.parse(readFileSync(SRC, 'utf8'));
 const inside = (o, a) => o.x_m > a.x0 && o.x_m < a.x1 && o.y_m > a.y0 && o.y_m < a.y1;
 

@@ -14,7 +14,7 @@ let reply: (path: string) => unknown = () => ({ ok: true, data: null, events: []
   return Promise.resolve({ json: async () => reply(path) } as unknown as Response);
 };
 const booth = { id: '7C17', hall: 7, x: 100, y: 50, name: '', deck: 2 };
-level.value = { booths: [booth], hero: { id: '8H18A' } } as unknown as LevelData;
+level.value = { booths: [booth], hero: { id: '7E17' } } as unknown as LevelData;
 const reset = () => { calls.length = 0; modal.value = null; panelStation.value = null; pendingLink.value = null; toasts.value = []; stations.value = []; me.value = { passport: { name: 'Test' }, shared: [] } as unknown as Me; reply = () => ({ ok: true, data: null, events: [] }); };
 
 test("a booth's printed QR (a beacon) is a stamp with the beacon token; the booth number is the part before the dot", async () => {

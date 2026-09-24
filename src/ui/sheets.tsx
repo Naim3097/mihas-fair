@@ -308,7 +308,7 @@ export function MenuSheet() {
     <Sheet k={`${m.callsign} · ${online.value} here now`} title="Menu">
       <div class="menu">
         {drop.value && !drop.value.done && <button class="wide" onClick={() => { const d = drop.value!; guideTarget.value = { x: d.x, y: d.y, label: d.label }; guideOn.value = true; modal.value = null; }}><strong>Booth of the day · +{drop.value.bonus}</strong><small>{drop.value.label} · scan its QR at the real booth today</small></button>}
-        {m.cls !== 'exhibitor' && m.passport && <button onClick={go('prize')}><strong>My prize code</strong><small>{m.docked ? 'Tote bag claimed at Lean X Digital' : 'Show it at Lean X Digital, Booth 8H18A, for your tote bag'}</small></button>}
+        {m.cls !== 'exhibitor' && m.passport && <button onClick={go('prize')}><strong>My prize code</strong><small>{m.docked ? 'Tote bag claimed at Lean X Digital' : 'Show it at Lean X Digital, Booth 7E17, for your tote bag'}</small></button>}
         {(m.cls === 'exhibitor' || m.hosting.length > 0) && <button onClick={go(m.passport ? 'mybooth' : 'card')}><strong>My booth</strong><small>{m.hosting.length ? m.hosting.join(', ') + ' · QR and leads' : 'Bring it online'}</small></button>}
         <button onClick={go('swap')}><strong>Swap cards</strong><small>Met someone? Exchange cards · +{POINTS.swap} each</small></button>
         <button onClick={go('contacts')}><strong>My contacts</strong><small>{m.links} people · {m.shared.length} booths</small></button>

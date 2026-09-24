@@ -83,7 +83,7 @@ export class BoothTeam {
     const owner = await this.byCode(rawCode);
     if (owner === id) throw new GameError('own_team', 'This is your own team link — send it to your colleagues');
     await this.g.requirePassport(id).catch(() => { throw new GameError('card', 'First fill in your card, so your team knows who you are'); });
-    if ((await this.booths(id)).length) throw new GameError('has_booth', 'You already run a booth of your own — use a different phone, or ask the crew at 8H18A');
+    if ((await this.booths(id)).length) throw new GameError('has_booth', 'You already run a booth of your own — use a different phone, or ask the crew at 7E17');
     const current = await this.g.db.get<{ owner_id: string }>('SELECT owner_id FROM booth_team WHERE member_id = ?', [id]);
     if (current && current.owner_id !== owner) throw new GameError('other_team', 'You are on another company’s team — leave it first from your dashboard');
     const n = (await this.g.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM booth_team WHERE owner_id = ?', [owner]))!.n;

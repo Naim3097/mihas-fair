@@ -28,7 +28,7 @@ export const POINTS = {
   swap: 50,
   /** get your digital business card at the X */
   card: 200,
-  /** show your prize code at the real Booth 8H18A */
+  /** show your prize code at the real Booth 7E17 */
   booth: 500,
   /** bring your own booth online (exhibitors) */
   boothOnline: 100,
@@ -58,7 +58,7 @@ export function chapters(f: MissionFacts): Chapter[] {
   return [
     { n: 1, title: 'Your card', todo: 'Make your free digital business card.', done: f.card },
     { n: 2, title: 'Checkpoints', todo: `Find your ${f.target || CHECKPOINTS} checkpoint booths and scan the Mission X QR at each one.`, done: f.target > 0 && f.checkpoints >= f.target },
-    { n: 3, title: 'Claim your tote bag', todo: 'Show your prize code at Lean X Digital, Booth 8H18A in Hall 8, and collect your tote bag.', done: f.claimed },
+    { n: 3, title: 'Claim your tote bag', todo: 'Show your prize code at Lean X Digital, Booth 7E17 in Hall 7, and collect your tote bag.', done: f.claimed },
   ];
 }
 

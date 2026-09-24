@@ -4,7 +4,7 @@ This page is the whole game. If something is not here, it is not in the game.
 The numbers live in [`shared/rules.ts`](../shared/rules.ts); the words on screen live in `src/ui/`.
 
 **In one sentence:** make your free digital business card, walk the MIHAS expo on your phone to the exhibitor booths
-on your list, scan the Mission X QR at each — and claim your tote bag at the real Booth 8H18A.
+on your list, scan the Mission X QR at each — and claim your tote bag at the real Booth 7E17.
 
 ## Two doors
 
@@ -26,10 +26,10 @@ One instruction on screen at a time, and three dots that fill in.
    file). This is the only form in the game, and it is the start of the mission. Nobody has to come to Lean X first.
 2. **Checkpoints** — up to three exhibitor booths, drawn from the ones the crew approved. The trail leads to the nearest
    one; scan the Mission X QR on its counter. Every scan lands on that exhibitor's dashboard.
-3. **Claim your tote bag** — with every checkpoint done the trail leads to Booth 8H18A. Show your prize code (the
+3. **Claim your tote bag** — with every checkpoint done the trail leads to Booth 7E17. Show your prize code (the
    mission card, or menu → My prize code); our crew scans it and hands over the tote bag.
 
-Lean X Digital's own QR at 8H18A starts nothing: scanned, it says how many checkpoints are left, or that the tote bag
+Lean X Digital's own QR at 7E17 starts nothing: scanned, it says how many checkpoints are left, or that the tote bag
 is here. Someone standing at the booth can be handed the tote bag early; the crew sees how far they got.
 When the third chapter closes, the ending says what they just did — a customer journey — and who builds those.
 
@@ -44,7 +44,7 @@ After the mission it is free play: the same actions keep scoring.
 | Scan a booth QR at the real booth | 50 |
 | Swap cards with a person | 50 |
 | Get your digital business card at the X | 200 |
-| Show your prize code at the real Booth 8H18A | 500 |
+| Show your prize code at the real Booth 7E17 | 500 |
 
 Exhibitors also get 100 when their booth first comes online. The crew can name a **booth of the day**; scanning its
 QR at the real booth that day pays a bonus they choose.
@@ -86,7 +86,7 @@ Our crew confirms each booth ("verified exhibitor") and removes one that is not 
 | We say | We never say |
 |---|---|
 | booth | station |
-| the X · Booth 8H18A | Launch Pad |
+| the X · Booth 7E17 | Launch Pad |
 | my digital business card · my card | Passport |
 | prize code | Golden Ticket |
 | claimed at the booth | docked |

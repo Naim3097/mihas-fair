@@ -55,7 +55,7 @@ test('the points and proofs under the mission: card, stamps, booth QRs, the priz
   assert.equal(me.xp, 0); assert.match(me.callsign, /^Visitor \d{4}$/); assert.deepEqual(open(me), [1, 2, 3], 'choosing a door is not starting the mission');
 
   // walking: too far to stamp; a teleport is refused; hall and landmark points are switched off
-  const hero = level.hero, target = level.booths.find((b) => b.id === '8H19')!;
+  const hero = level.hero, target = level.booths.find((b) => b.id === '7E16')!; // next door to the X, down the same aisle
   await call('POST', '/api/presence', { x: level.spawns.short.x, y: level.spawns.short.y, h: 0, spawn: true });
   assert.equal((await call('POST', '/api/stamp', { stationId: target.id, proof: 'virtual' })).json.code, 'too_far');
   clock.advance(1000);
@@ -82,7 +82,7 @@ test('the points and proofs under the mission: card, stamps, booth QRs, the priz
   assert.deepEqual([r.json.events[0].action, r.json.events[0].xp], ['stamp', POINTS.stamp]);
   assert.equal((await call('POST', '/api/stamp', { stationId: target.id, proof: 'virtual' })).json.code, 'dup');
   const more = level.booths.filter((b) => b.deck === 2 && b.hall === 8 && b.id !== target.id && b.id !== hero.id).slice(0, 4);
-  assert.equal((await call('POST', '/api/stamp', { stationId: '8H20', proof: 'virtual' })).json.code, 'cooldown', 'not faster than one every five seconds');
+  assert.equal((await call('POST', '/api/stamp', { stationId: '7E15', proof: 'virtual' })).json.code, 'cooldown', 'not faster than one every five seconds');
   for (const b of more) {
     clock.advance(60_000);
     await call('POST', '/api/presence', { x: b.x, y: b.y, h: 0 });
@@ -130,7 +130,7 @@ test('the points and proofs under the mission: card, stamps, booth QRs, the priz
   // the board: one number, and a sub-line anyone can read
   const board = (await call('GET', '/api/boards?board=xp')).json.data as { title: string; sub: string; value: number; you?: boolean }[];
   assert.deepEqual([board[0]!.title, board[0]!.value, board[0]!.you], ['Aisyah R.', me.xp, true]);
-  assert.equal(board[0]!.sub, '7 booths · mission complete at 8H18A');
+  assert.equal(board[0]!.sub, '7 booths · mission complete at 7E17');
   assert.match((await call('GET', '/api/crew/leads.csv', undefined, crewJar)).raw, /Aisyah Rahman/);
 
   // the switched-off systems stay off from the outside too

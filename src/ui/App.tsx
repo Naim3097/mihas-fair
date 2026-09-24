@@ -334,7 +334,7 @@ function Finish() {
   const close = () => { try { if (complete) localStorage.setItem('mx_complete', '1'); } catch { /* ignore */ } modal.value = null; };
   return (
     <div class="scrim"><div class="sheet ticket">
-      <div class="k gold">{complete ? 'Mission complete' : 'Claimed at Booth 8H18A'}</div>
+      <div class="k gold">{complete ? 'Mission complete' : 'Claimed at Booth 7E17'}</div>
       {complete ? (
         <>
           <h2>All checkpoints done.</h2>
@@ -368,14 +368,14 @@ function Rules() {
   );
 }
 
-/** The prize code: what the crew at Booth 8H18A scans for the tote bag. Shown as a QR their console reads and as six characters to type. */
+/** The prize code: what the crew at Booth 7E17 scans for the tote bag. Shown as a QR their console reads and as six characters to type. */
 function PrizeSheet() {
   const m = me.value!, j = journey.value, left = m.mission.checkpoints.filter((c) => !c.done).length, ready = j?.kind === 'visitor' && !!j.steps[1]?.done;
   return (
-    <Sheet k="Lean X Digital · Booth 8H18A" title={m.docked ? 'Tote bag claimed' : 'Your prize code'} gold>
+    <Sheet k="Lean X Digital · Booth 7E17" title={m.docked ? 'Tote bag claimed' : 'Your prize code'} gold>
       {m.docked ? <p class="lead">Thank you for coming by. Enjoy your gift.</p> : m.ticket ? (
         <>
-          <p class="lead">{ready ? 'All checkpoints done. Show this at the Lean X Digital counter in Hall 8 and our crew hands you your tote bag.' : m.mission.target ? `${left} checkpoint${left === 1 ? '' : 's'} to go. Bring this to Lean X Digital, Booth 8H18A, once they are all scanned.` : 'Your checkpoints appear as exhibitors join. Bring this to Lean X Digital, Booth 8H18A, once they are all scanned.'}</p>
+          <p class="lead">{ready ? 'All checkpoints done. Show this at the Lean X Digital counter in Hall 7 and our crew hands you your tote bag.' : m.mission.target ? `${left} checkpoint${left === 1 ? '' : 's'} to go. Bring this to Lean X Digital, Booth 7E17, once they are all scanned.` : 'Your checkpoints appear as exhibitors join. Bring this to Lean X Digital, Booth 7E17, once they are all scanned.'}</p>
           <Qr text={`${location.origin}/crew.html?t=${encodeURIComponent(m.ticket.token)}`} label="Your prize code as a QR" />
           <p class="lead" style={{ letterSpacing: '.18em', fontSize: '28px', fontWeight: 800, textAlign: 'center' }}>{m.ticket.code}</p>
           <p class="fine">If the camera will not read it, tell the crew the six characters.</p>
@@ -452,7 +452,7 @@ function HandoffSheet({ engine }: Eng) {
   };
   return (
     <Sheet k="From the Lean X Digital crew" title={peek ? `${peek.company} · Booth ${peek.stationId}` : 'Your booth in the game'} onClose={close}>
-      {peek && <p class="lead">Our crew at Booth 8H18A set up your booth and your card{peek.name ? ` for ${peek.name}` : ''}. Continue on this phone and it is yours: the booth QR for your counter, everyone who scans it, your logo and photo.</p>}
+      {peek && <p class="lead">Our crew at Booth 7E17 set up your booth and your card{peek.name ? ` for ${peek.name}` : ''}. Continue on this phone and it is yours: the booth QR for your counter, everyone who scans it, your logo and photo.</p>}
       {peek && m?.passport && <p class="fine">This phone is signed in as {m.callsign} at the moment. Continuing switches it to the account the crew made for you.</p>}
       {err && <p class="err" role="alert">{err}</p>}
       {peek && <button class="btn primary big" disabled={busy} onClick={take}>{busy ? 'One moment…' : `Continue as ${peek.name}`}</button>}

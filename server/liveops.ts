@@ -125,7 +125,7 @@ export class LiveOps {
     const out: BoardRow[] = [];
     for (const r of await this.g.db.all<{ id: string; v: number }>(sql[kind])) {
       const p = await this.g.player(r.id), tr = await this.trust(r.id), booths = (await this.g.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM stamps WHERE player_id = ?', [r.id]))?.n ?? 0;
-      out.push({ kind: 'player', title: p.callsign, cls: p.cls as Role | null, sub: `${booths} booth${booths === 1 ? '' : 's'}${p.docked_at != null ? ' · mission complete at 8H18A' : ''}`, value: r.v, unit, trusted: tr.trusted });
+      out.push({ kind: 'player', title: p.callsign, cls: p.cls as Role | null, sub: `${booths} booth${booths === 1 ? '' : 's'}${p.docked_at != null ? ' · mission complete at 7E17' : ''}`, value: r.v, unit, trusted: tr.trusted });
     }
     return out;
   }

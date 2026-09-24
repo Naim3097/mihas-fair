@@ -55,8 +55,8 @@ export class Onboarding {
   private async byCode(rawCode: unknown): Promise<HandoffDb> {
     const code = String(rawCode ?? '').trim().toUpperCase();
     const r = code ? await this.g.db.get<HandoffDb>(`${ROWS} WHERE h.code = ?`, [code]) : undefined;
-    if (!r || r.status == null || r.status === 'revoked') throw new GameError('bad_handoff', 'This link is not valid any more — ask the crew at Booth 8H18A for a new one', 404);
-    if (this.g.now() - r.created_at > HANDOFF_TTL_MS) throw new GameError('expired', 'This link has expired — ask the crew at Booth 8H18A for a new one', 410);
+    if (!r || r.status == null || r.status === 'revoked') throw new GameError('bad_handoff', 'This link is not valid any more — ask the crew at Booth 7E17 for a new one', 404);
+    if (this.g.now() - r.created_at > HANDOFF_TTL_MS) throw new GameError('expired', 'This link has expired — ask the crew at Booth 7E17 for a new one', 410);
     return r;
   }
 

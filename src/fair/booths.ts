@@ -2,7 +2,7 @@
 // partition on every walled side, a fascia board with the exhibitor's name over every open side, the aluminium
 // posts and rails of the shell scheme, spotlights on the fascia, an information counter with two chairs and a bin
 // in every booth; for an island a raised floor and a tower that carries the name on all four sides. Online stands
-// turn MIHAS orange on the fascia and the counter, stamped cells get a gold band. Booth 8H18A, Lean X Digital's
+// turn MIHAS orange on the fascia and the counter, stamped cells get a gold band. Booth 7E17, Lean X Digital's
 // own, is dressed by hand from the company's booth design: the back-wall graphic, the roll-ups, the screen, the
 // counter with the logo, the A-frame at the aisle.
 import * as THREE from 'three';
@@ -189,7 +189,7 @@ export class BoothSet {
   }
 
 
-  /** Lean X Digital's own booth, 8H18A: the company's design in its shell-scheme cell, opening to the west aisle. */
+  /** Lean X Digital's own booth, 7E17: the company's design in its shell-scheme cell, opening to the west aisle. */
   private hero() {
     const i = this.cellOfId.get(this.level.hero.id); if (i == null) return;
     const b = this.level.booths[i]!, st = this.standOfCell.get(i); if (!st) return;
@@ -197,7 +197,7 @@ export class BoothSet {
     const tex = (canvas: HTMLCanvasElement) => { const t = new THREE.CanvasTexture(canvas); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
     const art = (canvas: HTMLCanvasElement, w: number, hgt: number) => new THREE.Mesh(new THREE.PlaneGeometry(w, hgt), new THREE.MeshBasicMaterial({ map: tex(canvas) }));
     // the back wall (east) carries the brand graphic; the side wall the screen and two roll-ups — the south wall in a
-    // booth open only to the west, the north wall in a corner booth that also opens south (8H18A). World +z is south.
+    // booth open only to the west or one that also opens north (7E17), the north wall in one that also opens south. World +z is south.
     const backArt = art(heroBackWall(), 2.72, 2.2); backArt.position.set(h - 0.012, 1.24, 0); backArt.rotation.y = -Math.PI / 2; g.add(backArt);
     const cell = st.cells[0]!, s = cell.walled.has('S') || !cell.walled.has('N') ? 1 : -1, face = s > 0 ? Math.PI : 0;
     const z = (inset: number) => s * (h - 0.012 - inset);

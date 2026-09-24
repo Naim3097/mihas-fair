@@ -307,7 +307,7 @@ function Beacons() {
   return (
     <section class="sheet wide">
       <div class="row"><h2>Printed booth QRs</h2><button class="btn primary" disabled={!cards.length} onClick={() => print()}>{cards.length ? `Print ${cards.length} ${cards.length === 1 ? 'card' : 'cards'}` : 'Print'}</button></div>
-      <p class="fine no-print"><b>Lean X Digital's own QR</b> (search <b>8H18A</b>) is worth printing for the counter: a visitor who scans it sees how many checkpoints they have left, or that their tote bag is here. The mission itself starts when they make their card — nobody has to come to us first. For exhibitors who will not keep a screen open: pick their booths, print, and hand them the card for their counter — one A4 card per booth, with the company name once they are registered. Each QR is signed for its booth. Scanned at MIHAS it scores +50; anywhere else, +10.</p>
+      <p class="fine no-print"><b>Lean X Digital's own QR</b> (search <b>7E17</b>) is worth printing for the counter: a visitor who scans it sees how many checkpoints they have left, or that their tote bag is here. The mission itself starts when they make their card — nobody has to come to us first. For exhibitors who will not keep a screen open: pick their booths, print, and hand them the card for their counter — one A4 card per booth, with the company name once they are registered. Each QR is signed for its booth. Scanned at MIHAS it scores +50; anywhere else, +10.</p>
       <div class="picks no-print">
         <span class="fine">Add at once:</span>
         <button class="chip" onClick={() => add(online.map((r) => r.id))}>All online booths ({online.length})</button>

@@ -2,7 +2,7 @@
 
 Lean X Digital's expo game: the whole MIHAS 2026 show floor (MITEC, three levels, 1,599 booths from the organiser's
 floor plan) as a fair floating in space, walked in third person as Nexo. Visitors make a free digital business card,
-scan the QR at the exhibitor booths on their list and claim a tote bag at Booth 8H18A; exhibitors put their booth in the game and collect leads.
+scan the QR at the exhibitor booths on their list and claim a tote bag at Booth 7E17; exhibitors put their booth in the game and collect leads.
 Unofficial — not affiliated with MATRADE or MIHAS.
 
 ## Run it

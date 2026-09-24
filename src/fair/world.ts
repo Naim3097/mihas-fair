@@ -227,7 +227,7 @@ export class FairWorld {
 
   setStamped(ids: Iterable<string>) { this.booths.setStamped(ids); }
 
-  /** Booth 8H18A, built by hand: open to the west aisle, the X turning above it. */
+  /** Booth 7E17, built by hand: open to the west aisle, the X turning above it. */
   private theX() {
     const hero = new THREE.Group(); hero.position.copy(this.heroPos); this.scene.add(hero);
     const X = new THREE.Group(), bar = (color: number, rz: number, depth: number) => { const m = new THREE.Mesh(new THREE.BoxGeometry(1.1, 5.4, depth), this.flat(color)); m.rotation.z = rz; m.castShadow = true; return m; };

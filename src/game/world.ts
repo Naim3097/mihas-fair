@@ -272,7 +272,7 @@ export class World {
     this.roofs.setMatrixAt(n, new THREE.Matrix4().makeScale(s, 1, s).setPosition(p));
   }
 
-  /** Booth 8H18A, built by hand: open to the west aisle, our crew inside, and the X turning above it. */
+  /** Booth 7E17, built by hand: open to the west aisle, our crew inside, and the X turning above it. */
   private theX() {
     const { w: BW, d: BD } = this.level.booth, hero = this.hero; hero.position.copy(this.heroPos); this.scene.add(hero);
     const white = this.flat(0xffffff), ink = this.flat(THEME.ink);
@@ -281,10 +281,12 @@ export class World {
     const g = art.getContext('2d')!; g.fillStyle = '#fff'; g.fillRect(0, 0, 1024, 820); g.textAlign = 'center'; g.fillStyle = css(THEME.ink);
     g.font = '800 96px Urbanist, Arial'; g.fillText('lean.x digital', 512, 330); g.font = '600 60px Urbanist, Arial'; g.fillStyle = css(THEME.inkSoft); g.fillText('nexova', 512, 430);
     const tex = new THREE.CanvasTexture(art); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
-    // 8H18A is mid-row: walls N, E (back) and S; the open side faces the west aisle.
+    // walls: E (back), and a side wall wherever a booth sits next door on the plan (7E17 is a corner: a neighbour to the
+    // south, a cross-aisle to the north); the open side faces the west aisle. World +z is south, plan +y is north.
     const back = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.5, BD - 0.1), [white, new THREE.MeshBasicMaterial({ map: tex }), white, white, white, white]); back.position.set(BW / 2 - 0.06, 1.35, 0);
     hero.add(pad, back);
-    for (const s of [-1, 1]) { const side = new THREE.Mesh(new THREE.BoxGeometry(BW, 2.5, 0.1), white); side.position.set(0, 1.35, s * (BD / 2 - 0.05)); hero.add(side); }
+    const hx = this.level.hero.x, hy = this.level.hero.y, nextDoor = (dy: number) => this.level.booths.some((b) => b.id !== this.level.hero.id && Math.abs(b.x - hx) < 1 && Math.abs(b.y - (hy + dy)) < 1.2);
+    for (const s of [-1, 1]) { if (!nextDoor(-s * 3.25)) continue; const side = new THREE.Mesh(new THREE.BoxGeometry(BW, 2.5, 0.1), white); side.position.set(0, 1.35, s * (BD / 2 - 0.05)); hero.add(side); }
     const counter = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1, 1.5), ink); counter.position.set(-0.75, 0.6, 0.45); hero.add(counter);
 
     // The two bars cross without sharing a face (one is a touch slimmer), so the middle never flickers.

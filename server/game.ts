@@ -350,7 +350,7 @@ export class Game {
       throw new GameError('bad_proof', 'Unknown proof');
     }
 
-    // the Lean X Digital QR, scanned at 8H18A: where you stand, and the tote bag once the checkpoints are done — not a stamp
+    // the Lean X Digital QR, scanned at 7E17: where you stand, and the tote bag once the checkpoints are done — not a stamp
     if (req.proof !== 'virtual' && station.id === this.level.hero.id && this.hooks.mission) {
       const ev = await this.hooks.mission.heroScan(id, t);
       if (presence === 'onsite') await this.hooks.onOnsiteProof?.(id, station.id, t);

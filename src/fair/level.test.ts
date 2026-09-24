@@ -29,8 +29,8 @@ test('stands: every booth is its own stand (no names in the plan to join them), 
   assert.ok(stands.every((s) => s.cells.length === 1), 'booths carry no company names, so none are merged into blocks');
   const hero = stands.find((s) => s.cells.some((c) => c.b.id === level.hero.id))!;
   assert.equal(hero.cells.length, 1);
-  assert.deepEqual([...hero.cells[0]!.open].sort(), ['S', 'W'], 'booth 8H18A is a corner: open to the west aisle and the south one, as the plan draws it');
-  assert.deepEqual([...hero.cells[0]!.walled].sort(), ['E', 'N']);
+  assert.deepEqual([...hero.cells[0]!.open].sort(), ['N', 'W'], 'booth 7E17 is a corner: open to the west aisle and the cross-aisle to its north, as the plan draws it');
+  assert.deepEqual([...hero.cells[0]!.walled].sort(), ['E', 'S']);
   assert.equal(hero.front, 'W');
   const kinds = new Map<string, number>();
   for (const s of stands) kinds.set(s.kind, (kinds.get(s.kind) ?? 0) + 1);

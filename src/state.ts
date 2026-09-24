@@ -136,7 +136,7 @@ export function toast(title: string, sub?: string, tone: Toast['tone'] = 'info',
 }
 
 const ACTION_LABEL: Record<string, string> = {
-  passport: 'Your card is ready', dock: 'Claimed at Booth 8H18A', stamp: 'Stamped', scan: 'Scanned at the real booth', verified_contact: 'Met in person',
+  passport: 'Your card is ready', dock: 'Claimed at Booth 7E17', stamp: 'Stamped', scan: 'Scanned at the real booth', verified_contact: 'Met in person',
   share_station: 'Card left', link: 'Cards swapped', station_claim: 'Your booth is online', daily_drop: 'Booth of the day',
   mission_start: 'Mission started', checkpoint: 'Checkpoint', prize: 'Your tote bag is here', progress: 'Lean X Digital',
 };
