@@ -4,7 +4,7 @@ import { Game, GameError, cleanText, dayStart, type StampOutcome } from './game.
 import { shortCode } from './crypto.js';
 import type { Stations } from './stations.js';
 import type { BoardKind, BoardRow, DailyDrop, FlagKey, ReviewRow, TeamView, TrustView, XpEvent } from '../shared/types.js';
-import { FLAG_KEYS, TEAM_MAX, TEAM_SCORERS, TRUST_MIN, TRUST_W, type Role } from '../shared/rules.js';
+import { FLAGS_OFF_LIVE, FLAG_KEYS, TEAM_MAX, TEAM_SCORERS, TRUST_MIN, TRUST_W, type Role } from '../shared/rules.js';
 
 /** The visitor boards are for visitors: whoever runs a booth, or works on a booth team, is not on them. */
 const notExhibitor = (col: string) => `${col} NOT IN (SELECT owner_id FROM stations WHERE status != 'revoked') AND ${col} NOT IN (SELECT member_id FROM booth_team)`;
@@ -20,7 +20,8 @@ export class LiveOps {
   private dropCfg: { at: number; s: Record<string, string> } | null = null;
   private totalsCache: { at: number; v: Totals } | null = null;
 
-  constructor(private g: Game, private stationsSvc: Stations) {}
+  /** `live`: this is the show's own deployment, where the newest switches start off until the crew turns them on. */
+  constructor(private g: Game, private stationsSvc: Stations, private opts: { live?: boolean } = {}) {}
 
   /* ---------------- kill switches ---------------- */
 
@@ -28,7 +29,7 @@ export class LiveOps {
     const t = this.g.now();
     if (this.flagCache && t - this.flagCache.at < 30_000 && t >= this.flagCache.at) return this.flagCache.v;
     const rows = await this.g.db.all<{ key: string; value: string }>("SELECT key, value FROM settings WHERE key LIKE 'flag:%'");
-    const v = Object.fromEntries(FLAG_KEYS.map((k) => [k, true])) as Record<FlagKey, boolean>;
+    const v = Object.fromEntries(FLAG_KEYS.map((k) => [k, !(this.opts.live && FLAGS_OFF_LIVE.includes(k))])) as Record<FlagKey, boolean>;
     for (const r of rows) { const k = r.key.slice(5) as FlagKey; if (k in v) v[k] = r.value !== '0'; }
     this.flagCache = { at: t, v };
     return v;

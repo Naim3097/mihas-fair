@@ -117,7 +117,10 @@ export const ONSITE_TTL_MS = 30 * 60_000;
 export const TRUST_W = { boothQr: 0.25, hostCode: 0.3, plausible: 0.2, steps: 0.15, human: 0.1 } as const;
 export const TRUST_MIN = 0.7;
 /** Switches the crew can flip from the console without a deploy. */
-export const FLAG_KEYS = ['registration', 'claims', 'links', 'holograms'] as const;
+export const FLAG_KEYS = ['registration', 'claims', 'links', 'holograms', 'sky', 'warp'] as const;
+/** Switches for what came after the show opened (the Playground's Orbit 2 and its stars for meeting exhibitors; Warp):
+ *  off on the live site until the crew turns them on, on everywhere else (a laptop, the in-browser demo, the tests). */
+export const FLAGS_OFF_LIVE: readonly string[] = ['sky', 'warp'];
 
 /** How busy a booth's own board entry is: visits and cards, nothing else. */
 export const SXP = { claim: 0, profile: 0, stamp: 1, share: 3, verified: 2, hostHour: 0 } as const;

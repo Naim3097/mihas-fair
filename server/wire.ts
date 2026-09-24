@@ -21,12 +21,12 @@ import { FEATURES, type Features } from '../shared/rules.js';
 
 export interface Services { game: Game; stations: Stations; checkpoints: Checkpoints; referrals: Referrals; team: BoothTeam; /** exhibitors the crew registers at the counter */ onboarding: Onboarding; social: Social; crews: Crews; venue: Venue; director: Director; gc: GroundControl; ops: LiveOps; signer: Signer; /** the library game's characters */ ceritera: Ceritera; /** the Playground beside the X */ playground: Playground }
 
-export function buildServices(o: { db: Db; secret: string; level: LevelData; publicOrigin: string; now?: () => number; /** defaults to in-memory; pass DbPresence on serverless */ presence?: Presence; /** switched-off systems to run anyway (their tests do) */ features?: Partial<Features>; /** the Playground's daily bridge to the fair's points, off unless the deployment says so */ playgroundDaily?: boolean }): Services {
+export function buildServices(o: { db: Db; secret: string; level: LevelData; publicOrigin: string; now?: () => number; /** defaults to in-memory; pass DbPresence on serverless */ presence?: Presence; /** switched-off systems to run anyway (their tests do) */ features?: Partial<Features>; /** the Playground's daily bridge to the fair's points, off unless the deployment says so */ playgroundDaily?: boolean; /** the show's own deployment: the newest switches (FLAGS_OFF_LIVE) start off there */ live?: boolean }): Services {
   const signer = new Signer(o.secret);
   const game = new Game(o.db, signer, o.presence ?? new PresenceStore(), o.level, o.publicOrigin, o.now, { ...FEATURES, ...o.features });
   const team = new BoothTeam(game);
   const stations = new Stations(game, team), social = new Social(game), crews = new Crews(game);
-  const venue = new Venue(game), director = new Director(game, stations, venue), gc = new GroundControl(game, stations, venue), ops = new LiveOps(game, stations);
+  const venue = new Venue(game), director = new Director(game, stations, venue), gc = new GroundControl(game, stations, venue), ops = new LiveOps(game, stations, { live: o.live === true });
   const ceritera = new Ceritera(o.db, o.now), checkpoints = new Checkpoints(game, team);
   stations.onStatus = () => checkpoints.forget();
   const referrals = new Referrals(game, team), onboarding = new Onboarding(game, stations, team), playground = new Playground(game, { daily: o.playgroundDaily === true });

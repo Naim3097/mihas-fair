@@ -3,6 +3,7 @@
 // body can be, every ring and the gate are caught at top speed, every platform is in a section.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { classByKey } from '../../content';
 import { emptyIntent, type Intent } from '../ceritera/game/controller';
 import { Sim, STEP } from '../ceritera/game/sim';
@@ -201,6 +202,14 @@ test('the sky line is flown as meant: hold from the edge to the crest, let go, l
   assert.ok(thrustFor > 4 && fuelMin > 0, `the tank held: ${thrustFor.toFixed(1)} s of thrust, never below ${fuelMin.toFixed(0)}`);
   const sky = course.pickups.map((k, i) => ({ k, i })).filter(({ k }) => k.line === 'jetpack' && k.z === 20);
   assert.deepEqual(sky.filter(({ i }) => !got.has(i)).map(({ k }) => `${k.kind}@${k.x.toFixed(1)}`), [], 'missed on the sky line');
+});
+
+test('Orbit 1 is the course as it was: every platform, pickup, ring, pad, hill, line and section, to the last digit', () => {
+  // The fingerprint of everything that shapes a run (the stands on the pad are furniture, and may grow). Orbit 2 moves
+  // tiles at run time and never edits this data; a change here is a change to the course everyone already plays.
+  const { platforms, pickups, rings, pads, hills, portal, start, gate, sections, spawn, ceiling } = buildCourse();
+  const json = JSON.stringify({ platforms, pickups, rings, pads, hills, portal, start, gate, sections, spawn, ceiling });
+  assert.equal(createHash('sha256').update(json).digest('hex'), 'c831e358fbfb069b0c68d56249b445317b7b27bcbe6db0a5c1670a17c78532fb');
 });
 
 test('the course holds what the server believes it holds (shared/playground.ts): its stars and its diamonds', () => {

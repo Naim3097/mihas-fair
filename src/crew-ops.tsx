@@ -43,7 +43,7 @@ export function ReviewTab() {
 export function OpsTab() {
   const [flags, setFlags] = useState<Record<FlagKey, boolean> | null>(null), [drop, setDrop] = useState<DailyDrop | null>(null), [f, setF] = useState({ stationId: '', title: '', bonus: '100' }), [msg, setMsg] = useState('');
   useEffect(() => { call<Record<FlagKey, boolean>>('GET', '/api/crew/flags').then(setFlags, () => {}); call<DailyDrop | null>('GET', '/api/crew/drop').then(setDrop, () => {}); }, []);
-  const LABEL: Record<FlagKey, string> = { registration: 'New cards', claims: 'Booths coming online', links: 'Card swaps', holograms: 'Showing other players' };
+  const LABEL: Record<FlagKey, string> = { registration: 'New cards', claims: 'Booths coming online', links: 'Card swaps', holograms: 'Showing other players', sky: 'Playground Orbit 2 · stars for exhibitors met', warp: 'Warp between booths' };
   return (
     <section class="sheet wide">
       <h2>Switches</h2>

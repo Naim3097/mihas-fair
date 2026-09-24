@@ -1,5 +1,5 @@
 import { signal, computed } from '@preact/signals';
-import type { Booth, DailyDrop, HostStation, LevelData, Lift, Me, StationView, XpEvent } from '../shared/types';
+import type { Booth, DailyDrop, HostStation, LevelData, Lift, Me, StationView, Switches, XpEvent } from '../shared/types';
 import { boothSteps, chapters, checkpointRank, type Chapter } from '../shared/rules';
 import type { Place } from './game/places';
 import { buzz, sfx } from './sfx';
@@ -9,6 +9,10 @@ export type Phase = 'boot' | 'start' | 'play' | 'error';
 export type World = 'fair' | 'playground';
 export const world = signal<World>('fair');
 export type Modal = null | 'card' | 'prize' | 'claimed' | 'complete' | 'booth' | 'claim' | 'mybooth' | 'swap' | 'contacts' | 'map' | 'photo' | 'menu' | 'rules' | 'tour' | 'scan' | 'jointeam' | 'handoff' | 'pgboards';
+
+/** The crew's switches for the newest parts (server/liveops.ts): Orbit 2 and the stars for exhibitors met (sky), Warp.
+ *  Off until the server has said, so nothing appears and then vanishes. */
+export const switches = signal<Switches>({ sky: false, warp: false });
 
 export const phase = signal<Phase>('boot');
 export const level = signal<LevelData | null>(null);

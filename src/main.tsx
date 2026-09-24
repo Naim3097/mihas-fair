@@ -12,7 +12,7 @@ import { handleScan } from './scan';
 import { ensureBackend } from './demo/client';
 import { installBack } from './ui/back';
 import { installSfx } from './sfx';
-import { atLaunchPad, bootError, bootNote, drop, gate, handoff, level, me, modal, myBooths, online, phase, setReferral, stations, teamInvite, world } from './state';
+import { atLaunchPad, bootError, bootNote, drop, gate, handoff, level, me, modal, myBooths, online, phase, setReferral, stations, switches, teamInvite, world } from './state';
 import type { PlaygroundEngine } from './playground/engine';
 import { ApiStore, LocalStore, type PlaygroundStore } from './playground/store';
 import { pgStore } from './playground/state';
@@ -45,7 +45,7 @@ function poll() {
   const pull = () => {
     if (document.hidden || Date.now() - last < 5000) return; last = Date.now();
     api.stations().then((s) => (stations.value = s), () => {});
-    api.today().then((t) => { drop.value = t.drop; if (phase.value !== 'play') online.value = t.online; }, () => {});
+    api.today().then((t) => { drop.value = t.drop; if (phase.value !== 'play') online.value = t.online; const w = t.switches; if (w && (w.sky !== switches.value.sky || w.warp !== switches.value.warp)) switches.value = w; }, () => {});
     if (me.value?.cls === 'exhibitor' || me.value?.hosting.length) api.myBooths().then((b) => (myBooths.value = b), () => {});
   };
   pull();
