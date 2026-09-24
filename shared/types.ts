@@ -107,8 +107,12 @@ export interface ApiErr { ok: false; error: string; code: string }
 export type ApiResult<T> = ApiOk<T> | ApiErr;
 
 export interface StampRequest { stationId: string; proof: StampProof; beacon?: string; code?: string }
-export interface PresencePing { x: number; y: number; h: number; /** sitting, waving, … — shown to others, nothing more */ pose?: Pose; deck?: boolean; sigma?: number; /** steps counted since the last ping (deck mode) */ steps?: number }
-export interface Hologram { id: string; callsign: string; cls: Role | null; /** an exhibitor's company, for the label over their head */ company?: string; x: number; y: number; h: number; av: string; pose?: Pose; /** really there, following real steps */ deck: boolean; /** position uncertainty in metres */ sigma: number }
+/** A kit from the Playground worn in the fair; Boots are the absence of one. */
+export type PresenceKit = 'skates' | 'jetpack';
+export interface PresencePing { x: number; y: number; h: number; /** sitting, waving, … — shown to others, nothing more */ pose?: Pose; deck?: boolean; sigma?: number; /** steps counted since the last ping (deck mode) */ steps?: number;
+  /** the kit worn, so others see it on the body; the server strips one the player does not own */ kit?: PresenceKit; /** metres above the floor, on a jetpack; the server clamps it to the ceiling */ z?: number }
+export interface Hologram { id: string; callsign: string; cls: Role | null; /** an exhibitor's company, for the label over their head */ company?: string; x: number; y: number; h: number; av: string; pose?: Pose; /** really there, following real steps */ deck: boolean; /** position uncertainty in metres */ sigma: number;
+  /** the kit on their body, if any */ kit?: PresenceKit; /** metres above the floor: 0 on the ground, up to the ceiling on a jetpack */ z: number }
 
 export interface CrewTicketView { callsign: string; name: string; company: string; role: string; phone: string; email: string; alreadyDocked: boolean; /** every booth QR they scanned, latest first */ scans: { stationId: string; company: string; at: number }[]; /** checkpoints scanned, of how many */ checkpoints?: { started: boolean; done: number; target: number } }
 

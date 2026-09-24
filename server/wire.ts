@@ -34,6 +34,7 @@ export function buildServices(o: { db: Db; secret: string; level: LevelData; pub
 
   game.hooks = {
     companies: () => stations.ownerCompanies(),
+    kitOwned: (id, kit) => playground.owns(id, kit),
     atCounter: (id, x, y) => stations.isCounterSpot(id, x, y),
     isOnsite: (id, t) => venue.isOnsite(id, t),
     isHidden: (id) => venue.isHidden(id),

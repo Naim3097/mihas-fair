@@ -12,7 +12,10 @@ export const ROLE_INFO: Record<Role, { label: string; plural: string; color: num
 };
 
 /** What an astronaut can be seen doing. Pure expression: no pose earns or costs anything. */
-export const POSES = ['', 'sit', 'wave', 'cheer', 'dance', 'jump'] as const;
+export const POSES = ['', 'sit', 'wave', 'cheer', 'dance', 'jump', 'fly'] as const;
+/** How high a jetpack flies in the halls (metres above the floor): over every partition, under the glass. The server
+ *  clamps what a ping claims to this; the fair holds the body to it. */
+export const FLY_CEILING_M = 6.5;
 export type Pose = (typeof POSES)[number];
 
 /* ---------------- points: fixed, and printed on the rules card ---------------- */

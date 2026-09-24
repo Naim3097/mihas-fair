@@ -6,6 +6,7 @@ import type { MovementDef } from '../../content';
 import type { Gear } from '../playground/course';
 import { GEAR } from '../playground/gear';
 import { FAIR_MOVEMENT } from './movement';
+import { FLY_CEILING_M } from '../../shared/rules';
 
 export const FAIR_KITS: Record<Gear, MovementDef> = {
   boots: FAIR_MOVEMENT,
@@ -14,7 +15,7 @@ export const FAIR_KITS: Record<Gear, MovementDef> = {
 };
 
 /** How high a jetpack flies in the halls: over every partition (2.5 m), under the glass that keeps each level in. */
-export const FLY_CEILING = 6.5;
+export const FLY_CEILING = FLY_CEILING_M;
 /** The fastest any kit moves along the floor, for the tests against the server's cap. */
 export const KIT_TOP_SPEED = Math.max(...Object.values(FAIR_KITS).map((m) => Math.max(m.sprintMax, m.run, m.thrust?.airSpeed ?? 0)));
 

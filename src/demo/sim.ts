@@ -191,7 +191,7 @@ export class DemoSim {
       else this.walk(b, dt);
     } else if (this.rand() < 0.04) b.h += (this.rand() - 0.5) * 1.2;
 
-    if (!b.base || t - b.baseAt > 60_000) { const h = await this.s.game.hologramOf(b.id, { x: 0, y: 0, h: 0, deck: false, sigma: 0 }); b.base = { id: h.id, callsign: h.callsign, cls: h.cls, av: h.av }; b.baseAt = t; }
+    if (!b.base || t - b.baseAt > 60_000) { const h = await this.s.game.hologramOf(b.id, { x: 0, y: 0, h: 0, deck: false, sigma: 0 }); b.base = { id: h.id, callsign: h.callsign, cls: h.cls, av: h.av, z: 0 }; b.baseAt = t; }
     let moved = await this.s.game.presence.update({ ...b.base, x: +b.pos.x.toFixed(2), y: +b.pos.y.toFixed(2), h: +b.h.toFixed(2), pose: b.pose || undefined, deck: false, sigma: 0 }, t, false);
     if (moved == null) { // the server refused an implausible jump: exactly what a teleporting client looks like
       await this.s.ops.speedFlag(b.id, `to ${b.pos.x.toFixed(0)},${b.pos.y.toFixed(0)} (demo: jumped across the hall)`);

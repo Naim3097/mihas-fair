@@ -2,9 +2,9 @@ import type { Db, Stmt } from './db/types.js';
 import type { Signer } from './crypto.js';
 import { shortCode } from './crypto.js';
 import type { Presence } from './presence.js';
-import type { CrewTicketView, Hologram, LevelData, Me, PassportInput, PresencePing, StampRequest, XpEvent } from '../shared/types.js';
+import type { CrewTicketView, Hologram, LevelData, Me, PassportInput, PresenceKit, PresencePing, StampRequest, XpEvent } from '../shared/types.js';
 import {
-  DEFAULT_SHARE, EXPLORE_XP, FEATURES, POSES, HOST_GRACE_WINDOWS, HOST_WINDOW_MS, INFLUENCE, INFLUENCE_PRESENCE, NAME_ON_BOARD, POINTS, PRIZE_CODE_TTL_MS, REMOTE_SHARE, ROLES, ROLE_INFO,
+  DEFAULT_SHARE, EXPLORE_XP, FEATURES, FLY_CEILING_M, POSES, HOST_GRACE_WINDOWS, HOST_WINDOW_MS, INFLUENCE, INFLUENCE_PRESENCE, NAME_ON_BOARD, POINTS, PRIZE_CODE_TTL_MS, REMOTE_SHARE, ROLES, ROLE_INFO,
   SHARE_FIELDS, STAMP_MIN_INTERVAL_MS, STAMP_RADIUS_M, stampPoints, type Features, type Presence as Presence2, type Role, type ShareField,
 } from '../shared/rules.js';
 import { decodeAvatar, defaultAvatar, encodeAvatar, validateAvatar, type AvatarSpec } from '../shared/avatar.js';
@@ -27,6 +27,8 @@ export interface GameHooks {
   onImplausible?(id: string, detail: string): Promise<void>;
   /** exhibitor player id → company, for the label over their hologram */
   companies?(): Promise<Map<string, string>>;
+  /** Does this player own that kit (bought in the Playground)? A ping may only wear what was paid for. */
+  kitOwned?(id: string, kit: PresenceKit): Promise<boolean>;
   /** Is (x, y) where one of this player's booths stands its host (server/stations.ts)? A jump away from it is allowed. */
   atCounter?(id: string, x: number, y: number): Promise<boolean>;
   /** Whose booths this player works: themselves, or the owner of the booth team they joined (server/team.ts). */
@@ -219,12 +221,12 @@ export class Game {
   /** Name and class as others see them, cached briefly per instance: every ping needs them, they rarely change. */
   private shown = new Map<string, { callsign: string; cls: string | null; at: number }>();
   forgetShown(id: string) { this.shown.delete(id); }
-  async hologramOf(id: string, at: { x: number; y: number; h: number; deck: boolean; sigma: number; pose?: Hologram['pose'] }): Promise<Hologram> {
+  async hologramOf(id: string, at: { x: number; y: number; h: number; deck: boolean; sigma: number; pose?: Hologram['pose']; kit?: PresenceKit; z?: number }): Promise<Hologram> {
     let p = this.shown.get(id);
     if (!p || this.now() - p.at > 30_000) { const r = await this.player(id); p = { callsign: r.callsign, cls: r.cls, at: this.now() }; if (this.shown.size > 50_000) this.shown.clear(); this.shown.set(id, p); }
     let av = this.avatarCode.get(id);
     if (!av || this.now() - av.at > 30_000) { av = { code: encodeAvatar(await this.avatarOf(id, p.cls)), at: this.now() }; this.avatarCode.set(id, av); }
-    return { id, callsign: p.callsign, cls: p.cls as Role | null, av: av.code, ...at };
+    return { id, callsign: p.callsign, cls: p.cls as Role | null, av: av.code, ...at, z: at.z ?? 0 };
   }
 
   /** How many people are in the game right now. */
@@ -236,8 +238,12 @@ export class Game {
     if (isSpawn && ![...Object.values(this.level.spawns), ...this.level.lifts].some((s) => Math.hypot(s.x - pos.x, s.y - pos.y) < 4) && !this.level.gates.some((g) => Math.hypot(g.x - pos.x, g.y - pos.y) < 16)) isSpawn = false;
     const t = this.now();
     const deck = false, sigma = 0; // no GPS: every avatar is walked in the virtual hall, none follows a real person's steps
-    const pose = (POSES as readonly string[]).includes(pos.pose ?? '') ? pos.pose : '';
-    const holo = await this.hologramOf(id, { x: pos.x, y: pos.y, h: pos.h, deck, sigma, pose });
+    // the kit on the body, only if it was paid for; altitude only on a jetpack, never above the ceiling; 'fly' only on a jetpack
+    const kit = (pos.kit === 'skates' || pos.kit === 'jetpack') && (await this.hooks.kitOwned?.(id, pos.kit)) ? pos.kit : undefined;
+    const z = kit === 'jetpack' && Number.isFinite(pos.z) ? Math.round(Math.min(FLY_CEILING_M + 0.5, Math.max(0, pos.z!)) * 10) / 10 : 0;
+    let pose = (POSES as readonly string[]).includes(pos.pose ?? '') ? pos.pose : '';
+    if (pose === 'fly' && kit !== 'jetpack') pose = 'jump';
+    const holo = await this.hologramOf(id, { x: pos.x, y: pos.y, h: pos.h, deck, sigma, pose, kit, z });
     let moved = await this.presence.update(holo, t, isSpawn);
     if (moved == null) { // too fast: unless they were standing at their own counter (the dashboard put them there) and are now back in the game
       const prev = await this.presence.position(id, t);

@@ -36,7 +36,8 @@ function tooFast(prev: { x: number; y: number; deck: boolean; sigma: number; t: 
 /** `live` is false for someone whose phone has gone quiet: they stand still, whatever pose their last ping carried. */
 function publicView(e: Hologram, d: number, live: boolean): Hologram & { d: number } {
   const q = e.deck ? 1.5 : 0;
-  return { id: e.id.slice(0, 8), callsign: e.callsign, cls: e.cls, x: q ? Math.round(e.x / q) * q : e.x, y: q ? Math.round(e.y / q) * q : e.y, h: e.h, av: e.av, pose: live ? e.pose || undefined : undefined, deck: e.deck, sigma: e.sigma, d };
+  // a phone gone quiet stands still on the floor: no pose held, nobody left hanging in the air
+  return { id: e.id.slice(0, 8), callsign: e.callsign, cls: e.cls, x: q ? Math.round(e.x / q) * q : e.x, y: q ? Math.round(e.y / q) * q : e.y, h: e.h, av: e.av, pose: live ? e.pose || undefined : undefined, deck: e.deck, sigma: e.sigma, kit: e.kit || undefined, z: live ? e.z || 0 : 0, d };
 }
 const nearest = (list: (Hologram & { d: number })[], limit: number) => list.sort((a, b) => a.d - b.d).slice(0, limit).map(({ d: _d, ...h }) => h);
 
@@ -73,7 +74,7 @@ export class PresenceStore implements Presence {
   async online(now: number) { let n = 0; for (const e of this.map.values()) if (now - e.t <= LINGER_MS) n++; return n; }
 }
 
-interface Row { player_id: string; callsign: string; cls: Hologram['cls']; pose: string; av: string; x: number; y: number; h: number; deck: number; sigma: number; t: number }
+interface Row { player_id: string; callsign: string; cls: Hologram['cls']; pose: string; av: string; x: number; y: number; h: number; deck: number; sigma: number; kit: string; z: number; t: number }
 const NOT_HIDDEN = 'player_id NOT IN (SELECT player_id FROM player_flags WHERE hidden = 1)';
 
 /**
@@ -96,10 +97,10 @@ export class DbPresence implements Presence {
 
   private upsert(p: Hologram, now: number) {
     return this.db.run(
-      `INSERT INTO presence (player_id, callsign, cls, pose, av, x, y, h, deck, sigma, t) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+      `INSERT INTO presence (player_id, callsign, cls, pose, av, x, y, h, deck, sigma, kit, z, t) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT(player_id) DO UPDATE SET callsign = excluded.callsign, cls = excluded.cls, pose = excluded.pose, av = excluded.av,
-         x = excluded.x, y = excluded.y, h = excluded.h, deck = excluded.deck, sigma = excluded.sigma, t = excluded.t`,
-      [p.id, p.callsign, p.cls, p.pose ?? '', p.av, p.x, p.y, p.h, p.deck ? 1 : 0, p.sigma, now]);
+         x = excluded.x, y = excluded.y, h = excluded.h, deck = excluded.deck, sigma = excluded.sigma, kit = excluded.kit, z = excluded.z, t = excluded.t`,
+      [p.id, p.callsign, p.cls, p.pose ?? '', p.av, p.x, p.y, p.h, p.deck ? 1 : 0, p.sigma, p.kit ?? '', p.z ?? 0, now]);
   }
   async update(p: Hologram, now: number, isSpawn: boolean) {
     const prev = await this.prev(p.id, now);
@@ -120,7 +121,7 @@ export class DbPresence implements Presence {
   }
   async near(id: string, x: number, y: number, now: number, _hidden: ReadonlySet<string>, radius = 90, limit = 60) {
     const rows = await this.db.all<Row>(`SELECT * FROM presence WHERE t >= ? AND player_id != ? AND x BETWEEN ? AND ? AND y BETWEEN ? AND ? AND ${NOT_HIDDEN} LIMIT 400`, [now - LINGER_MS, id, x - radius, x + radius, y - radius, y + radius]);
-    const out = rows.map((e) => publicView({ id: e.player_id, callsign: e.callsign, cls: e.cls, av: e.av, pose: (e.pose || undefined) as Hologram['pose'], x: e.x, y: e.y, h: e.h, deck: e.deck === 1, sigma: e.sigma }, Math.hypot(e.x - x, e.y - y), now - e.t <= FRESH_MS)).filter((e) => e.d <= radius);
+    const out = rows.map((e) => publicView({ id: e.player_id, callsign: e.callsign, cls: e.cls, av: e.av, pose: (e.pose || undefined) as Hologram['pose'], x: e.x, y: e.y, h: e.h, deck: e.deck === 1, sigma: e.sigma, kit: (e.kit || undefined) as Hologram['kit'], z: e.z ?? 0 }, Math.hypot(e.x - x, e.y - y), now - e.t <= FRESH_MS)).filter((e) => e.d <= radius);
     return nearest(out, limit);
   }
   async all(now: number, _hidden: ReadonlySet<string>) {

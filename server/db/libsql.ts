@@ -1,6 +1,7 @@
 // libSQL / Turso adapter: hosted SQLite over HTTP — what the game runs on when it is deployed to Vercel, where there is
 // no disk to keep a database file on. Same SQL as the local node:sqlite adapter; the test suite runs against both.
 import type { Db, Param, Stmt } from './types.js';
+import { UPGRADES } from './schema.js';
 
 /** The slice of @libsql/client we use — satisfied by both `@libsql/client` (Node) and `@libsql/client/web` (fetch only). */
 export interface LibsqlLike {
@@ -20,6 +21,12 @@ export function openLibsql(client: LibsqlLike): Db & { migrate(schema: string): 
     async run(sql: string, params: Param[] = []) { await client.execute({ sql, args: params }); },
     /** One transaction: all statements commit together or not at all. */
     async batch(stmts: Stmt[]) { if (stmts.length) await client.batch(stmts.map(([sql, args]) => ({ sql, args })), 'write'); },
-    migrate: (schema: string) => client.executeMultiple(schema),
+    async migrate(schema: string) {
+      await client.executeMultiple(schema);
+      for (const u of UPGRADES) { // columns added since the table was created
+        if (!(await client.execute({ sql: "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", args: [u.table] })).rows.length) continue;
+        if (!(await client.execute({ sql: 'SELECT 1 FROM pragma_table_info(?) WHERE name = ?', args: [u.table, u.column] })).rows.length) await client.execute({ sql: `ALTER TABLE ${u.table} ADD COLUMN ${u.column} ${u.ddl}`, args: [] });
+      }
+    },
   };
 }

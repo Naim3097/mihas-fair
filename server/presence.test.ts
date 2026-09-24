@@ -58,3 +58,47 @@ test('a jump across the hall is still refused and flagged; walking is not', asyn
   assert.equal(await flags(), 1);
   assert.deepEqual(await s.game.presence.position(id, now), { x: 106, y: 60 }, 'the previous position is kept');
 });
+
+test('a kit is seen on the body only when it was paid for; altitude only on a jetpack, never above the ceiling; a quiet flyer lands', async () => {
+  let now = Date.UTC(2026, 8, 24, 3, 0, 0);
+  const s = buildServices({ ...(await testStores()), secret: 'test-secret', level, publicOrigin: 'http://x.test', now: () => now });
+  const make = async () => { const id = await s.game.createGuest(); await s.game.start(id, 'visitor'); return id; };
+  const [flyer, watcher] = [await make(), await make()];
+  const see = async () => { now += 500; return (await s.game.ping(watcher, { x: 100, y: 62, h: 0 }, false)).holograms.find((h) => flyer.startsWith(h.id))!; };
+  // nothing owned: the claim is stripped, the body is on the floor, 'fly' becomes a jump
+  now += 500; await s.game.ping(flyer, { x: 100, y: 60, h: 0, kit: 'jetpack', z: 3, pose: 'fly' }, false);
+  let h = await see();
+  assert.equal(h.kit, undefined, 'a kit not paid for is not worn'); assert.equal(h.z, 0); assert.equal(h.pose, 'jump');
+  // bought in the Playground (the ownership cache is half a minute old by then)
+  await s.game.db.run("INSERT INTO playground_state (player_id, stars, unlocks, gear, updated_at) VALUES (?,?,?,?,?)", [flyer, 0, 'boots,skates,jetpack', 'jetpack', now]);
+  now += 31_000;
+  await s.game.ping(flyer, { x: 100, y: 60, h: 0, kit: 'jetpack', z: 3.04, pose: 'fly' }, false);
+  h = await see();
+  assert.equal(h.kit, 'jetpack'); assert.equal(h.z, 3); assert.equal(h.pose, 'fly', 'in the air on a jetpack, for everyone to see');
+  now += 500; await s.game.ping(flyer, { x: 100, y: 60, h: 0, kit: 'jetpack', z: 50, pose: 'fly' }, false);
+  assert.equal((await see()).z, 7, 'clamped to the ceiling');
+  now += 500; await s.game.ping(flyer, { x: 100, y: 60, h: 0, kit: 'skates', z: 2, pose: 'fly' }, false);
+  h = await see();
+  assert.equal(h.kit, 'skates'); assert.equal(h.z, 0, 'skates stay on the floor'); assert.equal(h.pose, 'jump', "'fly' is the jetpack's");
+  now += 500; await s.game.ping(flyer, { x: 100, y: 60, h: 0, kit: 'jetpack', z: 4, pose: 'fly' }, false);
+  now += 20_000; // the phone goes quiet mid-flight
+  h = await see();
+  assert.equal(h.kit, 'jetpack', 'still wearing it'); assert.equal(h.z, 0, 'but on the floor: nobody hangs in the air'); assert.equal(h.pose, undefined);
+});
+
+test('the presence table gains its kit and altitude columns on a database made before them', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const { tmpdir } = await import('node:os'); const { join } = await import('node:path');
+  const { openNodeDb } = await import('./db/sqlite-node.js'); const { SCHEMA } = await import('./db/schema.js');
+  const file = join(tmpdir(), `mx-upgrade-${crypto.randomUUID()}.db`);
+  const old = new DatabaseSync(file);
+  old.exec(`CREATE TABLE presence (player_id TEXT PRIMARY KEY, callsign TEXT NOT NULL, cls TEXT, pose TEXT NOT NULL DEFAULT '', av TEXT NOT NULL,
+    x REAL NOT NULL, y REAL NOT NULL, h REAL NOT NULL, deck INTEGER NOT NULL DEFAULT 0, sigma REAL NOT NULL DEFAULT 0, t INTEGER NOT NULL)`);
+  old.exec("INSERT INTO presence (player_id, callsign, av, x, y, h, t) VALUES ('p1', 'Old', '', 1, 2, 0, 5)");
+  old.close();
+  const db = openNodeDb(file, SCHEMA);
+  const r = (await db.get<{ kit: string; z: number }>('SELECT kit, z FROM presence WHERE player_id = ?', ['p1']))!;
+  assert.equal(r.kit, ''); assert.equal(r.z, 0); // the old row has the new columns, defaulted
+  const again = openNodeDb(file, SCHEMA); // a second open adds nothing and fails nothing
+  assert.equal((await again.all('SELECT name FROM pragma_table_info(?) WHERE name IN (?, ?)', ['presence', 'kit', 'z'])).length, 2);
+});

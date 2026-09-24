@@ -2,12 +2,18 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { Db, Param, Stmt } from './types.js';
+import { UPGRADES } from './schema.js';
 
 export function openNodeDb(file: string, schema: string): Db {
   if (file !== ':memory:') mkdirSync(dirname(file), { recursive: true });
   const db = new DatabaseSync(file);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 3000;');
   db.exec(schema);
+  // columns added since a database was first created: only where the table exists and the column does not
+  for (const u of UPGRADES) {
+    if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(u.table)) continue;
+    if (!db.prepare('SELECT 1 FROM pragma_table_info(?) WHERE name = ?').get(u.table, u.column)) db.exec(`ALTER TABLE ${u.table} ADD COLUMN ${u.column} ${u.ddl}`);
+  }
 
   return {
     async get<T>(sql: string, params: Param[] = []) {

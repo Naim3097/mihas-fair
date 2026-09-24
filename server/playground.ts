@@ -28,6 +28,8 @@ type CachedRow = Omit<PlaygroundBoardRow, 'you'> & { id: string };
 
 export class Playground {
   private boardCache = new Map<'today' | 'all', { at: number; rows: CachedRow[] }>();
+  /** What each player owns, for the presence ping's kit (every 3 s): read once, kept half a minute, dropped on a purchase. */
+  private ownedCache = new Map<string, { at: number; unlocks: PlaygroundGear[] }>();
   constructor(private g: Game, private opts: { daily: boolean } = { daily: false }) {}
 
   private async state(id: string): Promise<{ stars: number; unlocks: PlaygroundGear[]; gear: PlaygroundGear }> {
@@ -85,11 +87,19 @@ export class Playground {
   }
 
   /** Buy a gear with stars: refused when short, kept once bought. */
+  /** Does the player own this kit? Cached briefly: the fair asks with every presence ping. */
+  async owns(id: string, kit: PlaygroundGear): Promise<boolean> {
+    const t = this.g.now(); let c = this.ownedCache.get(id);
+    if (!c || t - c.at > 30_000) { if (this.ownedCache.size > 50_000) this.ownedCache.clear(); c = { at: t, unlocks: (await this.state(id)).unlocks }; this.ownedCache.set(id, c); }
+    return c.unlocks.includes(kit);
+  }
+
   async unlock(id: string, gear: string): Promise<PlaygroundMe> {
     if (!GEARS.includes(gear as PlaygroundGear) || gear === 'boots') throw new GameError('gear', 'No such gear');
     const g = gear as PlaygroundGear, s = await this.state(id), price = KIT_PRICE[g];
     if (s.unlocks.includes(g)) return this.me(id);
     if (s.stars < price) throw new GameError('short', `${price - s.stars} more stars for ${KIT_NAME[g]}`);
+    this.ownedCache.delete(id);
     await this.g.db.run('INSERT INTO playground_state (player_id, stars, unlocks, gear, updated_at) VALUES (?,?,?,?,?) ON CONFLICT(player_id) DO UPDATE SET stars = excluded.stars, unlocks = excluded.unlocks, gear = excluded.gear, updated_at = excluded.updated_at', [id, s.stars - price, [...s.unlocks, g].join(','), g, this.g.now()]);
     return this.me(id);
   }

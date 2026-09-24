@@ -284,6 +284,7 @@ CREATE TABLE IF NOT EXISTS presence (
   player_id TEXT PRIMARY KEY REFERENCES players(id),
   callsign TEXT NOT NULL, cls TEXT, pose TEXT NOT NULL DEFAULT '', av TEXT NOT NULL,
   x REAL NOT NULL, y REAL NOT NULL, h REAL NOT NULL, deck INTEGER NOT NULL DEFAULT 0, sigma REAL NOT NULL DEFAULT 0,
+  kit TEXT NOT NULL DEFAULT '', z REAL NOT NULL DEFAULT 0,
   t INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS presence_fresh ON presence(t);
@@ -418,3 +419,11 @@ CREATE TABLE IF NOT EXISTS playground_state (
   updated_at  INTEGER NOT NULL
 );
 `;
+
+/** Columns added to tables that already exist on a live database. CREATE TABLE IF NOT EXISTS leaves an existing table
+ *  as it was, so each adapter adds these on open, only where the column is missing (the CREATE above has them for a
+ *  fresh database). SQLite types; the Postgres adapter maps them like the schema. */
+export const UPGRADES: { table: string; column: string; ddl: string }[] = [
+  { table: 'presence', column: 'kit', ddl: "TEXT NOT NULL DEFAULT ''" }, // the kit worn, seen by others (24 Sep 2026)
+  { table: 'presence', column: 'z', ddl: 'REAL NOT NULL DEFAULT 0' },   // metres above the floor on a jetpack
+];
