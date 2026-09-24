@@ -413,6 +413,19 @@ CREATE TABLE IF NOT EXISTS playground_runs (
 );
 CREATE INDEX IF NOT EXISTS playground_runs_player ON playground_runs(player_id, created_at);
 CREATE INDEX IF NOT EXISTS playground_runs_board ON playground_runs(finished, created_at, score);
+-- Warp, bought with stars: every ride across the fair, for the minute between two and for the ping sent from the old
+-- place just before one (forgiven, not taken for a jump).
+CREATE TABLE IF NOT EXISTS warps (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  player_id   TEXT NOT NULL REFERENCES players(id),
+  station_id  TEXT NOT NULL,
+  from_x      REAL NOT NULL,
+  from_y      REAL NOT NULL,
+  to_x        REAL NOT NULL,
+  to_y        REAL NOT NULL,
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS warps_player ON warps(player_id, created_at);
 CREATE TABLE IF NOT EXISTS playground_state (
   player_id   TEXT PRIMARY KEY REFERENCES players(id),
   stars       INTEGER NOT NULL DEFAULT 0,

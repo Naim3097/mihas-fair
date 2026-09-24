@@ -208,12 +208,17 @@ export interface ScreenView {
 /* ---------------- the Playground ---------------- */
 
 export type PlaygroundGear = 'boots' | 'skates' | 'jetpack';
+/** What a player can own from the Playground: the kits, and Warp (never worn). */
+export type PlaygroundUnlock = PlaygroundGear | 'warp';
 export interface PlaygroundBest { score: number; gear: PlaygroundGear; at: number }
 /** What outlasts a run on the server: the balance, the gear bought, the gear last used, the best finished run. */
 /** The course as it was (1), or awake (2): its tiles move, by a seed each run; each has its own best and boards. */
 export type PlaygroundOrbit = 1 | 2;
 /** `best`: Orbit 1's; `best2`: Orbit 2's. */
-export interface PlaygroundMe { stars: number; unlocks: PlaygroundGear[]; gear: PlaygroundGear; best: PlaygroundBest | null; best2: PlaygroundBest | null; runsToday: number }
+export interface PlaygroundMe { stars: number; unlocks: PlaygroundUnlock[]; gear: PlaygroundGear; best: PlaygroundBest | null; best2: PlaygroundBest | null; runsToday: number }
+/** Warp: to this booth, arriving here (floor-plan metres, beside it), facing `h`; the answer says when the next may be. */
+export interface WarpInput { stationId: string; x: number; y: number; h?: number }
+export interface WarpResult { at: number; nextAt: number }
 /** A run against its token; `partial` is the part a tab going away sends, which leaves the token open for the rest. */
 export interface PlaygroundRunInput { token: string; gear: PlaygroundGear; score: number; stars: number; comboMax: number; seconds: number; finished: boolean; partial?: boolean; /** 1 when absent */ orbit?: PlaygroundOrbit; /** Orbit 2's seed */ seed?: number }
 export interface PlaygroundRunResult extends PlaygroundMe { newBest: boolean }

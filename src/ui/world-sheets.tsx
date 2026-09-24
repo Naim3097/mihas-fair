@@ -6,6 +6,7 @@ import { buildPlaces } from '../game/places';
 import { hallCards, hallLine } from '../game/facts';
 import { Sheet } from './common';
 import { currentDeck, guideOn, guideTarget, level, modal, photoShot, seen, stampedSet, stationMap, toast } from '../state';
+import { WarpButton } from './warp';
 
 type Eng = { engine: () => Engine | null };
 const COLORS = { floor: '#d9d5cb', hall: '#e6e3db', area: '#d5dcd8', booth: '#ffffff', edge: '#c6c1b5', ink: '#1b2130', soft: '#8b91a0', blue: '#2457f5', gold: '#f2b01e', green: '#cdeadb', greenInk: '#1e9e6a' };
@@ -65,7 +66,7 @@ export function MapSheet({ engine }: Eng) {
       <label>Booth number or exhibitor<input value={q} placeholder="e.g. 7C17, Mamee, UOB" onInput={(e) => setQ((e.target as HTMLInputElement).value)} /></label>
       {hits ? (
         <div class="results">
-          {hits.map((b) => <button key={b.id} class="result" onClick={() => go(b.x, b.y, name(b))}><strong>{name(b)}</strong><small>Booth {b.id} · Hall {b.hall}{sm.has(b.id) ? ' · online' : ''}{stamped.has(b.id) ? ' · stamped' : ''}</small></button>)}
+          {hits.map((b) => <div key={b.id} class="hit"><button class="result" onClick={() => go(b.x, b.y, name(b))}><strong>{name(b)}</strong><small>Booth {b.id} · Hall {b.hall}{sm.has(b.id) ? ' · online' : ''}{stamped.has(b.id) ? ' · stamped' : ''}</small></button><WarpButton booth={b} engine={engine} /></div>)}
           {hits.length === 0 && <p class="fine">No booth or exhibitor matches on any of the three levels.</p>}
         </div>
       ) : (
@@ -74,7 +75,7 @@ export function MapSheet({ engine }: Eng) {
           <div ref={wrap} class="mapwrap"><canvas ref={canvas} class="map" onClick={tap} role="img" aria-label={`Map of level ${deck}. Tap to set a trail.`} /></div>
           <p class="fine">Tap anywhere to be guided there. White booths, <b class="gold-t">gold</b> once you have stamped them, <b class="green-t">green</b> when the exhibitor is online.</p>
           <div class="results flow" style={{ marginTop: '12px' }}>
-            {deck === 2 && <button class="result hero" onClick={() => go(lv.hero.dock.x, lv.hero.dock.y, 'The X · Booth 7E17')}><strong>The X — leanxdigital</strong><small>Booth 7E17 · Hall 7 · your tote bag, and the way up to the Playground</small></button>}
+            {deck === 2 && <div class="hit"><button class="result hero" onClick={() => go(lv.hero.dock.x, lv.hero.dock.y, 'The X · Booth 7E17')}><strong>The X — leanxdigital</strong><small>Booth 7E17 · Hall 7 · your tote bag, and the way up to the Playground</small></button><WarpButton booth={lv.booths.find((b) => b.id === lv.hero.id) ?? null} engine={engine} /></div>}
             {places.filter((p) => p.deck === deck).map((p) => <button key={p.id} class={'result' + (been.has(`place:${p.id}`) ? ' seen' : '')} onClick={() => go((p.rect.x0 + p.rect.x1) / 2, (p.rect.y0 + p.rect.y1) / 2, p.name)}><strong>{p.name}</strong><small>{p.blurb}</small></button>)}
             {halls.filter((h) => h.level === deck).map((h) => { const r = lv.halls.find((k) => k.id === h.hall)!; return <button key={h.hall} class={'result' + (been.has(`hall:${h.hall}`) ? ' seen' : '')} onClick={() => go((r.x0 + r.x1) / 2, r.y0 + (r.y1 - r.y0) * 0.28, `Hall ${h.hall}`)}><strong>Hall {h.hall}</strong><small>{hallLine(h)}</small></button>; })}
           </div>

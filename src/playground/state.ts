@@ -3,7 +3,7 @@
 import { signal } from '@preact/signals';
 import type { Gear } from './course';
 import type { RunSummary } from './run';
-import type { PlaygroundStore } from './store';
+import type { PlaygroundStore, Unlock } from './store';
 
 export type PgMode = 'pad' | 'run' | 'summary';
 export const pgMode = signal<PgMode>('pad');
@@ -14,7 +14,7 @@ export const pgCombo = signal(1);
 export const pgFuel = signal(100);
 export const pgGear = signal<Gear>('boots');
 export const pgBalance = signal(0);
-export const pgUnlocks = signal<Gear[]>(['boots']);
+export const pgUnlocks = signal<Unlock[]>(['boots']);
 /** Orbit 1's best score, and Orbit 2's. */
 export const pgBest = signal<number | null>(null);
 export const pgBest2 = signal<number | null>(null);

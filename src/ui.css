@@ -160,7 +160,7 @@ input::placeholder,textarea::placeholder{color:var(--ink-3)}textarea{resize:vert
 .seg button{font:inherit;color:var(--ink-2);background:none;border:0;border-radius:var(--r-s);padding:9px 12px;cursor:pointer;text-align:center;min-height:44px}
 .seg button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(27,33,48,.12)}.seg strong{display:block;font-size:14px}.seg small{font-size:12px;opacity:.75}
 .results{display:grid;gap:6px;max-height:calc(var(--vh) * .46);overflow:auto;margin-top:4px}
-.results.flow{max-height:none;overflow:visible}
+.results.flow{max-height:none;overflow:visible}.results .hit{display:flex;gap:6px;align-items:center}.results .hit .result{flex:1;min-width:0}.results .hit .btn{flex:none}
 .result.seen strong::after{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--blue);margin-left:8px;vertical-align:1px}
 .seg.three{grid-template-columns:repeat(3,1fr)}
 .mapwrap{border-radius:var(--r-m);overflow:hidden;border:1px solid var(--line)}.map{display:block;width:100%;cursor:pointer;touch-action:manipulation}

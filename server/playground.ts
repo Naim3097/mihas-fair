@@ -6,10 +6,13 @@
 // is open to a player once they have been through the gate on Orbit 1, while the crew's switch for it is on.
 import { Game, GameError, dayStart } from './game.js';
 import type { Stmt } from './db/types.js';
-import type { PlaygroundBest, PlaygroundBoardRow, PlaygroundGear, PlaygroundMe, PlaygroundOrbit, PlaygroundRunInput, PlaygroundRunResult, XpEvent } from '../shared/types.js';
-import { COMBO_MAX, COURSE_DIAMONDS, COURSE_STARS, DIAMOND, DIAMOND_STARS, GATE_BONUS_PER_S, KIT_NAME, KIT_PRICE, MET_STARS, O2_CAP, STAR } from '../shared/playground.js';
+import type { PlaygroundBest, PlaygroundBoardRow, PlaygroundGear, PlaygroundMe, PlaygroundOrbit, PlaygroundRunInput, PlaygroundRunResult, PlaygroundUnlock, XpEvent } from '../shared/types.js';
+import { COMBO_MAX, COURSE_DIAMONDS, COURSE_STARS, DIAMOND, DIAMOND_STARS, GATE_BONUS_PER_S, ITEMS, ITEM_NAME, ITEM_PRICE, KIT_NAME, KIT_PRICE, MET_STARS, O2_CAP, STAR, type Item } from '../shared/playground.js';
 
 const GEARS: PlaygroundGear[] = ['boots', 'skates', 'jetpack'];
+/** What can be owned: the kits, worn; and the items (Warp), never worn. */
+const UNLOCKS: readonly string[] = [...GEARS, ...ITEMS];
+const isItem = (u: string): u is Item => (ITEMS as readonly string[]).includes(u);
 /** A token opens one run; another is not issued within this gap (Again after a short run must still work), and one
  *  older than the life is no longer believed. */
 export const TOKEN_GAP_MS = 15_000, TOKEN_TTL_MS = 10 * 60_000;
@@ -31,14 +34,15 @@ type CachedRow = Omit<PlaygroundBoardRow, 'you'> & { id: string };
 export class Playground {
   private boardCache = new Map<string, { at: number; rows: CachedRow[] }>();
   /** What each player owns, for the presence ping's kit (every 3 s): read once, kept half a minute, dropped on a purchase. */
-  private ownedCache = new Map<string, { at: number; unlocks: PlaygroundGear[] }>();
-  /** `sky`: whether the crew's switch for Orbit 2 is on (LiveOps' flag); without it, Orbit 2 stays shut. */
-  constructor(private g: Game, private opts: { daily: boolean; sky?: () => Promise<boolean> } = { daily: false }) {}
+  private ownedCache = new Map<string, { at: number; unlocks: PlaygroundUnlock[] }>();
+  /** `sky`: whether the crew's switch for Orbit 2 is on (LiveOps' flag); without it, Orbit 2 stays shut. `warp`: the
+   *  same for Warp; without it, Warp is not sold (nobody pays for what they cannot use). */
+  constructor(private g: Game, private opts: { daily: boolean; sky?: () => Promise<boolean>; warp?: () => Promise<boolean> } = { daily: false }) {}
 
-  private async state(id: string): Promise<{ stars: number; unlocks: PlaygroundGear[]; gear: PlaygroundGear }> {
+  private async state(id: string): Promise<{ stars: number; unlocks: PlaygroundUnlock[]; gear: PlaygroundGear }> {
     const r = await this.g.db.get<StateRow>('SELECT stars, unlocks, gear FROM playground_state WHERE player_id = ?', [id]);
     if (!r) return { stars: 0, unlocks: ['boots'], gear: 'boots' };
-    const unlocks = r.unlocks.split(',').filter((u): u is PlaygroundGear => GEARS.includes(u as PlaygroundGear));
+    const unlocks = r.unlocks.split(',').filter((u): u is PlaygroundUnlock => UNLOCKS.includes(u));
     return { stars: r.stars, unlocks: unlocks.includes('boots') ? unlocks : ['boots', ...unlocks], gear: GEARS.includes(r.gear as PlaygroundGear) ? (r.gear as PlaygroundGear) : 'boots' };
   }
   private async best(id: string, orbit: PlaygroundOrbit = 1): Promise<PlaygroundBest | null> {
@@ -104,21 +108,22 @@ export class Playground {
     };
   }
 
-  /** Does the player own this kit? Cached briefly: the fair asks with every presence ping. */
-  async owns(id: string, kit: PlaygroundGear): Promise<boolean> {
+  /** Does the player own this kit (or Warp)? Cached briefly: the fair asks with every presence ping. */
+  async owns(id: string, kit: PlaygroundUnlock): Promise<boolean> {
     const t = this.g.now(); let c = this.ownedCache.get(id);
     if (!c || t - c.at > 30_000) { if (this.ownedCache.size > 50_000) this.ownedCache.clear(); c = { at: t, unlocks: (await this.state(id)).unlocks }; this.ownedCache.set(id, c); }
     return c.unlocks.includes(kit);
   }
 
-  /** Buy a gear with stars: refused when short, kept once bought. */
-  async unlock(id: string, gear: string): Promise<PlaygroundMe> {
-    if (!GEARS.includes(gear as PlaygroundGear) || gear === 'boots') throw new GameError('gear', 'No such gear');
-    const g = gear as PlaygroundGear, s = await this.state(id), price = KIT_PRICE[g];
-    if (s.unlocks.includes(g)) return this.me(id);
-    if (s.stars < price) throw new GameError('short', `${price - s.stars} more stars for ${KIT_NAME[g]}`);
+  /** Buy a kit (worn from then on) or an item (Warp) with stars: refused when short, kept once bought. */
+  async unlock(id: string, what: string): Promise<PlaygroundMe> {
+    if (!UNLOCKS.includes(what) || what === 'boots') throw new GameError('gear', 'No such gear');
+    const u = what as PlaygroundUnlock, s = await this.state(id), price = isItem(u) ? ITEM_PRICE[u] : KIT_PRICE[u], name = isItem(u) ? ITEM_NAME[u] : KIT_NAME[u];
+    if (s.unlocks.includes(u)) return this.me(id);
+    if (isItem(u) && !(this.opts.warp && (await this.opts.warp()))) throw new GameError('paused', `${name} is not open yet`, 503);
+    if (s.stars < price) throw new GameError('short', `${price - s.stars} more stars for ${name}`);
     this.ownedCache.delete(id);
-    await this.g.db.run('INSERT INTO playground_state (player_id, stars, unlocks, gear, updated_at) VALUES (?,?,?,?,?) ON CONFLICT(player_id) DO UPDATE SET stars = excluded.stars, unlocks = excluded.unlocks, gear = excluded.gear, updated_at = excluded.updated_at', [id, s.stars - price, [...s.unlocks, g].join(','), g, this.g.now()]);
+    await this.g.db.run('INSERT INTO playground_state (player_id, stars, unlocks, gear, updated_at) VALUES (?,?,?,?,?) ON CONFLICT(player_id) DO UPDATE SET stars = excluded.stars, unlocks = excluded.unlocks, gear = excluded.gear, updated_at = excluded.updated_at', [id, s.stars - price, [...s.unlocks, u].join(','), isItem(u) ? s.gear : u, this.g.now()]);
     return this.me(id);
   }
 

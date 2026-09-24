@@ -18,7 +18,8 @@ export interface Crossing { x: number; z0: number; z1: number; y: number; h: num
 export interface Ring extends Crossing { at: { x: number; y: number; z: number; yaw: number }; order: number }
 /** A pad on a platform's top: a boost along `dir`, or a jump straight up. */
 export interface Pad { kind: 'boost' | 'jump'; x: number; z: number; y: number; w: number; d: number; dir: [number, number] }
-export interface Stand { gear: Gear; x: number; z: number }
+/** A stand on the pad: a kit to buy and wear, or Warp (bought here, used in the fair). */
+export interface Stand { gear: Gear | 'warp'; x: number; z: number }
 /** Where the camera settles while the body is in this rectangle; `gear` limits it to one gear's line. */
 export interface Section { name: string; x0: number; x1: number; z0: number; z1: number; yaw: number; gear?: Gear }
 /** One hill of the Jetpack line: the edge it lifts from, the crest to let go at, where the fall lands. */
@@ -62,7 +63,7 @@ export function buildCourse(): Course {
 
   // the pad: gear stands to the north, the portal to the south-west, the start line to the east
   P.push({ x0: -8, x1: 8, z0: -8, z1: 8, y: 0 });
-  const stands: Stand[] = [{ gear: 'boots', x: -4, z: 5 }, { gear: 'skates', x: 0, z: 5 }, { gear: 'jetpack', x: 4, z: 5 }];
+  const stands: Stand[] = [{ gear: 'boots', x: -4, z: 5 }, { gear: 'skates', x: 0, z: 5 }, { gear: 'jetpack', x: 4, z: 5 }, { gear: 'warp', x: 2, z: -5 }]; // Warp to the south, by the way down
   const start: Crossing = { x: 8, z0: -4, z1: 4, y: 0, h: 4, dir: 1 };
 
   // Boardwalk: floor at 0, gaps of 1.8–2.2 m (a running jump at the edge clears 3.2, half a metre early 2.7), an arc

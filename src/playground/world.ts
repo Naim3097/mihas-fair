@@ -9,7 +9,7 @@ import { loadKit } from '../fair/nexo';
 import { FAIR } from '../fair/palette';
 import { Sky } from '../fair/sky';
 import { type Course, type Gear, type Pickup, type PickupKind } from './course';
-import { GEAR } from './gear';
+import { unlockName, unlockPrice } from './gear';
 import type { Movers } from './movers';
 import { Ribbon } from './ribbon';
 import { Slabs, paintX } from './slabs';
@@ -20,9 +20,9 @@ import { climbRings, makeRings } from '../fair/sky-lift';
 import { PAD_FROM_DOCK, SKY_Y, skyAnchor } from '../universe';
 
 const INK = 0x1b2130, WHITE = 0xffffff;
-const TINT: Record<Gear, number> = { boots: 0xffffff, skates: FAIR.accent, jetpack: FAIR.orange };
+const TINT: Record<Gear | 'warp', number> = { boots: 0xffffff, skates: FAIR.accent, jetpack: FAIR.orange, warp: FAIR.blue };
 /** Where the eye can read a label over a stand or the portal. */
-export interface WorldLabel { text: string; pos: THREE.Vector3; kind: 'stand' | 'portal'; gear?: Gear }
+export interface WorldLabel { text: string; pos: THREE.Vector3; kind: 'stand' | 'portal'; gear?: Gear | 'warp' }
 
 const flat = (color: number, emissive = 0) => new THREE.MeshLambertMaterial({ color, emissive: color, emissiveIntensity: emissive });
 const decal = (o: THREE.MeshBasicMaterialParameters) => new THREE.MeshBasicMaterial({ ...o, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
@@ -51,7 +51,9 @@ export class PlaygroundWorld {
   /** the kit itself over each stand, turning slowly */
   private showcase: { obj: THREE.Object3D; y: number }[] = [];
   /** the gear stands' discs, and the one swelling for a purchase */
-  private discs: Partial<Record<Gear, THREE.Mesh>> = {}; private pop: { mesh: THREE.Mesh; t: number } | null = null;
+  private discs: Partial<Record<Gear | 'warp', THREE.Mesh>> = {}; private pop: { mesh: THREE.Mesh; t: number } | null = null;
+  /** Warp's stand, shown while its switch is on */
+  private warpStand: THREE.Object3D[] = [];
   /** each pad's marks (course.pads order), and the stars with a tinted ring that ride a tile: for Orbit 2 */
   private padMarks: { m: THREE.Mesh; y: number }[][] = []; private tintRiders: number[] = [];
   /** whether the tiles were moving at the last frame: one more frame draws them home */
@@ -111,8 +113,12 @@ export class PlaygroundWorld {
     for (const s of c.stands) {
       const disc = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 0.08, 40), flat(TINT[s.gear], s.gear === 'boots' ? 0 : 0.25)); disc.position.set(s.x, 0.04, s.z); disc.receiveShadow = true; this.scene.add(disc); this.discs[s.gear] = disc;
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.3, 0.3), flat(INK)); post.position.set(s.x, 0.65, s.z - 1.0); post.castShadow = true; this.scene.add(post);
-      this.labels.push({ text: `${GEAR[s.gear].name}${GEAR[s.gear].price ? ` · ${GEAR[s.gear].price} ★` : ''}`, pos: new THREE.Vector3(s.x, 2.0, s.z - 1.0), kind: 'stand', gear: s.gear });
-      if (s.gear !== 'boots') void loadKit(s.gear, true).then((g) => { if (!g) return; const o = g.clone(), y = s.gear === 'skates' ? 1.36 : 1.68; o.position.set(s.x, y, s.z - 1.0); o.scale.setScalar(s.gear === 'skates' ? 1.8 : 1.3); o.traverse((x) => { const m = x as THREE.Mesh; if (m.isMesh) m.castShadow = false; }); this.scene.add(o); this.showcase.push({ obj: o, y }); }); // the thing itself, over its stand
+      const price = unlockPrice(s.gear);
+      this.labels.push({ text: `${unlockName(s.gear)}${price ? ` · ${price} ★` : ''}`, pos: new THREE.Vector3(s.x, 2.0, s.z - 1.0), kind: 'stand', gear: s.gear });
+      if (s.gear === 'warp') { // a ring standing over its stand, turning: the way through
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.07, 10, 36), flat(FAIR.blue, 0.45)); ring.position.set(s.x, 1.6, s.z - 1.0); this.scene.add(ring);
+        this.showcase.push({ obj: ring, y: 1.6 }); this.warpStand.push(disc, post, ring);
+      } else if (s.gear !== 'boots') { const gear = s.gear; void loadKit(gear, true).then((g) => { if (!g) return; const o = g.clone(), y = gear === 'skates' ? 1.36 : 1.68; o.position.set(s.x, y, s.z - 1.0); o.scale.setScalar(gear === 'skates' ? 1.8 : 1.3); o.traverse((x) => { const m = x as THREE.Mesh; if (m.isMesh) m.castShadow = false; }); this.scene.add(o); this.showcase.push({ obj: o, y }); }); } // the thing itself, over its stand
     }
     const portal = new THREE.Mesh(new THREE.CylinderGeometry(c.portal.r, c.portal.r, 0.08, 40), flat(FAIR.blue, 0.2)); portal.position.set(c.portal.x, 0.04, c.portal.z); this.scene.add(portal);
     const halo = new THREE.Mesh(new THREE.TorusGeometry(c.portal.r + 0.2, 0.06, 8, 40).rotateX(-Math.PI / 2), flat(FAIR.blue)); halo.position.set(c.portal.x, 0.12, c.portal.z); this.scene.add(halo);
@@ -207,8 +213,11 @@ export class PlaygroundWorld {
   /** How far a pickup is carried from its place by the tile it rides (nothing, at rest or on a tile that stays). */
   private carried(i: number): { x: number; y: number; z: number } { const mv = this.movers, k = mv ? mv.riderOf[i]! : -1; return k >= 0 ? mv!.now[k]! : STILL; }
 
+  /** Warp's stand, there while the crew's switch for Warp is on. */
+  showWarp(on: boolean) { for (const o of this.warpStand) o.visible = on; }
+
   /** A gear that is yours: its stand glows from now on, and swells once as it is bought under the body's feet. */
-  own(gear: Gear, ceremony = false) {
+  own(gear: Gear | 'warp', ceremony = false) {
     const d = this.discs[gear]; if (!d) return;
     (d.material as THREE.MeshLambertMaterial).emissiveIntensity = 0.5;
     if (ceremony) this.pop = { mesh: d, t: 0 };

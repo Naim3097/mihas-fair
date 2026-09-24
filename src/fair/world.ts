@@ -71,10 +71,16 @@ export class FairWorld {
     const tint: Record<string, number> = { boots: 0xffffff, skates: FAIR.accent, jetpack: FAIR.orange }, M = this.tmpM, C = new THREE.Color();
     const discs = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1, 0.08, 40), new THREE.MeshLambertMaterial({ color: 0xffffff }), c.stands.length + 1);
     c.stands.forEach((st, i) => { discs.setMatrixAt(i, M.makeScale(1.4, 1, 1.4).setPosition(a.x + st.x, a.y + 0.04, a.z + st.z)); discs.setColorAt(i, C.set(tint[st.gear] ?? FAIR.blue)); });
+    const w = c.stands.findIndex((st) => st.gear === 'warp');
+    if (w >= 0) { const st = c.stands[w]!; this.warpDisc = { mesh: discs, i: w, at: new THREE.Matrix4().makeScale(1.4, 1, 1.4).setPosition(a.x + st.x, a.y + 0.04, a.z + st.z) }; }
     discs.setMatrixAt(c.stands.length, M.makeScale(c.portal.r, 1, c.portal.r).setPosition(a.x + c.portal.x, a.y + 0.04, a.z + c.portal.z)); discs.setColorAt(c.stands.length, C.set(FAIR.blue));
     discs.computeBoundingSphere(); this.scene.add(discs);
     paintX(this.scene, a.x + c.spawn.x, a.y, a.z + c.spawn.z);
   }
+
+  /** Warp's stand in the sky copy, there while its switch is on (as it is in the Playground: the cut stays matched). */
+  private warpDisc: { mesh: THREE.InstancedMesh; i: number; at: THREE.Matrix4 } | null = null;
+  showWarp(on: boolean) { const d = this.warpDisc; if (!d) return; d.mesh.setMatrixAt(d.i, on ? d.at : this.tmpM.makeScale(0, 0, 0)); d.mesh.instanceMatrix.needsUpdate = true; }
 
   private flat(color: number) { return new THREE.MeshLambertMaterial({ color }); }
 

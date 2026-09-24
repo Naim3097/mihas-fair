@@ -20,3 +20,12 @@ export type Kit = 'boots' | 'skates' | 'jetpack';
 /** What each kit costs in stars, and what it is called. */
 export const KIT_PRICE: Record<Kit, number> = { boots: 0, skates: 100, jetpack: 250 };
 export const KIT_NAME: Record<Kit, string> = { boots: 'Boots', skates: 'Skates', jetpack: 'Jetpack' };
+
+/** What else stars buy, owned beside the kits but never worn: Warp, a ride through the sky to any booth on Mission X. */
+export type Item = 'warp';
+export const ITEMS: readonly Item[] = ['warp'];
+export const ITEM_PRICE: Record<Item, number> = { warp: 400 };
+export const ITEM_NAME: Record<Item, string> = { warp: 'Warp' };
+/** Warp: the least way it saves (m: nearer, walk), the rest between two (ms), and how long after one a ping sent from
+ *  the old place is forgiven, not taken for a jump (ms). The arrival is within the stamping reach of the booth. */
+export const WARP_MIN_M = 30, WARP_COOLDOWN_MS = 60_000, WARP_GRACE_MS = 10_000;

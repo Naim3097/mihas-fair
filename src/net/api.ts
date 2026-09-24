@@ -1,4 +1,4 @@
-import type { BoothTeamPeek, BoothTeamView, HandoffPeek } from '../../shared/types';
+import type { BoothTeamPeek, BoothTeamView, HandoffPeek, WarpInput, WarpResult } from '../../shared/types';
 import type { ApiResult, Contact, Hologram, HostCode, HostLead, HostStation, LinkCode, LinkPeek, PassportInput, PresencePing, StampRequest, StationClaimInput, StationView, TodayView } from '../../shared/types';
 import type { PlaygroundBoardRow, PlaygroundMe, PlaygroundRunInput, PlaygroundRunResult } from '../../shared/types';
 import type { Role } from '../../shared/rules';
@@ -61,6 +61,8 @@ export const api = {
   boothImage: (stationId: string, kind: 'logo' | 'photo', image: string) => call<null>('POST', `/api/station/${kind}`, { stationId, image }, true),
   leaveCard: (stationId: string, fields: ShareField[]) => call<null>('POST', '/api/station/share', { stationId, fields }),
   takeBackCard: (stationId: string) => call<null>('POST', '/api/station/unshare', { stationId }),
+  /** Warp: the server checks it and puts the body beside the booth; the ride there is the client's to show. */
+  warp: (w: WarpInput) => call<WarpResult>('POST', '/api/warp', w, true),
   myBooths: () => call<HostStation[]>('GET', '/api/host/stations'),
   boothQr: (stationId: string) => call<HostCode>('GET', `/api/host/code?station=${q(stationId)}`),
   /** The booth team: the owner sees the invitation link for colleagues. */

@@ -22,13 +22,14 @@ import { SKY_VIEW } from '../universe';
 import { api } from '../net/api';
 import { buzz, sfx, type Sfx as SfxName } from '../sfx';
 import { FALL_Y, JUMP_PAD, PICKUP_R, PickupIndex, buildCourse, courseBoxes, crossed, platformUnder, sectionAt, type Course, type Gear, type Section } from './course';
-import { GEAR, GEAR_READY, boostBody } from './gear';
+import { GEAR, GEAR_READY, boostBody, unlockName } from './gear';
+import { ITEM_PRICE } from '../../shared/playground';
 import { Movers } from './movers';
 import { planOrbit, slotsFor, type OrbitPlan, type Slot } from './orbit';
 import { newSeed } from './rng';
 import { Run, type RunEvent } from './run';
 import { pgBalance, pgBest, pgBest2, pgCombo, pgControls, pgFade, pgFuel, pgGear, pgHint, pgMode, pgNearPortal, pgO2, pgOrbit, pgRunStars, pgScore, pgStandNote, pgStore, pgSummary, pgUnlocks } from './state';
-import { rememberMovements, seenMovements, type Orbit, type PlaygroundStore } from './store';
+import { isKit, rememberMovements, seenMovements, type Orbit, type PlaygroundStore, type Unlock } from './store';
 import { PlaygroundWorld } from './world';
 
 const ORBIT_HOLD_MS = 1500, CAM = { min: 2.6, max: 9 };
@@ -61,7 +62,9 @@ export class PlaygroundEngine implements Scene {
   private acc = 0; private near: number[] = new Array(64).fill(0);
   private prev = v3(); private section: Section | null = null;
   private orbitAt = 0; private padOn: string | null = null; private standOn: string | null = null;
-  private labelEls: { el: HTMLDivElement; pos: THREE.Vector3; gear?: Gear }[] = [];
+  private labelEls: { el: HTMLDivElement; pos: THREE.Vector3; gear?: Unlock }[] = [];
+  /** whether Warp's stand is showing (it follows the crew's switch for Warp) */
+  private warpShown: boolean | null = null;
   private floats: Float[] = [];
   private lv = new THREE.Vector3();
   private hudAt = 0; private jumped = false; private disposed = false; private warned = false;
@@ -119,8 +122,8 @@ export class PlaygroundEngine implements Scene {
   private publishStore() { const s = this.store.get(); pgBalance.value = s.stars; pgUnlocks.value = s.unlocks; pgBest.value = s.best?.score ?? null; pgBest2.value = s.best2?.score ?? null; pgGear.value = this.gear; }
   /** The stands of the gear this player owns read as theirs: no price on the label, the disc lit; the one just
    *  bought swells under the feet. */
-  private markOwned(bought: Gear | null = null) {
-    for (const g of this.store.get().unlocks) { const l = this.labelEls.find((x) => x.gear === g); if (l) l.el.textContent = GEAR[g].name; this.world.own(g, g === bought); if (g !== 'boots') void loadKit(g); } // a kit owned is a kit ready to wear
+  private markOwned(bought: Unlock | null = null) {
+    for (const g of this.store.get().unlocks) { const l = this.labelEls.find((x) => x.gear === g); if (l) l.el.textContent = unlockName(g); this.world.own(g, g === bought); if (isKit(g) && g !== 'boots') void loadKit(g); } // a kit owned is a kit ready to wear
   }
 
   /* ---------------- entering, leaving, the pad ---------------- */
@@ -199,6 +202,7 @@ export class PlaygroundEngine implements Scene {
     this.world.update(t, dt);
     const it = this.stage.input.poll();
     if (pgMode.value === 'summary' || this.leaving) { it.move.x = it.move.y = 0; it.jump = false; it.thrust = false; }
+    if (this.warpShown !== switches.value.warp) { this.warpShown = switches.value.warp; this.world.showWarp(this.warpShown); } // Warp's stand, while its switch is on
     if (pgOrbit.value === 2 && pgMode.value !== 'run' && !this.orbitOpen()) this.arm(); // its switch went off: the tiles settle home (a run under way keeps its course)
     this.acc += dt; let n = 0;
     while (this.acc >= STEP - 1e-9 && n < 6) {
@@ -245,7 +249,7 @@ export class PlaygroundEngine implements Scene {
       else if (pad) { const [dx, dz] = pad.slice(6).split(',').map(Number); boostBody(p, dx!, dz!); this.rig.kick(GEAR[this.gear].camera.kick); this.steps.play('dodge'); }
     }
     const stand = tag?.startsWith('stand:') ? tag.slice(6) : null;
-    if (stand !== this.standOn) { this.standOn = stand; if (stand) this.onStand(stand as Gear); else pgStandNote.value = null; }
+    if (stand !== this.standOn) { this.standOn = stand; if (stand) this.onStand(stand as Unlock); else pgStandNote.value = null; }
     const nearPortal = Math.hypot(pos.x - this.course.portal.x, pos.z - this.course.portal.z) < this.course.portal.r + 0.4;
     if (pgNearPortal.value !== nearPortal) pgNearPortal.value = nearPortal;
     if (this.jumped !== !b.grounded) { this.jumped = !b.grounded; if (b.grounded && pgHint.value && p.peak > pos.y + 0.5) pgHint.value = false; }
@@ -300,12 +304,22 @@ export class PlaygroundEngine implements Scene {
     api.track('playground_run', { gear: this.gear, score: s.score, stars: s.stars, comboMax: s.comboMax, seconds: s.seconds, finished: s.reason === 'gate', orbit: this.runOrbit });
     if (s.reason === 'gate') { sfx('big'); buzz([18, 40, 18]); } else if (s.reason === 'o2') sfx('warn');
   }
-  private onStand(gear: Gear) {
-    const g = GEAR[gear], s = this.store.get(), tip = gear === 'skates' ? ' · hold the rim to tuck' : gear === 'jetpack' ? ' · hold Jump to fly' : '';
+  private onStand(what: Unlock) {
+    if (what === 'warp') { this.onWarpStand(); return; }
+    const gear = what, g = GEAR[gear], s = this.store.get(), tip = gear === 'skates' ? ' · hold the rim to tuck' : gear === 'jetpack' ? ' · hold Jump to fly' : '';
     if (s.unlocks.includes(gear)) { this.setGear(gear); pgStandNote.value = `${g.name} on${tip}`; sfx('tap'); return; }
     if (!GEAR_READY[gear]) { pgStandNote.value = `${g.name}: coming soon`; return; }
     if (this.store.spend(gear, g.price)) { this.publishStore(); this.setGear(gear); this.markOwned(gear); pgStandNote.value = `${g.name} unlocked${tip}`; sfx('big'); buzz([18, 40, 18]); toast(`${g.name} are yours`, `${g.price} stars well spent`, 'xp'); api.track('playground_unlock', { gear }); }
     else pgStandNote.value = `${g.name}: ${g.price - s.stars} more stars`;
+  }
+
+  /** Warp's stand: bought here with stars, used in the fair (beside any booth on Mission X); there only while its switch is on. */
+  private onWarpStand() {
+    if (!switches.value.warp) return;
+    const s = this.store.get(), price = ITEM_PRICE.warp;
+    if (s.unlocks.includes('warp')) { pgStandNote.value = 'Warp is yours · use it in the fair'; sfx('tap'); return; }
+    if (this.store.spend('warp', price)) { this.publishStore(); this.markOwned('warp'); pgStandNote.value = 'Warp unlocked · to any booth on Mission X'; sfx('big'); buzz([18, 40, 18]); toast('Warp is yours', `${price} stars well spent`, 'xp'); api.track('playground_unlock', { gear: 'warp' }); }
+    else pgStandNote.value = `Warp: ${price - s.stars} more stars`;
   }
 
   private onEvent(e: RunEvent, pos: { x: number; y: number; z: number }) {
@@ -374,7 +388,7 @@ export class PlaygroundEngine implements Scene {
       if (v.z >= 1 || Math.abs(v.x) > 1.05 || Math.abs(v.y) > 1.05 || opacity <= 0) { el.style.opacity = '0'; return; }
       el.style.opacity = opacity.toFixed(2); el.style.transform = `translate(-50%,-50%) translate(${Math.round((v.x * 0.5 + 0.5) * w)}px,${Math.round((-v.y * 0.5 + 0.5) * h)}px)`;
     };
-    for (const l of this.labelEls) put(l.el, l.pos, this.camera.position.distanceTo(l.pos) < 40 ? 1 : 0);
+    for (const l of this.labelEls) put(l.el, l.pos, (l.gear !== 'warp' || this.warpShown) && this.camera.position.distanceTo(l.pos) < 40 ? 1 : 0);
     for (const f of this.floats) { if (!f.on) { f.el.style.opacity = '0'; continue; } f.t += dt; f.pos.y += dt * 1.3; put(f.el, f.pos, f.t < 0.5 ? 1 : 1 - (f.t - 0.5) / 0.4); if (f.t > 0.9) f.on = false; }
   }
 

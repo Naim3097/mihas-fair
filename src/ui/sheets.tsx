@@ -10,6 +10,7 @@ import { POINTS, ROLE_INFO, waLink, type ShareField } from '../../shared/rules';
 import { MET_STARS } from '../../shared/playground';
 import type { Booth, BoothTeamView, Contact, LinkCode, LinkPeek } from '../../shared/types';
 import { LinkDemoHint, StationDemoHint } from '../demo/Tour';
+import { WarpButton } from './warp';
 import { boothAction, referral, setReferral, drop, guideOn, guideTarget, journey, level, me, modal, myBooths, nearStation, online, panelStation, pendingLink, stampedSet, stationMap, stations, switches, toast, world } from '../state';
 
 type Eng = { engine: () => Engine | null };
@@ -46,6 +47,7 @@ export function BoothSheet({ engine }: Eng) {
           {boothAction(b) === 'stamp' && near && <button class="btn primary big" disabled={busy} onClick={() => run(() => engine()!.stamp(b), 'Could not swap cards')}>Swap card · +{POINTS.stamp + (left ? 0 : POINTS.leaveCard)}{st && !left && switches.value.sky ? ` · +${MET_STARS} ★` : ''}</button>}
           {cp && !cp.done && <p class="fine">{met ? 'Scanned.' : 'For the checkpoint: scan the Mission X QR on their counter.'}</p>}
           {!near && <button class="btn big" onClick={() => guideTo(b, title)}>Guide me here</button>}
+          {!near && <WarpButton booth={b} engine={engine} primary />}
 
           {!met && (
             <div class="box">

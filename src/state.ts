@@ -34,6 +34,8 @@ export const nearLift = signal<{ here: Lift; others: Lift[] } | null>(null);
 export const goalVia = signal<string | null>(null);
 export const currentDeck = signal(2);
 export const distToGoal = signal<number | null>(null);
+/** Warp: when the next may be (ms since the epoch; the server says, after each ride). */
+export const warpNextAt = signal(0);
 export const guideOn = signal(true);
 /** Where the trail leads when the player picked a place. null = wherever the mission points: the next checkpoint
  *  (nextCheckpoint), then Lean X for the tote bag. */

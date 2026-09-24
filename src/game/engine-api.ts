@@ -15,6 +15,8 @@ export interface EngineApi {
   useLift(to: Lift): void;
   /** Up to the Playground: a ride from here to its pad over the X, where the world changes. */
   launch(): void;
+  /** Warp (bought in the Playground): a ride through the sky to a booth on Mission X, the server placing the body there. */
+  warp(b: Booth): Promise<void>;
   /** Where the player stands, in floor-plan metres. */
   readonly position: P2;
   levelOf(p: P2): number;

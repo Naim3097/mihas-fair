@@ -13,13 +13,14 @@ import { Referrals } from './referrals.js';
 import { BoothTeam } from './team.js';
 import { Onboarding } from './onboard.js';
 import { Playground } from './playground.js';
+import { Warps } from './warp.js';
 import { Signer } from './crypto.js';
 import { PresenceStore, type Presence } from './presence.js';
 import type { Db } from './db/types.js';
 import type { LevelData } from '../shared/types.js';
 import { FEATURES, type Features } from '../shared/rules.js';
 
-export interface Services { game: Game; stations: Stations; checkpoints: Checkpoints; referrals: Referrals; team: BoothTeam; /** exhibitors the crew registers at the counter */ onboarding: Onboarding; social: Social; crews: Crews; venue: Venue; director: Director; gc: GroundControl; ops: LiveOps; signer: Signer; /** the library game's characters */ ceritera: Ceritera; /** the Playground beside the X */ playground: Playground }
+export interface Services { game: Game; stations: Stations; checkpoints: Checkpoints; referrals: Referrals; team: BoothTeam; /** exhibitors the crew registers at the counter */ onboarding: Onboarding; social: Social; crews: Crews; venue: Venue; director: Director; gc: GroundControl; ops: LiveOps; signer: Signer; /** the library game's characters */ ceritera: Ceritera; /** the Playground beside the X */ playground: Playground; /** Warp: across the fair to a booth, bought in the Playground */ warps: Warps }
 
 export function buildServices(o: { db: Db; secret: string; level: LevelData; publicOrigin: string; now?: () => number; /** defaults to in-memory; pass DbPresence on serverless */ presence?: Presence; /** switched-off systems to run anyway (their tests do) */ features?: Partial<Features>; /** the Playground's daily bridge to the fair's points, off unless the deployment says so */ playgroundDaily?: boolean; /** the show's own deployment: the newest switches (FLAGS_OFF_LIVE) start off there */ live?: boolean }): Services {
   const signer = new Signer(o.secret);
@@ -29,9 +30,10 @@ export function buildServices(o: { db: Db; secret: string; level: LevelData; pub
   const venue = new Venue(game), director = new Director(game, stations, venue), gc = new GroundControl(game, stations, venue), ops = new LiveOps(game, stations, { live: o.live === true });
   const ceritera = new Ceritera(o.db, o.now), checkpoints = new Checkpoints(game, team);
   stations.onStatus = () => checkpoints.forget();
-  const referrals = new Referrals(game, team), onboarding = new Onboarding(game, stations, team), playground = new Playground(game, { daily: o.playgroundDaily === true, sky: async () => (await ops.flags()).sky });
+  const referrals = new Referrals(game, team), onboarding = new Onboarding(game, stations, team), playground = new Playground(game, { daily: o.playgroundDaily === true, sky: async () => (await ops.flags()).sky, warp: async () => (await ops.flags()).warp });
   stations.onFirstClaim = (id, ref) => referrals.record(id, ref);
   stations.onFirstShare = (id, t) => playground.metExhibitor(id, t); // a lead at the fair pays stars for the Playground
+  const warps = new Warps(game, playground, async () => (await ops.flags()).warp);
 
   game.hooks = {
     companies: () => stations.ownerCompanies(),
@@ -46,8 +48,9 @@ export function buildServices(o: { db: Db; secret: string; level: LevelData; pub
     afterStamp: async (o2) => [...(await director.afterStamp(o2)), ...(await gc.afterStamp(o2)), ...(await ops.afterStamp(o2))],
     afterPing: async (p) => { if (p.deck) await ops.steps(p.id, p.steps, p.movedM); return [...(p.deck ? await venue.walk(p.id, p.movedM, p.t) : []), ...(await director.afterPing(p))]; },
     onImplausible: (id, detail) => ops.speedFlag(id, detail),
+    justWarped: (id, t) => warps.justWarped(id, t),
     mission: checkpoints,
     teamOwner: (id) => team.ownerFor(id),
   };
-  return { game, stations, social, crews, venue, director, gc, ops, signer, ceritera, checkpoints, referrals, team, onboarding, playground };
+  return { game, stations, social, crews, venue, director, gc, ops, signer, ceritera, checkpoints, referrals, team, onboarding, playground, warps };
 }

@@ -30,7 +30,7 @@ function toCsv(cols: string[], rows: Record<string, unknown>[]): string {
 }
 const csvHeaders = (name: string) => ({ 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="${name}"` });
 
-export function createApp({ game, stations, social, crews, venue, director, gc, ops, signer, ceritera, checkpoints, referrals, team, onboarding, playground, crewPin, publicOrigin, secureCookies, cookies: cookieIO }: AppDeps) {
+export function createApp({ game, stations, social, crews, venue, director, gc, ops, signer, ceritera, checkpoints, referrals, team, onboarding, playground, warps, crewPin, publicOrigin, secureCookies, cookies: cookieIO }: AppDeps) {
   const app = new Hono<Vars>();
   const cookieOpts = { httpOnly: true, sameSite: 'Lax' as const, secure: secureCookies, path: '/' };
   const cookies: CookieIO = cookieIO ?? { get: (c, name) => getCookie(c, name), set: (c, name, value, maxAge) => setCookie(c, name, value, { ...cookieOpts, maxAge }) };
@@ -96,6 +96,7 @@ export function createApp({ game, stations, social, crews, venue, director, gc, 
   player.post('/playground/run', async (c) => { const r = await playground.run(pid(c), (await body(c)) as never); return ok(c, r.result, r.events, r.events.length > 0); });
   player.post('/playground/unlock', async (c) => ok(c, await playground.unlock(pid(c), String((await body(c)).gear)), [], false));
   player.post('/playground/gear', async (c) => ok(c, await playground.choose(pid(c), String((await body(c)).gear)), [], false));
+  player.post('/warp', async (c) => ok(c, await warps.warp(pid(c), (await body(c)) as never), [], false)); // Warp, bought in the Playground: to a booth on Mission X
   player.get('/playground/board', async (c) => ok(c, await playground.board(c.req.query('range') === 'all' ? 'all' : 'today', pid(c), c.req.query('orbit') === '2' ? 2 : 1), [], false));
 
   /* stations: claim, host, share */

@@ -17,7 +17,7 @@ import { NavGrid, dotsAlong, nearestOnPath, pathLength, type P2 } from '../game/
 import { BoothPicker } from '../game/pick';
 import { placeAt, type Seat } from '../game/places';
 import { RemoteTrack } from '../game/remote';
-import { atLaunchPad, kitHint, riding, world, autoWalk, boothAction, currentCp, currentDeck, REACHED_RESET_M, unreachCheckpoint, distToGoal, goalVia, guideOn, guideTarget, herePlace, markSeen, me, modal, moveHint, myBooths, nearLift, nearStation, online, panelStation, photoShot, reachCheckpoint, reachedCps, seated, seen, stampedSet, stationMap, stations, toast, trailCheckpoint } from '../state';
+import { atLaunchPad, kitHint, riding, switches, warpNextAt, world, autoWalk, boothAction, currentCp, currentDeck, REACHED_RESET_M, unreachCheckpoint, distToGoal, goalVia, guideOn, guideTarget, herePlace, markSeen, me, modal, moveHint, myBooths, nearLift, nearStation, online, panelStation, photoShot, reachCheckpoint, reachedCps, seated, seen, stampedSet, stationMap, stations, toast, trailCheckpoint } from '../state';
 import type { Library } from '../ceritera/game/anim';
 import { CameraRig } from '../ceritera/game/camera';
 import type { Intent } from '../ceritera/game/controller';
@@ -30,7 +30,7 @@ import type { Quality, Scene, Stage } from './stage';
 import { FAIR_KITS, FLY_CEILING, nextKit } from './kits';
 import type { Gear } from '../playground/course';
 import { pgFuel } from '../playground/state';
-import type { PlaygroundStore } from '../playground/store';
+import { kitsOf, type PlaygroundStore } from '../playground/store';
 import { Ribbon } from '../playground/ribbon';
 export { pickQuality, type Quality } from './stage';
 import { CX, CY, GLASS_H, buildFairLevel, fixY, toPlan, toWorld, type FairLevel } from './level';
@@ -123,6 +123,8 @@ export class FairEngine implements EngineApi, Scene {
    *  on the floor; Nexo and the camera follow the ride; `done` runs once, at its end. */
   private ride: { r: Ride; t: number; from: View; to: View; wide: number; tip: number; done: () => void; ended: boolean } | null = null;
   private ridePt: P3 = { x: 0, y: 0, z: 0 };
+  /** whether Warp's stand shows in the sky copy of the course (it follows the crew's switch for Warp) */
+  private warpShown: boolean | null = null;
   /** The camera as it was before a ride up, for the settle back down onto the body. */
   private beforeSky: View | null = null;
   private stops: (() => void)[] = [];
@@ -218,6 +220,27 @@ export class FairEngine implements EngineApi, Scene {
     riding.value = true; sfx('liftUp'); api.track('launch', { from: atLaunchPad.value ? 'x' : 'menu' });
   }
 
+  /** Warp: across the fair to a booth on Mission X in one ride through the sky. The server puts the body beside the booth
+   *  first (it checks what it believes: server/warp.ts); the ride shows the way there, over the partitions and under
+   *  the glass; the pings wait for the arrival, so the fair's speed check sees no jump. */
+  async warp(b: Booth) {
+    if (!this.started || this.ride) return;
+    const to = this.reach.approach(b, this.position, this.nav);
+    if (!to || Math.hypot(to.x - b.x, to.y - b.y) > STAMP_RADIUS_M - 0.1) { toast('Warp cannot land there', 'Walk to this one', 'warn'); return; }
+    const w = toWorld(to.x, to.y, 0), c = toWorld(b.x, b.y, 0), yaw = Math.atan2(c.x - w.x, c.z - w.z); // facing the booth
+    let r;
+    try { r = await api.warp({ stationId: b.id, x: +to.x.toFixed(2), y: +to.y.toFixed(2), h: +yaw.toFixed(2) }); }
+    catch (e) { toast(e instanceof ApiError ? e.message : 'Warp did not answer', undefined, 'warn', 4000); return; }
+    if (!this.started || this.ride) return;
+    warpNextAt.value = Date.now() + (r.nextAt - r.at);
+    if (this.seat) this.stand();
+    this.dropRoute(); this.seatGoal = null; this.input.release(); this.hover(null); guideTarget.value = null; modal.value = null; // the sheet goes: the ride is the thing to watch
+    const body = this.sim.player.body, from = { x: body.pos.x, y: body.pos.y, z: body.pos.z }, dest = { x: w.x, y: 0.05, z: w.z };
+    this.ride = { r: { from, to: dest, arc: FLY_CEILING - 1, s: rideSeconds(from, dest) }, t: 0, from: { dist: this.rig.dist, pitch: this.rig.pitch, yaw: this.rig.yaw }, to: { dist: CAM.dist, pitch: CAM.pitch, yaw }, wide: 7, tip: 0.2, ended: false,
+      done: () => { this.ride = null; riding.value = false; this.teleport(to.x, to.y, yaw); this.rig.snapBehind(yaw); this.pingAt = 0; this.proxAt = 0; sfx('liftDown'); } };
+    riding.value = true; sfx('liftUp'); api.track('warp', { to: b.id });
+  }
+
   /** The ride's clock: where it is now; its end, once. The input is read and dropped, so nothing waits to fire after it. */
   private stepRide(dt: number) {
     const rd = this.ride!; rd.t = Math.min(rd.r.s, rd.t + dt); ridePoint(rd.r, rd.t / rd.r.s, this.ridePt); this.input.poll();
@@ -226,7 +249,8 @@ export class FairEngine implements EngineApi, Scene {
   /** The camera on a ride: its distance, tilt and heading eased from where they were to where the ride ends (no lag,
    *  so the top of a ride up is exactly the view the Playground begins on), looking at the rider. */
   private rideCamera(dt: number) {
-    const rd = this.ride!, v = rideView(rd.from, rd.to, rd.t / rd.r.s, rd.wide, rd.tip);
+    const rd = this.ride; if (!rd) return; // a warp ended this frame, on the floor: the camera is behind the body already
+    const v = rideView(rd.from, rd.to, rd.t / rd.r.s, rd.wide, rd.tip);
     this.rig.dist = v.dist; this.rig.pitch = v.pitch; this.rig.snapBehind(v.yaw);
     this.rig.update(dt, this.ridePt, STILL, null, false);
   }
@@ -237,11 +261,11 @@ export class FairEngine implements EngineApi, Scene {
    *  the server's word on what is owned). */
   useKits(store: PlaygroundStore) {
     this.kits = store; this.setKit(store.get().gear);
-    for (const g of store.get().unlocks) if (g !== 'boots') void loadKit(g); // a kit owned is a kit ready to wear
+    for (const g of kitsOf(store.get().unlocks)) if (g !== 'boots') void loadKit(g); // a kit owned is a kit ready to wear (Warp is no kit)
     this.stops.push(store.onChange(() => { const s = store.get(); if (!s.unlocks.includes(this.kit)) { this.setKit('boots'); store.choose('boots'); if (this.stage.scene === this) toast('Back on Boots', 'That kit is not yours yet', 'info'); } else if (s.gear !== this.kit) this.setKit(s.gear); }));
   }
   /** The next kit owned, from the chip in the dock. */
-  nextKit() { const s = this.kits?.get(); if (!s || s.unlocks.length < 2) return; const g = nextKit(s.unlocks, this.kit); this.kits!.choose(g); this.setKit(g); api.track('kit', { gear: g }); }
+  nextKit() { const s = this.kits?.get(), owned = s ? kitsOf(s.unlocks) : []; if (owned.length < 2) return; const g = nextKit(owned, this.kit); this.kits!.choose(g); this.setKit(g); api.track('kit', { gear: g }); }
   /** The Fly button held, or let go. */
   hold(on: boolean) { this.input.hold(on); }
   private setKit(g: Gear) {
@@ -317,6 +341,7 @@ export class FairEngine implements EngineApi, Scene {
   frame(now: number, dt: number) {
     const t = now / 1000;
     this.world.update(t, dt);
+    if (this.warpShown !== switches.value.warp) { this.warpShown = switches.value.warp; this.world.showWarp(this.warpShown); }
     if (!this.started) {
       // behind the first screen: a slow turn around the X
       this.orbit += dt * 0.08; const h = this.world.heroPos;
@@ -648,7 +673,7 @@ export class FairEngine implements EngineApi, Scene {
     if (atLaunchPad.value !== near) {
       atLaunchPad.value = near;
       // at the X with no kit yet: one line, once, on what the Playground is for; gone, and remembered, on walking away
-      if (near && me.value?.passport && (this.kits?.get().unlocks.length ?? 1) <= 1 && !seen.value.has('hint:kit')) kitHint.value = true;
+      if (near && me.value?.passport && kitsOf(this.kits?.get().unlocks ?? []).length <= 1 && !seen.value.has('hint:kit')) kitHint.value = true;
       else if (!near && kitHint.value) { kitHint.value = false; markSeen('hint:kit'); }
     }
     const lift = this.level.lifts.find((l) => Math.hypot(l.x - pos.x, l.y - pos.y) < 3.4) ?? null;
@@ -694,7 +719,7 @@ export class FairEngine implements EngineApi, Scene {
   /* ---------------- other people ---------------- */
 
   private sync(now: number) {
-    if (now - this.pingAt < PING_MS || document.hidden) return; this.pingAt = now;
+    if (now - this.pingAt < PING_MS || document.hidden || this.ride) return; this.pingAt = now; // on a ride, the next ping is from where it ends
     const spawn = this.firstPing; this.firstPing = false;
     const pos = this.position, p = this.sim.player, flying = this.kit === 'jetpack' && !p.body.grounded && !this.seat;
     const pose = this.pose || (flying ? 'fly' : !p.body.grounded && !this.seat ? 'jump' : '');
@@ -720,7 +745,7 @@ export class FairEngine implements EngineApi, Scene {
       o.pose = h.pose ?? '';
       const kit: Kit = h.kit ?? 'boots'; if (o.kit !== kit) { o.kit = kit; o.actor.setLocomotion(kit === 'skates' ? 'skate' : 'walk'); } // dressed in updateHolos, by distance
       // the first kit seen on someone else, by a player who has none: the sighting is the teaching; one line names it, once per phone
-      if (kit !== 'boots' && (this.kits?.get().unlocks.length ?? 1) <= 1 && Math.hypot(h.x - me0.x, h.y - me0.y) < 25 && markSeen('hint:kit-seen'))
+      if (kit !== 'boots' && kitsOf(this.kits?.get().unlocks ?? []).length <= 1 && Math.hypot(h.x - me0.x, h.y - me0.y) < 25 && markSeen('hint:kit-seen'))
         toast(kit === 'jetpack' ? 'That is a Jetpack from the Playground' : 'Those are Skates from the Playground', 'Right above the X: its stars buy the kits, worn here in the halls', 'info', 6000);
       const snap = { t: now, x: h.x, y: h.y, h: h.h, z: h.z || 0 }; if (o.pose === 'sit') o.track.place(snap); else o.track.push(snap);
       o.tx = h.x; o.ty = h.y; o.seen = now;

@@ -3,7 +3,8 @@
 // still plays, and the movements met on Orbit 2 are remembered so the next runs bring others.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LocalStore, dayStart, rankRuns, rememberMovements, seenMovements, type BoardRun } from './store';
+import { LocalStore, dayStart, isKit, kitsOf, rankRuns, rememberMovements, seenMovements, type BoardRun } from './store';
+import { nextKit } from '../fair/kits';
 
 const run = (score: number, reason: 'gate' | 'o2' = 'gate') => ({ score, stars: 10, comboMax: 2, seconds: 30, reason, bonus: 0 });
 
@@ -54,4 +55,14 @@ test('the movements met on Orbit 2 are remembered on this device, newest last, t
     rememberMovements(Array.from({ length: 100 }, (_, i) => `m${i}`)); assert.equal(seenMovements().size, 90); assert.ok(!seenMovements().has('a') && seenMovements().has('m99'));
     mem.set('mx_orbit_seen', '{not json'); assert.equal(seenMovements().size, 0, 'something else wrote there: nothing met');
   } finally { delete g.localStorage; }
+});
+
+test('Warp is owned beside the kits, never among them: bought once with stars, never worn, never on the kit chip', () => {
+  const s = new LocalStore(); s.addStars(500);
+  assert.equal(s.spend('warp', 400), true); assert.equal(s.get().stars, 100); assert.equal(s.spend('warp', 400), true, 'owned: no second charge'); assert.equal(s.get().stars, 100);
+  assert.deepEqual(s.get().unlocks, ['boots', 'warp']); assert.equal(s.get().gear, 'boots');
+  assert.deepEqual(kitsOf(s.get().unlocks), ['boots'], 'one kit: nothing to switch between, no chip');
+  s.choose('warp' as never); assert.equal(s.get().gear, 'boots', 'not worn');
+  assert.equal(isKit('warp'), false); assert.equal(isKit('jetpack'), true);
+  assert.equal(nextKit(kitsOf(['boots', 'warp', 'skates']), 'boots'), 'skates'); assert.equal(nextKit(kitsOf(['boots', 'warp', 'skates']), 'skates'), 'boots');
 });

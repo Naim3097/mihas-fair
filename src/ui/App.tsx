@@ -8,6 +8,8 @@ import { markSeen, kitHint, riding, afterCard, autoWalk, boothAction, currentCp,
 import { BoardsSheet, PlaygroundHud } from './playground';
 import { GEAR } from '../playground/gear';
 import { pgControls, pgFuel, pgGear, pgStore, pgUnlocks } from '../playground/state';
+import { kitsOf } from '../playground/store';
+import { WarpButton, trailBooth } from './warp';
 import { facts } from '../game/facts';
 import { MapSheet, PhotoSheet } from './world-sheets';
 import { DemoChip, TourSheet } from '../demo/Tour';
@@ -129,7 +131,7 @@ function SeatNote() {
 /** The kit the Playground paid for, on the fair's floor: tap the chip to switch among what is owned; the Jetpack adds
  *  a Fly button (hold) with its fuel. Nothing to switch until a second kit is bought, so nothing is shown. */
 function KitChip({ engine }: Eng) {
-  const owned = pgUnlocks.value, kit = pgGear.value, eng = engine();
+  const owned = kitsOf(pgUnlocks.value), kit = pgGear.value, eng = engine();
   if (owned.length < 2) return null;
   return (
     <>
@@ -219,7 +221,7 @@ function Hud({ engine }: Eng) {
         {trail && goalVia.value && <div class="via">{goalVia.value}</div>}
         {trail && (
           <div class="go-row"><span>{distToGoal.value} m {goalVia.value ? 'to the lift' : ''}{walk === 'paused' ? ' · paused' : walk === 'going' ? ' · walking' : ''}</span>
-            <span class="walk">{goal && walk === 'off' && <button class="link" onClick={(e) => { e.stopPropagation(); guideTarget.value = null; }}>Cancel</button>}{walkBtn()}</span></div>
+            <span class="walk">{goal && walk === 'off' && <button class="link" onClick={(e) => { e.stopPropagation(); guideTarget.value = null; }}>Cancel</button>}{walk === 'off' && <WarpButton booth={trailBooth(goal, next?.stationId ?? null, toClaim)} engine={engine} />}{walkBtn()}</span></div>
         )}
       </div>
       )}
@@ -254,7 +256,7 @@ function Hud({ engine }: Eng) {
         {cpHere && !sitting && <button class="scanpill" onClick={() => (modal.value = 'scan')}>Scan now<small>the Mission X QR on their counter · your checkpoint</small></button>}
         {atLaunchPad.value && !m.passport && <button class="btn primary big" onClick={() => (modal.value = 'card')}>Get my free card</button>}
         {atLaunchPad.value && toClaim && <button class="btn primary big" onClick={() => (modal.value = 'prize')}>Show my prize code</button>}
-        {atLaunchPad.value && m.passport && <div class="liftrow"><button class="btn lift" onClick={() => { kitHint.value = false; markSeen('hint:kit'); eng?.launch(); }}>Playground ↑<small>{pgUnlocks.value.length > 1 ? 'Right above you' : 'Stars for Skates and a Jetpack'}</small></button></div>}
+        {atLaunchPad.value && m.passport && <div class="liftrow"><button class="btn lift" onClick={() => { kitHint.value = false; markSeen('hint:kit'); eng?.launch(); }}>Playground ↑<small>{kitsOf(pgUnlocks.value).length > 1 ? 'Right above you' : 'Stars for Skates and a Jetpack'}</small></button></div>}
         {/* walking up to a booth that is online: who they are and what they are offering, before tapping in */}
         {!sitting && !atLaunchPad.value && st && view && (view.offer || view.link || view.logo) && (
           <div class="nearcard" role="button" tabIndex={0} onClick={() => { panelStation.value = st; modal.value = 'booth'; }}>

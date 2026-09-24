@@ -25,6 +25,8 @@ export interface GameHooks {
   afterStamp?(o: StampOutcome): Promise<XpEvent[]>;
   afterPing?(o: { id: string; x: number; y: number; deck: boolean; movedM: number; steps: number; t: number }): Promise<XpEvent[]>;
   onImplausible?(id: string, detail: string): Promise<void>;
+  /** Did this player just Warp (server/warp.ts)? A ping from the old place, sent before and arriving after, is forgiven. */
+  justWarped?(id: string, t: number): Promise<boolean>;
   /** exhibitor player id → company, for the label over their hologram */
   companies?(): Promise<Map<string, string>>;
   /** Does this player own that kit (bought in the Playground)? A ping may only wear what was paid for. */
@@ -253,7 +255,7 @@ export class Game {
     if (moved != null) {
       events.push(...(await this.discover(id, pos.x, pos.y, t, deck ? 'onsite' : 'remote')));
       events.push(...((await this.hooks.afterPing?.({ id, x: pos.x, y: pos.y, deck, movedM: moved, steps: deck && Number.isFinite(pos.steps) ? pos.steps! : 0, t })) ?? []));
-    } else await this.hooks.onImplausible?.(id, `to ${pos.x.toFixed(0)},${pos.y.toFixed(0)}${deck ? ' on deck' : ''}`);
+    } else if (!(await this.hooks.justWarped?.(id, t))) await this.hooks.onImplausible?.(id, `to ${pos.x.toFixed(0)},${pos.y.toFixed(0)}${deck ? ' on deck' : ''}`);
     // Everyone in the game sees everyone near them: visitors and exhibitors share one virtual hall.
     const holograms = await this.presence.near(id, pos.x, pos.y, t, this.hooks.hiddenSet?.() ?? new Set());
     if (holograms.some((h) => h.cls === 'exhibitor')) {

@@ -2,7 +2,7 @@
 // fair's body with a real jump and one more in the air; Skates and the Jetpack come in their own phases.
 import { MOVEMENT, type MovementDef } from '../../content';
 import { BOOST, type Gear } from './course';
-import { KIT_NAME, KIT_PRICE } from '../../shared/playground';
+import { ITEM_NAME, ITEM_PRICE, KIT_NAME, KIT_PRICE } from '../../shared/playground';
 
 export interface GearDef {
   name: string;
@@ -46,6 +46,10 @@ export const GEAR: Record<Gear, GearDef> = {
   skates: { name: KIT_NAME.skates, movement: SKATES, camera: { dist: 5.6, pitch: 0.24, kick: 6 }, magnet: 0.3, price: KIT_PRICE.skates },
   jetpack: { name: KIT_NAME.jetpack, movement: JETPACK, camera: { dist: 6.2, pitch: 0.3, kick: 4 }, magnet: 0.3, price: KIT_PRICE.jetpack },
 };
+
+/** A kit's name and price, or Warp's: what the stands, the pad card and the summary say. */
+export const unlockName = (u: Gear | 'warp'): string => (u === 'warp' ? ITEM_NAME.warp : GEAR[u].name);
+export const unlockPrice = (u: Gear | 'warp'): number => (u === 'warp' ? ITEM_PRICE.warp : GEAR[u].price);
 
 /** The gears that can be stood on today; the others say when they come. */
 export const GEAR_READY: Record<Gear, boolean> = { boots: true, skates: true, jetpack: true };

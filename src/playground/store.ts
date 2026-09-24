@@ -2,6 +2,7 @@
 // boards. On this device for now (localStorage); the server when the backend has the endpoints, behind the same
 // interface, so the engine and the sheets do not change when the switch is made.
 import type { PlaygroundMe, PlaygroundOrbit, PlaygroundRunInput } from '../../shared/types';
+import type { Item } from '../../shared/playground';
 import { ApiError, api } from '../net/api';
 import type { Gear } from './course';
 import type { RunSummary } from './run';
@@ -9,6 +10,12 @@ import { pgBalance, pgBest, pgBest2, pgGear, pgUnlocks } from './state';
 
 /** The course as it was (1), or awake: its tiles moving by a seed each run (2). */
 export type Orbit = PlaygroundOrbit;
+/** What a player can own: the kits, worn; and Warp, never worn (a ride across the fair, used there). */
+export type Unlock = Gear | Item;
+const KITS: readonly Gear[] = ['boots', 'skates', 'jetpack'];
+export const isKit = (u: Unlock): u is Gear => KITS.includes(u as Gear);
+/** The kits among what is owned: what the chip switches between, and what is worn. */
+export const kitsOf = (u: readonly Unlock[]): Gear[] => u.filter(isKit);
 export interface BestRun extends RunSummary { gear: Gear; at: number }
 /** A finished run, as the boards list it (no orbit: Orbit 1, as every run was before Orbit 2). */
 export interface BoardRun { score: number; gear: Gear; stars: number; comboMax: number; seconds: number; at: number; orbit?: Orbit }
@@ -16,7 +23,7 @@ export interface BoardRun { score: number; gear: Gear; stars: number; comboMax: 
 export interface BoardRow { rank: number; name: string; gear: Gear; score: number; at: number; you: boolean; best: boolean }
 export type BoardRange = 'today' | 'all';
 /** `best`: Orbit 1's; `best2`: Orbit 2's; `orbit`: the one chosen on the pad. */
-export interface PlaygroundState { stars: number; unlocks: Gear[]; best: BestRun | null; best2: BestRun | null; runs: number; gear: Gear; history: BoardRun[]; orbit: Orbit }
+export interface PlaygroundState { stars: number; unlocks: Unlock[]; best: BestRun | null; best2: BestRun | null; runs: number; gear: Gear; history: BoardRun[]; orbit: Orbit }
 
 export interface PlaygroundStore {
   /** true while the balance and the runs live on this device only */
@@ -24,8 +31,8 @@ export interface PlaygroundStore {
   get(): PlaygroundState;
   /** Stars bank the moment they are picked up. */
   addStars(n: number): void;
-  /** Buy a gear if the balance allows; true when it is owned afterwards. */
-  spend(gear: Gear, price: number): boolean;
+  /** Buy a kit (or Warp) if the balance allows; true when it is owned afterwards. */
+  spend(what: Unlock, price: number): boolean;
   choose(gear: Gear): void;
   /** The orbit to play, chosen on the pad (this device's choice). */
   chooseOrbit(orbit: Orbit): void;
@@ -88,7 +95,7 @@ export class LocalStore implements PlaygroundStore {
   private load(): PlaygroundState {
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) { const s = JSON.parse(raw) as Partial<PlaygroundState>; return { ...EMPTY, ...s, unlocks: Array.from(new Set(['boots', ...(s.unlocks ?? [])])) as Gear[], history: Array.isArray(s.history) ? s.history : [], orbit: s.orbit === 2 ? 2 : 1 }; }
+      if (raw) { const s = JSON.parse(raw) as Partial<PlaygroundState>; return { ...EMPTY, ...s, unlocks: Array.from(new Set(['boots', ...(s.unlocks ?? [])])) as Unlock[], history: Array.isArray(s.history) ? s.history : [], orbit: s.orbit === 2 ? 2 : 1, gear: KITS.includes(s.gear as Gear) ? s.gear! : 'boots' }; }
     } catch { /* private mode, or something else wrote here */ }
     return { ...EMPTY, unlocks: ['boots'], history: [] };
   }
@@ -96,12 +103,12 @@ export class LocalStore implements PlaygroundStore {
 
   get(): PlaygroundState { return { ...this.state, unlocks: [...this.state.unlocks], history: [...this.state.history] }; }
   addStars(n: number) { this.state.stars += n; this.save(); this.changed(); }
-  spend(gear: Gear, price: number): boolean {
-    if (this.state.unlocks.includes(gear)) return true;
+  spend(what: Unlock, price: number): boolean {
+    if (this.state.unlocks.includes(what)) return true;
     if (this.state.stars < price) return false;
-    this.state.stars -= price; this.state.unlocks.push(gear); this.save(); this.changed(); return true;
+    this.state.stars -= price; this.state.unlocks.push(what); this.save(); this.changed(); return true;
   }
-  choose(gear: Gear) { if (this.state.unlocks.includes(gear) && this.state.gear !== gear) { this.state.gear = gear; this.save(); this.changed(); } }
+  choose(gear: Gear) { if (isKit(gear) && this.state.unlocks.includes(gear) && this.state.gear !== gear) { this.state.gear = gear; this.save(); this.changed(); } } // only a kit is worn
   chooseOrbit(orbit: Orbit) { if (this.state.orbit !== orbit) { this.state.orbit = orbit; this.save(); this.changed(); } }
   refresh() { /* this device is all there is */ }
   record(s: RunSummary, gear: Gear, orbit: Orbit = 1, _seed?: number): boolean { // the seed is the server's to keep
@@ -138,9 +145,9 @@ export class ApiStore implements PlaygroundStore {
   onChange(fn: () => void): () => void { return this.cache.onChange(fn); }
   get(): PlaygroundState { return this.cache.get(); }
   addStars(n: number) { this.cache.addStars(n); }
-  spend(gear: Gear, price: number): boolean {
-    if (!this.cache.spend(gear, price)) return false;
-    void api.pgUnlock(gear).then((m) => this.adopt(m)).catch(() => this.sync()); // refused (short, by the server's count): the cache takes the server's word
+  spend(what: Unlock, price: number): boolean {
+    if (!this.cache.spend(what, price)) return false;
+    void api.pgUnlock(what).then((m) => this.adopt(m)).catch(() => this.sync()); // refused (short, by the server's count): the cache takes the server's word
     return true;
   }
   /** The kit chosen, here and on the server, so the next visit wears it too. */

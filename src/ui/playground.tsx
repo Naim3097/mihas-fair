@@ -2,16 +2,18 @@
 // first-run hint, the portal chip, the fade of a fall. Everything reads the engine's signals; nothing is per frame.
 import type { ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import { GEAR } from '../playground/gear';
+import { GEAR, unlockName, unlockPrice } from '../playground/gear';
 import { pgBalance, pgBest, pgBest2, pgCombo, pgControls, pgFade, pgFuel, pgGear, pgHint, pgMode, pgNearPortal, pgO2, pgOrbit, pgRunStars, pgScore, pgStandNote, pgStore, pgSummary, pgUnlocks } from '../playground/state';
 import { O2_CAP } from '../playground/run';
-import type { BoardRange, BoardRow, Orbit } from '../playground/store';
+import type { BoardRange, BoardRow, Orbit, Unlock } from '../playground/store';
 import { me, modal, riding, switches } from '../state';
 import { Sheet } from './common';
 
 const FINE_POINTER = typeof matchMedia === 'function' && matchMedia('(hover:hover) and (pointer:fine)').matches;
 /** Orbit 2 is open once through the gate on Orbit 1, while the crew's switch for it is on. */
 const orbitOpen = () => pgBest.value != null && switches.value.sky;
+/** What the stars are for next: the kits, then Warp (while its switch is on). */
+const nextUp = (): Exclude<Unlock, 'boots'> | undefined => (['skates', 'jetpack', ...(switches.value.warp ? (['warp'] as const) : [])] as const).find((g) => !pgUnlocks.value.includes(g));
 
 /** Numbers that change roll to their new value. */
 function useRolling(value: number, ms = 500): number {
@@ -28,9 +30,9 @@ function useRolling(value: number, ms = 500): number {
 export function PlaygroundHud({ notices }: { notices?: ComponentChildren }) {
   const mode = pgMode.value, c = pgControls.value, score = useRolling(pgScore.value), gear = GEAR[pgGear.value];
   if (riding.value) return <div class="topstack">{notices}</div>; // on the way down: nothing but what is being said
-  const next = (['skates', 'jetpack'] as const).find((g) => !pgUnlocks.value.includes(g));
+  const next = nextUp();
   const orbit = pgOrbit.value, open = orbitOpen(), best = orbit === 2 ? pgBest2.value : pgBest.value;
-  const padLine = `${next ? `${GEAR[next].name} at ${GEAR[next].price} stars · ${gear.name} on` : `${gear.name} on`}${best != null ? ` · best ${best.toLocaleString()}` : ''}`;
+  const padLine = `${next ? `${unlockName(next)} at ${unlockPrice(next)} stars · ${gear.name} on` : `${gear.name} on`}${best != null ? ` · best ${best.toLocaleString()}` : ''}`;
   return (
     <>
       <div class="topstack">
@@ -71,7 +73,7 @@ export function PlaygroundHud({ notices }: { notices?: ComponentChildren }) {
 
 function Summary() {
   const s = pgSummary.value!, c = pgControls.value, gear = GEAR[s.gear];
-  const next = (['skates', 'jetpack'] as const).find((g) => !pgUnlocks.value.includes(g)), toNext = next ? Math.max(0, GEAR[next].price - s.balance) : 0;
+  const next = nextUp(), price = next ? unlockPrice(next) : 0, toNext = next ? Math.max(0, price - s.balance) : 0;
   return (
     <Sheet k={(s.orbit === 2 ? 'Orbit 2 · ' : '') + (s.reason === 'gate' ? 'Through the gate' : s.reason === 'o2' ? 'Out of air' : 'Run over')} title={s.newBest ? 'New best!' : `${s.score.toLocaleString()} points`} gold={s.newBest} onClose={false}>
       {s.newBest && <p class="lead">{s.score.toLocaleString()} points on {gear.name}, your best {s.orbit === 2 ? 'Orbit 2 ' : ''}run yet.</p>}
@@ -85,7 +87,7 @@ function Summary() {
       {s.opened ? (
         <div class="box flat"><strong>Orbit 2 is open</strong><p class="fine">The same course, awake: its tiles move, and every run is new. Its own best, its own boards.</p></div>
       ) : next ? (
-        <div class="box"><strong>{GEAR[next].name} at {GEAR[next].price} stars</strong><p class="fine">{toNext === 0 ? 'Yours to take: step on the stand.' : `${toNext} more. You have ${s.balance}.`}</p><div class="dots"><i class="on" style={{ flex: `${Math.min(s.balance, GEAR[next].price)} 0 0` }} /><i style={{ flex: `${toNext} 0 0` }} /></div></div>
+        <div class="box"><strong>{unlockName(next)} at {price} stars</strong><p class="fine">{toNext === 0 ? 'Yours to take: step on the stand.' : `${toNext} more. You have ${s.balance}.`}{next === 'warp' ? ' Warp rides you through the sky to any booth on Mission X.' : ''}</p><div class="dots"><i class="on" style={{ flex: `${Math.min(s.balance, price)} 0 0` }} /><i style={{ flex: `${toNext} 0 0` }} /></div></div>
       ) : <p class="fine">Every kit is yours. Chase the best run.</p>}
       <div class="stack">
         {s.opened ? <button class="btn primary big" onClick={() => { c?.orbit(2); c?.again(); }}>Try Orbit 2</button> : <button class="btn primary big" onClick={() => c?.again()}>Again</button>}
