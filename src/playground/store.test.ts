@@ -1,8 +1,9 @@
 // The store on this device: stars bank, gear is bought once, finished runs make the boards (today's and all-time,
-// best first, the best marked), the history stays bounded, and a private window that refuses storage still plays.
+// best first, the best marked; each orbit its own), the history stays bounded, a private window that refuses storage
+// still plays, and the movements met on Orbit 2 are remembered so the next runs bring others.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LocalStore, dayStart, rankRuns, type BoardRun } from './store';
+import { LocalStore, dayStart, rankRuns, rememberMovements, seenMovements, type BoardRun } from './store';
 
 const run = (score: number, reason: 'gate' | 'o2' = 'gate') => ({ score, stars: 10, comboMax: 2, seconds: 30, reason, bonus: 0 });
 
@@ -29,4 +30,28 @@ test('the boards: best first, ten at most, today from midnight, the best marked'
   const s = new LocalStore(); for (let i = 0; i < 60; i++) s.record(run(100 + i), 'boots');
   assert.equal(s.get().history.length, 50, 'the history is bounded'); assert.equal((await s.boards('all', 'me'))[0]!.score, 159);
   assert.equal((await s.boards('today', 'me')).length, 10);
+});
+
+test('each orbit its own best and its own boards; the orbit chosen is kept; runs from before Orbit 2 are Orbit 1\'s', async () => {
+  const s = new LocalStore();
+  assert.equal(s.get().orbit, 1); s.chooseOrbit(2); assert.equal(s.get().orbit, 2);
+  assert.equal(s.record(run(900), 'boots'), true, 'Orbit 1 when none is said');
+  assert.equal(s.record(run(700), 'boots', 2, 42), true, 'the first through the gate on Orbit 2 is its best');
+  assert.equal(s.record(run(800), 'skates', 1), false, 'short of Orbit 1\'s best, whatever Orbit 2\'s is');
+  assert.equal(s.record(run(750), 'boots', 2), true);
+  assert.equal(s.get().best?.score, 900); assert.equal(s.get().best2?.score, 750);
+  assert.deepEqual((await s.boards('all', 'me')).map((r) => r.score), [900, 800]);
+  assert.deepEqual((await s.boards('all', 'me', 2)).map((r) => [r.score, r.best]), [[750, true], [700, false]]);
+  assert.deepEqual(rankRuns([{ score: 5, gear: 'boots', stars: 0, comboMax: 1, seconds: 21, at: 1 }], 'x', 0, 2), [], 'a run with no orbit is Orbit 1\'s');
+});
+
+test('the movements met on Orbit 2 are remembered on this device, newest last, the oldest let go after six runs or so', () => {
+  const mem = new Map<string, string>(), g = globalThis as { localStorage?: unknown };
+  g.localStorage = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v) };
+  try {
+    assert.equal(seenMovements().size, 0);
+    rememberMovements(['a', 'b']); rememberMovements(['b', 'c']); assert.deepEqual([...seenMovements()], ['a', 'b', 'c'], 'b met again: newest');
+    rememberMovements(Array.from({ length: 100 }, (_, i) => `m${i}`)); assert.equal(seenMovements().size, 90); assert.ok(!seenMovements().has('a') && seenMovements().has('m99'));
+    mem.set('mx_orbit_seen', '{not json'); assert.equal(seenMovements().size, 0, 'something else wrote there: nothing met');
+  } finally { delete g.localStorage; }
 });

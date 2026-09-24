@@ -1,19 +1,22 @@
-// What outlasts a run: the star balance, the gear bought, the best run, and the finished runs behind the boards. On
-// this device for now (localStorage); the server when the backend has the endpoints, behind the same interface, so
-// the engine and the sheets do not change when the switch is made.
-import type { PlaygroundMe, PlaygroundRunInput } from '../../shared/types';
+// What outlasts a run: the star balance, the gear bought, the best run of each orbit, and the finished runs behind the
+// boards. On this device for now (localStorage); the server when the backend has the endpoints, behind the same
+// interface, so the engine and the sheets do not change when the switch is made.
+import type { PlaygroundMe, PlaygroundOrbit, PlaygroundRunInput } from '../../shared/types';
 import { ApiError, api } from '../net/api';
 import type { Gear } from './course';
 import type { RunSummary } from './run';
-import { pgBalance, pgBest, pgGear, pgUnlocks } from './state';
+import { pgBalance, pgBest, pgBest2, pgGear, pgUnlocks } from './state';
 
+/** The course as it was (1), or awake: its tiles moving by a seed each run (2). */
+export type Orbit = PlaygroundOrbit;
 export interface BestRun extends RunSummary { gear: Gear; at: number }
-/** A finished run, as the boards list it. */
-export interface BoardRun { score: number; gear: Gear; stars: number; comboMax: number; seconds: number; at: number }
+/** A finished run, as the boards list it (no orbit: Orbit 1, as every run was before Orbit 2). */
+export interface BoardRun { score: number; gear: Gear; stars: number; comboMax: number; seconds: number; at: number; orbit?: Orbit }
 /** One line of a board: a place, a name, the gear, the score; whether it is the viewer's, and their best. */
 export interface BoardRow { rank: number; name: string; gear: Gear; score: number; at: number; you: boolean; best: boolean }
 export type BoardRange = 'today' | 'all';
-export interface PlaygroundState { stars: number; unlocks: Gear[]; best: BestRun | null; runs: number; gear: Gear; history: BoardRun[] }
+/** `best`: Orbit 1's; `best2`: Orbit 2's; `orbit`: the one chosen on the pad. */
+export interface PlaygroundState { stars: number; unlocks: Gear[]; best: BestRun | null; best2: BestRun | null; runs: number; gear: Gear; history: BoardRun[]; orbit: Orbit }
 
 export interface PlaygroundStore {
   /** true while the balance and the runs live on this device only */
@@ -24,29 +27,43 @@ export interface PlaygroundStore {
   /** Buy a gear if the balance allows; true when it is owned afterwards. */
   spend(gear: Gear, price: number): boolean;
   choose(gear: Gear): void;
-  /** A finished run counts for the boards; any run counts as played. Returns whether it is a new best. */
-  record(s: RunSummary, gear: Gear): boolean;
-  /** The top ten, best first; `name` is what this device's own runs are listed as. */
-  boards(range: BoardRange, name: string): Promise<BoardRow[]>;
+  /** The orbit to play, chosen on the pad (this device's choice). */
+  chooseOrbit(orbit: Orbit): void;
+  /** A finished run counts for its orbit's boards; any run counts as played. Returns whether it is its orbit's new best.
+   *  `seed`: the seed Orbit 2's tiles moved by. */
+  record(s: RunSummary, gear: Gear, orbit?: Orbit, seed?: number): boolean;
+  /** An orbit's top ten, best first; `name` is what this device's own runs are listed as. */
+  boards(range: BoardRange, name: string, orbit?: Orbit): Promise<BoardRow[]>;
   /** A run is starting: the server's store asks for its token. */
   beginRun(): void;
   /** The tab is going away mid-run: the server's store sends what there is so far. */
-  flush(s: RunSummary, gear: Gear): void;
+  flush(s: RunSummary, gear: Gear, orbit?: Orbit, seed?: number): void;
   /** Whenever the store changes (a pickup, a purchase, a choice, the server's word): both worlds listen. Returns the
    *  way to stop listening. The store also keeps the interface's signals current itself. */
   onChange(fn: () => void): () => void;
 }
 
 const KEY = 'mx_playground', HISTORY = 50, TOP = 10;
-const EMPTY: PlaygroundState = { stars: 0, unlocks: ['boots'], best: null, runs: 0, gear: 'boots', history: [] };
+const EMPTY: PlaygroundState = { stars: 0, unlocks: ['boots'], best: null, best2: null, runs: 0, gear: 'boots', history: [], orbit: 1 };
+
+const SEEN_KEY = 'mx_orbit_seen', SEEN_MAX = 90;
+/** The movements this device has met lately on Orbit 2, oldest first: the next run's plan draws others first. */
+export function seenMovements(): Set<string> {
+  try { const a: unknown = JSON.parse(localStorage.getItem(SEEN_KEY) ?? '[]'); return new Set(Array.isArray(a) ? a.filter((x): x is string => typeof x === 'string') : []); } catch { return new Set(); }
+}
+/** A run's movements met: remembered, newest last, the oldest let go past the last six runs or so. */
+export function rememberMovements(ids: readonly string[]) {
+  try { const keep = [...seenMovements()].filter((x) => !ids.includes(x)).concat(ids).slice(-SEEN_MAX); localStorage.setItem(SEEN_KEY, JSON.stringify(keep)); } catch { /* private mode: this visit only */ }
+}
 
 /** Midnight before `t`, on this device's clock. */
 export const dayStart = (t: number): number => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
 
-/** The top ten of a list of one player's runs, best first (earlier first among equals), the best of them marked. */
-export function rankRuns(runs: BoardRun[], name: string, since = 0): BoardRow[] {
-  const top = runs.filter((r) => r.at >= since).sort((a, b) => b.score - a.score || a.at - b.at).slice(0, TOP);
-  const best = runs.reduce((m, r) => Math.max(m, r.score), -1);
+/** The top ten of a list of one player's runs on an orbit, best first (earlier first among equals), the best of them marked. */
+export function rankRuns(runs: BoardRun[], name: string, since = 0, orbit: Orbit = 1): BoardRow[] {
+  const mine = runs.filter((r) => (r.orbit ?? 1) === orbit);
+  const top = mine.filter((r) => r.at >= since).sort((a, b) => b.score - a.score || a.at - b.at).slice(0, TOP);
+  const best = mine.reduce((m, r) => Math.max(m, r.score), -1);
   return top.map((r, i) => ({ rank: i + 1, name, gear: r.gear, score: r.score, at: r.at, you: true, best: r.score === best }));
 }
 
@@ -63,12 +80,13 @@ export class LocalStore implements PlaygroundStore {
     if (pgUnlocks.value.join() !== s.unlocks.join()) pgUnlocks.value = [...s.unlocks];
     if (pgGear.value !== s.gear) pgGear.value = s.gear;
     const best = s.best?.score ?? null; if (pgBest.value !== best) pgBest.value = best;
+    const best2 = s.best2?.score ?? null; if (pgBest2.value !== best2) pgBest2.value = best2;
   }
   private changed() { this.publish(); for (const f of [...this.subs]) f(); }
   private load(): PlaygroundState {
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) { const s = JSON.parse(raw) as Partial<PlaygroundState>; return { ...EMPTY, ...s, unlocks: Array.from(new Set(['boots', ...(s.unlocks ?? [])])) as Gear[], history: Array.isArray(s.history) ? s.history : [] }; }
+      if (raw) { const s = JSON.parse(raw) as Partial<PlaygroundState>; return { ...EMPTY, ...s, unlocks: Array.from(new Set(['boots', ...(s.unlocks ?? [])])) as Gear[], history: Array.isArray(s.history) ? s.history : [], orbit: s.orbit === 2 ? 2 : 1 }; }
     } catch { /* private mode, or something else wrote here */ }
     return { ...EMPTY, unlocks: ['boots'], history: [] };
   }
@@ -82,15 +100,16 @@ export class LocalStore implements PlaygroundStore {
     this.state.stars -= price; this.state.unlocks.push(gear); this.save(); this.changed(); return true;
   }
   choose(gear: Gear) { if (this.state.unlocks.includes(gear) && this.state.gear !== gear) { this.state.gear = gear; this.save(); this.changed(); } }
-  record(s: RunSummary, gear: Gear): boolean {
+  chooseOrbit(orbit: Orbit) { if (this.state.orbit !== orbit) { this.state.orbit = orbit; this.save(); this.changed(); } }
+  record(s: RunSummary, gear: Gear, orbit: Orbit = 1, _seed?: number): boolean { // the seed is the server's to keep
     this.state.runs++;
-    const finished = s.reason === 'gate', at = Date.now();
-    if (finished) { this.state.history.push({ score: s.score, gear, stars: s.stars, comboMax: s.comboMax, seconds: s.seconds, at }); if (this.state.history.length > HISTORY) this.state.history.splice(0, this.state.history.length - HISTORY); }
-    const best = finished && (!this.state.best || s.score > this.state.best.score);
-    if (best) this.state.best = { ...s, gear, at };
+    const finished = s.reason === 'gate', at = Date.now(), key = orbit === 2 ? 'best2' : 'best', was = this.state[key];
+    if (finished) { this.state.history.push({ score: s.score, gear, stars: s.stars, comboMax: s.comboMax, seconds: s.seconds, at, ...(orbit === 2 ? { orbit } : {}) }); if (this.state.history.length > HISTORY) this.state.history.splice(0, this.state.history.length - HISTORY); }
+    const best = finished && (!was || s.score > was.score);
+    if (best) this.state[key] = { ...s, gear, at };
     this.save(); this.changed(); return best;
   }
-  boards(range: BoardRange, name: string): Promise<BoardRow[]> { return Promise.resolve(rankRuns(this.state.history, name, range === 'today' ? dayStart(Date.now()) : 0)); }
+  boards(range: BoardRange, name: string, orbit: Orbit = 1): Promise<BoardRow[]> { return Promise.resolve(rankRuns(this.state.history, name, range === 'today' ? dayStart(Date.now()) : 0, orbit)); }
   beginRun() { /* nothing to ask for */ }
   flush() { /* the stars are banked already */ }
   /** What the server says, taken over what this device had. */
@@ -110,7 +129,8 @@ export class ApiStore implements PlaygroundStore {
 
   async sync(): Promise<void> { try { this.adopt(await api.pgMe()); } catch { /* offline, or no backend yet: the cache stands until it answers */ } }
   private adopt(m: PlaygroundMe) {
-    this.cache.adopt({ stars: m.stars, unlocks: m.unlocks, gear: m.gear, best: m.best ? { score: m.best.score, gear: m.best.gear, at: m.best.at, stars: 0, comboMax: 1, seconds: 0, reason: 'gate', bonus: 0 } : null });
+    const best = (b: PlaygroundMe['best'] | undefined): BestRun | null => (b ? { score: b.score, gear: b.gear, at: b.at, stars: 0, comboMax: 1, seconds: 0, reason: 'gate', bonus: 0 } : null);
+    this.cache.adopt({ stars: m.stars, unlocks: m.unlocks, gear: m.gear, best: best(m.best), best2: best(m.best2) });
   }
   onChange(fn: () => void): () => void { return this.cache.onChange(fn); }
   get(): PlaygroundState { return this.cache.get(); }
@@ -122,6 +142,7 @@ export class ApiStore implements PlaygroundStore {
   }
   /** The kit chosen, here and on the server, so the next visit wears it too. */
   choose(gear: Gear) { if (this.cache.get().gear === gear) return; this.cache.choose(gear); void api.pgGear(gear).catch(() => {}); }
+  chooseOrbit(orbit: Orbit) { this.cache.chooseOrbit(orbit); }
   beginRun() {
     const run = { token: null as string | null, asking: false }; this.current = run; this.ask(run);
   }
@@ -129,14 +150,14 @@ export class ApiStore implements PlaygroundStore {
     if (run.token || run.asking) return; run.asking = true;
     api.pgStart().then((t) => { run.token = t.token; run.asking = false; this.post(); }).catch(() => { run.asking = false; setTimeout(() => this.post(), 5000); });
   }
-  record(s: RunSummary, gear: Gear): boolean {
-    const best = this.cache.record(s, gear), run = this.current ?? { token: null, asking: false }; this.current = null;
-    this.waiting.push({ run, input: { gear, score: s.score, stars: s.stars, comboMax: s.comboMax, seconds: s.seconds, finished: s.reason === 'gate' } });
+  record(s: RunSummary, gear: Gear, orbit: Orbit = 1, seed?: number): boolean {
+    const best = this.cache.record(s, gear, orbit), run = this.current ?? { token: null, asking: false }; this.current = null;
+    this.waiting.push({ run, input: { gear, score: s.score, stars: s.stars, comboMax: s.comboMax, seconds: s.seconds, finished: s.reason === 'gate', ...orbitOf(orbit, seed) } });
     this.post(); return best;
   }
-  flush(s: RunSummary, gear: Gear) {
+  flush(s: RunSummary, gear: Gear, orbit: Orbit = 1, seed?: number) {
     const token = this.current?.token; if (!token || typeof navigator === 'undefined' || !navigator.sendBeacon) return;
-    const body: PlaygroundRunInput = { token, gear, score: s.score, stars: s.stars, comboMax: s.comboMax, seconds: s.seconds, finished: false, partial: true };
+    const body: PlaygroundRunInput = { token, gear, score: s.score, stars: s.stars, comboMax: s.comboMax, seconds: s.seconds, finished: false, partial: true, ...orbitOf(orbit, seed) };
     try { navigator.sendBeacon('/api/playground/run', new Blob([JSON.stringify(body)], { type: 'application/json' })); } catch { /* not this browser */ }
   }
   /** The oldest waiting run goes out once it has a token; a refusal that is not the network drops it, the network keeps it. */
@@ -148,7 +169,10 @@ export class ApiStore implements PlaygroundStore {
       .catch((e: unknown) => { if (!(e instanceof ApiError) || e.code !== 'offline') this.waiting.shift(); })
       .finally(() => { this.posting = false; if (this.waiting.length) setTimeout(() => this.post(), 3000); });
   }
-  boards(range: BoardRange): Promise<BoardRow[]> {
-    return api.pgBoard(range).then((rows) => { const best = this.cache.get().best?.score ?? -1; return rows.map((r) => ({ rank: r.rank, name: r.name, gear: r.gear, score: r.score, at: r.at, you: r.you === true, best: r.you === true && r.score === best })); });
+  boards(range: BoardRange, _name: string, orbit: Orbit = 1): Promise<BoardRow[]> {
+    return api.pgBoard(range, orbit).then((rows) => { const c = this.cache.get(), best = (orbit === 2 ? c.best2 : c.best)?.score ?? -1; return rows.map((r) => ({ rank: r.rank, name: r.name, gear: r.gear, score: r.score, at: r.at, you: r.you === true, best: r.you === true && r.score === best })); });
   }
 }
+
+/** What a run says of its orbit to the server: nothing for Orbit 1 (as every run said before Orbit 2). */
+const orbitOf = (orbit: Orbit, seed?: number): Pick<PlaygroundRunInput, 'orbit' | 'seed'> => (orbit === 2 ? { orbit, ...(seed != null ? { seed } : {}) } : {});

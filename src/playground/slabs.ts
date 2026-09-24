@@ -28,10 +28,10 @@ export class Slabs {
   /** After a batch of set(): upload them. */
   commit() { this.slab.instanceMatrix.needsUpdate = true; this.top.instanceMatrix.needsUpdate = true; }
 
-  /** Every platform placed once, with its bounds for culling (a tile moving a metre stays inside them). */
+  /** Every platform placed once, with its bounds for culling, grown so a tile moving across its room stays inside them. */
   fill(P: Platform[], ox = 0, oy = 0, oz = 0) {
     P.forEach((p, i) => this.set(i, p, ox, oy, oz)); this.commit();
-    for (const m of [this.slab, this.top]) m.computeBoundingSphere();
+    for (const m of [this.slab, this.top]) { m.computeBoundingSphere(); m.boundingSphere!.radius += 2; }
   }
 
   shadows(cast: boolean, receive: boolean) { for (const m of [this.slab, this.top]) { m.castShadow = cast; m.receiveShadow = receive; } }

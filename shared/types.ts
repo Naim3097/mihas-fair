@@ -209,8 +209,11 @@ export interface ScreenView {
 export type PlaygroundGear = 'boots' | 'skates' | 'jetpack';
 export interface PlaygroundBest { score: number; gear: PlaygroundGear; at: number }
 /** What outlasts a run on the server: the balance, the gear bought, the gear last used, the best finished run. */
-export interface PlaygroundMe { stars: number; unlocks: PlaygroundGear[]; gear: PlaygroundGear; best: PlaygroundBest | null; runsToday: number }
+/** The course as it was (1), or awake (2): its tiles move, by a seed each run; each has its own best and boards. */
+export type PlaygroundOrbit = 1 | 2;
+/** `best`: Orbit 1's; `best2`: Orbit 2's. */
+export interface PlaygroundMe { stars: number; unlocks: PlaygroundGear[]; gear: PlaygroundGear; best: PlaygroundBest | null; best2: PlaygroundBest | null; runsToday: number }
 /** A run against its token; `partial` is the part a tab going away sends, which leaves the token open for the rest. */
-export interface PlaygroundRunInput { token: string; gear: PlaygroundGear; score: number; stars: number; comboMax: number; seconds: number; finished: boolean; partial?: boolean }
+export interface PlaygroundRunInput { token: string; gear: PlaygroundGear; score: number; stars: number; comboMax: number; seconds: number; finished: boolean; partial?: boolean; /** 1 when absent */ orbit?: PlaygroundOrbit; /** Orbit 2's seed */ seed?: number }
 export interface PlaygroundRunResult extends PlaygroundMe { newBest: boolean }
 export interface PlaygroundBoardRow { rank: number; name: string; gear: PlaygroundGear; score: number; at: number; you?: boolean }

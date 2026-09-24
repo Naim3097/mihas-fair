@@ -407,7 +407,9 @@ CREATE TABLE IF NOT EXISTS playground_runs (
   combo_max   INTEGER NOT NULL,
   seconds     INTEGER NOT NULL,
   finished    INTEGER NOT NULL DEFAULT 0,
-  created_at  INTEGER NOT NULL
+  created_at  INTEGER NOT NULL,
+  orbit       INTEGER NOT NULL DEFAULT 1,
+  seed        INTEGER
 );
 CREATE INDEX IF NOT EXISTS playground_runs_player ON playground_runs(player_id, created_at);
 CREATE INDEX IF NOT EXISTS playground_runs_board ON playground_runs(finished, created_at, score);
@@ -426,4 +428,6 @@ CREATE TABLE IF NOT EXISTS playground_state (
 export const UPGRADES: { table: string; column: string; ddl: string }[] = [
   { table: 'presence', column: 'kit', ddl: "TEXT NOT NULL DEFAULT ''" }, // the kit worn, seen by others (24 Sep 2026)
   { table: 'presence', column: 'z', ddl: 'REAL NOT NULL DEFAULT 0' },   // metres above the floor on a jetpack
+  { table: 'playground_runs', column: 'orbit', ddl: 'INTEGER NOT NULL DEFAULT 1' }, // Orbit 2: the tiles move; its own best and boards
+  { table: 'playground_runs', column: 'seed', ddl: 'INTEGER' },                     // the seed an Orbit 2 run's tiles moved by
 ];

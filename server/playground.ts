@@ -1,10 +1,12 @@
 // The Playground's server side, beside the fair's rules and touching none of them: a run token per player, the run
 // believed only within what the course can pay, the star balance and the gear bought, the best run, and the boards
 // (today and all-time) cached like the fair's. The daily bridge to the fair's points is a switch, off unless the
-// deployment turns it on. The client runs on its own store until these answer, behind the same interface.
+// deployment turns it on. The client runs on its own store until these answer, behind the same interface. Orbit 2 (the
+// course awake: the same course, the same pay, its tiles moving by a seed each run) keeps its own best and boards; it
+// is open to a player once they have been through the gate on Orbit 1, while the crew's switch for it is on.
 import { Game, GameError, dayStart } from './game.js';
 import type { Stmt } from './db/types.js';
-import type { PlaygroundBest, PlaygroundBoardRow, PlaygroundGear, PlaygroundMe, PlaygroundRunInput, PlaygroundRunResult, XpEvent } from '../shared/types.js';
+import type { PlaygroundBest, PlaygroundBoardRow, PlaygroundGear, PlaygroundMe, PlaygroundOrbit, PlaygroundRunInput, PlaygroundRunResult, XpEvent } from '../shared/types.js';
 import { COMBO_MAX, COURSE_DIAMONDS, COURSE_STARS, DIAMOND, DIAMOND_STARS, GATE_BONUS_PER_S, KIT_NAME, KIT_PRICE, O2_CAP, STAR } from '../shared/playground.js';
 
 const GEARS: PlaygroundGear[] = ['boots', 'skates', 'jetpack'];
@@ -27,10 +29,11 @@ interface TokenRow { player_id: string; created_at: number; used_at: number | nu
 type CachedRow = Omit<PlaygroundBoardRow, 'you'> & { id: string };
 
 export class Playground {
-  private boardCache = new Map<'today' | 'all', { at: number; rows: CachedRow[] }>();
+  private boardCache = new Map<string, { at: number; rows: CachedRow[] }>();
   /** What each player owns, for the presence ping's kit (every 3 s): read once, kept half a minute, dropped on a purchase. */
   private ownedCache = new Map<string, { at: number; unlocks: PlaygroundGear[] }>();
-  constructor(private g: Game, private opts: { daily: boolean } = { daily: false }) {}
+  /** `sky`: whether the crew's switch for Orbit 2 is on (LiveOps' flag); without it, Orbit 2 stays shut. */
+  constructor(private g: Game, private opts: { daily: boolean; sky?: () => Promise<boolean> } = { daily: false }) {}
 
   private async state(id: string): Promise<{ stars: number; unlocks: PlaygroundGear[]; gear: PlaygroundGear }> {
     const r = await this.g.db.get<StateRow>('SELECT stars, unlocks, gear FROM playground_state WHERE player_id = ?', [id]);
@@ -38,15 +41,17 @@ export class Playground {
     const unlocks = r.unlocks.split(',').filter((u): u is PlaygroundGear => GEARS.includes(u as PlaygroundGear));
     return { stars: r.stars, unlocks: unlocks.includes('boots') ? unlocks : ['boots', ...unlocks], gear: GEARS.includes(r.gear as PlaygroundGear) ? (r.gear as PlaygroundGear) : 'boots' };
   }
-  private async best(id: string): Promise<PlaygroundBest | null> {
-    const r = await this.g.db.get<RunRow>('SELECT gear, score, created_at FROM playground_runs WHERE player_id = ? AND finished = 1 ORDER BY score DESC, created_at LIMIT 1', [id]);
-    return r ? { score: r.score, gear: r.gear as PlaygroundGear, at: r.created_at } : null;
+  private async best(id: string, orbit: PlaygroundOrbit = 1): Promise<PlaygroundBest | null> {
+    const r = await this.g.db.get<RunRow>('SELECT gear, score, created_at FROM playground_runs WHERE player_id = ? AND finished = 1 AND orbit = ? ORDER BY score DESC, created_at LIMIT 1', [id, orbit]);
+    return r ? { score: Number(r.score), gear: r.gear as PlaygroundGear, at: Number(r.created_at) } : null;
   }
   async me(id: string): Promise<PlaygroundMe> {
-    const s = await this.state(id), best = await this.best(id);
+    const s = await this.state(id), best = await this.best(id), best2 = await this.best(id, 2);
     const today = (await this.g.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM playground_runs WHERE player_id = ? AND created_at >= ?', [id, dayStart(this.g.now())]))?.n ?? 0;
-    return { ...s, best, runsToday: Number(today) };
+    return { ...s, best, best2, runsToday: Number(today) };
   }
+  /** Orbit 2 is open to a player once they have been through the gate on Orbit 1, while its switch is on. */
+  private async orbit2Open(id: string): Promise<boolean> { return !!this.opts.sky && (await this.opts.sky()) && (await this.best(id, 1)) != null; }
 
   /** A token for the run about to start: none within the gap of the last one issued. */
   async start(id: string): Promise<{ token: string }> {
@@ -71,10 +76,13 @@ export class Playground {
     const stars = n(input.stars, MAX_STARS), score = n(input.score, maxScore(stars)), comboMax = Math.max(1, n(input.comboMax, COMBO_MAX)), seconds = n(input.seconds, MAX_RUN_S);
     const partial = input.partial === true, finished = input.finished === true && !partial;
     if (finished && seconds < MIN_FINISH_S) throw new GameError('bad_run', 'The run does not add up');
-    const before = await this.best(id), delta = Math.max(0, stars - tok.credited), events: XpEvent[] = [];
+    // an Orbit 2 run counts on Orbit 2 only where it is open; anywhere else it is an Orbit 1 run (it pays the same)
+    const orbit: PlaygroundOrbit = input.orbit === 2 && (await this.orbit2Open(id)) ? 2 : 1;
+    const seed = orbit === 2 && Number.isInteger(input.seed) && input.seed! >= 0 && input.seed! <= 0xffffffff ? input.seed! : null;
+    const before = await this.best(id, orbit), delta = Math.max(0, stars - tok.credited), events: XpEvent[] = [];
     const stmts: Stmt[] = [
       ['UPDATE playground_tokens SET credited = credited + ?, used_at = ? WHERE token = ?', [delta, partial ? null : t, token]],
-      ['INSERT INTO playground_runs (token, player_id, gear, score, stars, combo_max, seconds, finished, created_at) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(token) DO UPDATE SET gear = excluded.gear, score = excluded.score, stars = excluded.stars, combo_max = excluded.combo_max, seconds = excluded.seconds, finished = excluded.finished, created_at = excluded.created_at', [token, id, gear, score, stars, comboMax, seconds, finished ? 1 : 0, t]],
+      ['INSERT INTO playground_runs (token, player_id, gear, score, stars, combo_max, seconds, finished, created_at, orbit, seed) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(token) DO UPDATE SET gear = excluded.gear, score = excluded.score, stars = excluded.stars, combo_max = excluded.combo_max, seconds = excluded.seconds, finished = excluded.finished, created_at = excluded.created_at, orbit = excluded.orbit, seed = excluded.seed', [token, id, gear, score, stars, comboMax, seconds, finished ? 1 : 0, t, orbit, seed]],
       ['INSERT INTO playground_state (player_id, stars, unlocks, gear, updated_at) VALUES (?,?,?,?,?) ON CONFLICT(player_id) DO UPDATE SET stars = playground_state.stars + excluded.stars, gear = excluded.gear, updated_at = excluded.updated_at', [id, delta, 'boots', gear, t]],
     ];
     if (finished && this.opts.daily) {
@@ -112,19 +120,19 @@ export class Playground {
     return this.me(id);
   }
 
-  /** The ten best finished runs, one per player, today (from midnight, Malaysian time) or ever; the viewer marked. */
-  async board(range: 'today' | 'all', viewer: string | null): Promise<PlaygroundBoardRow[]> {
-    const t = this.g.now(), hit = this.boardCache.get(range);
+  /** The ten best finished runs of an orbit, one per player, today (from midnight, Malaysian time) or ever; the viewer marked. */
+  async board(range: 'today' | 'all', viewer: string | null, orbit: PlaygroundOrbit = 1): Promise<PlaygroundBoardRow[]> {
+    const t = this.g.now(), key = `${range}:${orbit}`, hit = this.boardCache.get(key);
     let rows = hit && t - hit.at < BOARD_TTL_MS ? hit.rows : null;
     if (!rows) {
       const since = range === 'today' ? dayStart(t) : 0;
-      const tops = await this.g.db.all<{ player_id: string; score: number }>(`SELECT player_id, MAX(score) AS score FROM playground_runs WHERE finished = 1 AND created_at >= ? AND player_id NOT IN (SELECT player_id FROM bans) GROUP BY player_id ORDER BY score DESC LIMIT ${BOARD_SIZE}`, [since]);
+      const tops = await this.g.db.all<{ player_id: string; score: number }>(`SELECT player_id, MAX(score) AS score FROM playground_runs WHERE finished = 1 AND orbit = ? AND created_at >= ? AND player_id NOT IN (SELECT player_id FROM bans) GROUP BY player_id ORDER BY score DESC LIMIT ${BOARD_SIZE}`, [orbit, since]);
       rows = [];
       for (const [i, r] of tops.entries()) {
-        const run = await this.g.db.get<RunRow>('SELECT gear, score, created_at FROM playground_runs WHERE player_id = ? AND finished = 1 AND score = ? AND created_at >= ? ORDER BY created_at LIMIT 1', [r.player_id, r.score, since]);
-        rows.push({ id: r.player_id, rank: i + 1, name: (await this.g.player(r.player_id)).callsign, gear: (run?.gear ?? 'boots') as PlaygroundGear, score: Number(r.score), at: run?.created_at ?? 0 });
+        const run = await this.g.db.get<RunRow>('SELECT gear, score, created_at FROM playground_runs WHERE player_id = ? AND finished = 1 AND orbit = ? AND score = ? AND created_at >= ? ORDER BY created_at LIMIT 1', [r.player_id, orbit, r.score, since]);
+        rows.push({ id: r.player_id, rank: i + 1, name: (await this.g.player(r.player_id)).callsign, gear: (run?.gear ?? 'boots') as PlaygroundGear, score: Number(r.score), at: Number(run?.created_at ?? 0) });
       }
-      this.boardCache.set(range, { at: t, rows });
+      this.boardCache.set(key, { at: t, rows });
     }
     return rows.map(({ id, ...r }) => ({ ...r, you: id === viewer ? true : undefined }));
   }

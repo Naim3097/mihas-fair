@@ -52,7 +52,7 @@ export const api = {
   pgRun: (r: PlaygroundRunInput) => call<PlaygroundRunResult>('POST', '/api/playground/run', r),
   pgUnlock: (gear: string) => call<PlaygroundMe>('POST', '/api/playground/unlock', { gear }, true),
   pgGear: (gear: string) => call<PlaygroundMe>('POST', '/api/playground/gear', { gear }, true),
-  pgBoard: (range: 'today' | 'all') => call<PlaygroundBoardRow[]>('GET', `/api/playground/board?range=${range}`, undefined, true),
+  pgBoard: (range: 'today' | 'all', orbit: 1 | 2 = 1) => call<PlaygroundBoardRow[]>('GET', `/api/playground/board?range=${range}${orbit === 2 ? '&orbit=2' : ''}`, undefined, true),
 
   /* booths that are online, and the exhibitor's side of them */
   stations: () => call<StationView[]>('GET', '/api/stations'),

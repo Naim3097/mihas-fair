@@ -9,14 +9,15 @@ import { buildServices } from './wire.js';
 import { testStores } from './test-db.js';
 import { MAX_STARS, TOKEN_GAP_MS, TOKEN_TTL_MS, maxScore } from './playground.js';
 import type { LevelData } from '../shared/types.js';
+import type { Db } from './db/types.js';
 
 const root = resolve(import.meta.dirname, '..');
 const level = JSON.parse(readFileSync(resolve(root, 'public/data/floor.json'), 'utf8')) as LevelData;
 
-async function rig(daily = false) {
+async function rig(daily = false, live = false) {
   let now = Date.UTC(2026, 8, 23, 2, 0, 0); // 10:00 MYT, show day 1
   const clock = { advance: (ms: number) => { now += ms; } };
-  const services = buildServices({ ...(await testStores()), secret: 'test-secret', level, publicOrigin: 'http://x.test', now: () => now, playgroundDaily: daily });
+  const services = buildServices({ ...(await testStores()), secret: 'test-secret', level, publicOrigin: 'http://x.test', now: () => now, playgroundDaily: daily, live });
   const app = createApp({ ...services, crewPin: '4321', publicOrigin: 'http://x.test', secureCookies: false });
   const call = async (method: string, path: string, body?: unknown, cookies = new Map<string, string>()) => {
     const res = await app.request(path, { method, headers: { 'content-type': 'application/json', cookie: [...cookies].map(([k, v]) => `${k}=${v}`).join('; ') }, body: body ? JSON.stringify(body) : undefined });
@@ -25,14 +26,16 @@ async function rig(daily = false) {
   };
   /** One player's session: the cookie jar goes with every call. */
   const player = () => { const jar = new Map<string, string>(); return (method: string, path: string, body?: unknown) => call(method, path, body, jar); };
-  return { player, clock };
+  return { player, clock, db: services.game.db };
 }
-const run = (token: string, o: Partial<{ gear: string; score: number; stars: number; comboMax: number; seconds: number; finished: boolean; partial: boolean }> = {}) => ({ token, gear: 'boots', score: 400, stars: 30, comboMax: 3, seconds: 45, finished: true, ...o });
+/** A run's orbit and seed as the table holds them. */
+const orbitOf = async (db: Db, token: string) => ({ ...(await db.get<{ orbit: number; seed: number | null }>('SELECT orbit, seed FROM playground_runs WHERE token = ?', [token]))! });
+const run = (token: string, o: Partial<{ gear: string; score: number; stars: number; comboMax: number; seconds: number; finished: boolean; partial: boolean; orbit: number; seed: number }> = {}) => ({ token, gear: 'boots', score: 400, stars: 30, comboMax: 3, seconds: 45, finished: true, ...o });
 
 test('a run needs its token, is believed within what the course can pay, credits its stars once even in two parts, and a finished one is the best', async () => {
   const { player, clock } = await rig(), me = player();
   let r = await me('GET', '/api/playground/me');
-  assert.deepEqual(r.json.data, { stars: 0, unlocks: ['boots'], gear: 'boots', best: null, runsToday: 0 });
+  assert.deepEqual(r.json.data, { stars: 0, unlocks: ['boots'], gear: 'boots', best: null, best2: null, runsToday: 0 });
   assert.equal((await me('POST', '/api/playground/run', run('nope'))).json.code, 'token');
   const { token } = (await me('POST', '/api/playground/start', {})).json.data; assert.match(token, /^[0-9a-f-]{36}$/);
   assert.equal((await me('POST', '/api/playground/start', {})).json.code, 'soon', 'not two within the gap');
@@ -109,4 +112,49 @@ test('the daily bridge, switched on: the first finished run of the day pays the 
   assert.deepEqual((await me('POST', '/api/playground/run', run(token, { finished: false }))).json.events, [], 'an unfinished run pays nothing'); clock.advance(TOKEN_GAP_MS + 1);
   clock.advance(24 * 3600_000);
   j = await finish(600); assert.equal(j.events.length, 1, 'the next day pays again'); assert.equal(j.me.xp, 100);
+});
+
+test('Orbit 2: open once through the gate on Orbit 1 while its switch is on; its own best, its own boards, its seed kept; claimed anywhere else, the run is Orbit 1\'s and pays all the same', async () => {
+  const { player, clock, db } = await rig(), me = player();
+  const go = async (o: Parameters<typeof run>[1]) => { const { token } = (await me('POST', '/api/playground/start', {})).json.data; const r = await me('POST', '/api/playground/run', run(token, o)); clock.advance(TOKEN_GAP_MS + 1); return { token, d: r.json.data }; };
+  // not yet through the gate on Orbit 1: an Orbit 2 run is recorded as Orbit 1's, and pays
+  let { token, d } = await go({ orbit: 2, seed: 77, score: 700, stars: 30 });
+  assert.equal(d.best.score, 700); assert.equal(d.best2, null); assert.equal(d.stars, 30); assert.equal(d.newBest, true);
+  assert.deepEqual(await orbitOf(db, token), { orbit: 1, seed: null });
+  // open now: Orbit 2 keeps its own best, and its seed
+  ({ token, d } = await go({ orbit: 2, seed: 4_000_000_000, score: 500, stars: 20 }));
+  assert.equal(d.best.score, 700, 'Orbit 1\'s best stands'); assert.equal(d.best2.score, 500); assert.equal(d.newBest, true, 'the first through the gate on Orbit 2 is its best'); assert.equal(d.stars, 50);
+  assert.deepEqual(await orbitOf(db, token), { orbit: 2, seed: 4_000_000_000 });
+  ({ d } = await go({ orbit: 2, seed: 99, score: 400, stars: 10 })); assert.equal(d.newBest, false); assert.equal(d.best2.score, 500);
+  ({ d } = await go({ orbit: 1, score: 650 })); assert.equal(d.newBest, false, 'short of Orbit 1\'s best, whatever Orbit 2\'s is');
+  ({ token } = await go({ orbit: 2, seed: -3, score: 300 })); assert.deepEqual(await orbitOf(db, token), { orbit: 2, seed: null }, 'a seed that is no seed is not kept');
+  // each orbit its own boards
+  const scores = async (q: string) => (await me('GET', `/api/playground/board?range=today${q}`)).json.data.map((r: { score: number }) => r.score);
+  assert.deepEqual(await scores(''), [700]); assert.deepEqual(await scores('&orbit=2'), [500]); assert.deepEqual(await scores('&orbit=9'), [700], 'anything else is Orbit 1');
+  assert.equal((await me('GET', '/api/playground/me')).json.data.best2.score, 500);
+});
+
+test('Orbit 2 stays shut while its switch is off (the show\'s own site until the crew turns it on): every run is Orbit 1\'s', async () => {
+  const { player, clock } = await rig(false, true), me = player();
+  for (const score of [600, 800]) {
+    const { token } = (await me('POST', '/api/playground/start', {})).json.data;
+    const d = (await me('POST', '/api/playground/run', run(token, { orbit: 2, seed: 5, score }))).json.data; clock.advance(TOKEN_GAP_MS + 1);
+    assert.equal(d.best2, null); assert.equal(d.best.score, score);
+  }
+  assert.deepEqual((await me('GET', '/api/playground/board?range=all&orbit=2')).json.data, []);
+});
+
+test('the runs table gains its orbit and seed on a database made before them; the runs it had are Orbit 1\'s', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const { tmpdir } = await import('node:os'); const { join } = await import('node:path');
+  const { openNodeDb } = await import('./db/sqlite-node.js'); const { SCHEMA } = await import('./db/schema.js');
+  const file = join(tmpdir(), `mx-upgrade-${crypto.randomUUID()}.db`), old = new DatabaseSync(file);
+  old.exec(`CREATE TABLE playground_runs (token TEXT PRIMARY KEY, player_id TEXT NOT NULL, gear TEXT NOT NULL, score INTEGER NOT NULL, stars INTEGER NOT NULL,
+    combo_max INTEGER NOT NULL, seconds INTEGER NOT NULL, finished INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)`);
+  old.exec("INSERT INTO playground_runs VALUES ('t1', 'p1', 'boots', 900, 40, 3, 60, 1, 5)");
+  old.close();
+  const db = openNodeDb(file, SCHEMA);
+  assert.deepEqual(await orbitOf(db, 't1'), { orbit: 1, seed: null });
+  const again = openNodeDb(file, SCHEMA); // a second open adds nothing and fails nothing
+  assert.equal((await again.all('SELECT name FROM pragma_table_info(?) WHERE name IN (?, ?)', ['playground_runs', 'orbit', 'seed'])).length, 2);
 });

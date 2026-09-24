@@ -96,7 +96,7 @@ export function createApp({ game, stations, social, crews, venue, director, gc, 
   player.post('/playground/run', async (c) => { const r = await playground.run(pid(c), (await body(c)) as never); return ok(c, r.result, r.events, r.events.length > 0); });
   player.post('/playground/unlock', async (c) => ok(c, await playground.unlock(pid(c), String((await body(c)).gear)), [], false));
   player.post('/playground/gear', async (c) => ok(c, await playground.choose(pid(c), String((await body(c)).gear)), [], false));
-  player.get('/playground/board', async (c) => ok(c, await playground.board(c.req.query('range') === 'all' ? 'all' : 'today', pid(c)), [], false));
+  player.get('/playground/board', async (c) => ok(c, await playground.board(c.req.query('range') === 'all' ? 'all' : 'today', pid(c), c.req.query('orbit') === '2' ? 2 : 1), [], false));
 
   /* stations: claim, host, share */
   player.get('/stations', async (c) => ok(c, await stations.list(), [], false));

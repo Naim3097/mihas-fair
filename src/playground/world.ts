@@ -1,7 +1,8 @@
 // The Playground on screen: white platforms on ink slabs floating in the same space sky, under the same sun and
 // fog as the fair; stars, bubbles and the diamond as a few instanced meshes; rings, pads, the gear stands, the
 // portal, the start line and the gate; and the landing marker under a body in the air. Flat and matte, a dozen
-// draw calls, nothing allocated per frame.
+// draw calls, nothing allocated per frame. On Orbit 2 the moving tiles, their pads and what rides them are drawn where
+// the physics has them, every frame.
 import * as THREE from 'three';
 import { Light } from '../fair/light';
 import { loadKit } from '../fair/nexo';
@@ -9,6 +10,7 @@ import { FAIR } from '../fair/palette';
 import { Sky } from '../fair/sky';
 import { type Course, type Gear, type Pickup, type PickupKind } from './course';
 import { GEAR } from './gear';
+import type { Movers } from './movers';
 import { Ribbon } from './ribbon';
 import { Slabs, paintX } from './slabs';
 import type { LevelData } from '../../shared/types';
@@ -50,9 +52,13 @@ export class PlaygroundWorld {
   private showcase: { obj: THREE.Object3D; y: number }[] = [];
   /** the gear stands' discs, and the one swelling for a purchase */
   private discs: Partial<Record<Gear, THREE.Mesh>> = {}; private pop: { mesh: THREE.Mesh; t: number } | null = null;
+  /** each pad's marks (course.pads order), and the stars with a tinted ring that ride a tile: for Orbit 2 */
+  private padMarks: { m: THREE.Mesh; y: number }[][] = []; private tintRiders: number[] = [];
+  /** whether the tiles were moving at the last frame: one more frame draws them home */
+  private stirred = false;
 
-  /** `level`: the fair's floor plan, drawn far below (null in a test with no fair). */
-  constructor(private course: Course, lean: boolean, shadows: boolean, level: LevelData | null = null) {
+  /** `level`: the fair's floor plan, drawn far below (null in a test with no fair); `movers`: Orbit 2's, when it can play. */
+  constructor(private course: Course, lean: boolean, shadows: boolean, level: LevelData | null = null, private movers: Movers | null = null) {
     this.scene.background = new THREE.Color(FAIR.space);
     this.light = new Light(this.scene, lean, shadows);
     this.sky = new Sky(lean); this.scene.add(this.sky.dome);
@@ -67,6 +73,7 @@ export class PlaygroundWorld {
     this.ribbons = [new Ribbon(48, 0.06, 1.2, FAIR.accent), new Ribbon(48, 0.06, 1.2, FAIR.accent)]; for (const r of this.ribbons) this.scene.add(r.mesh);
     this.exhaust = new Ribbon(24, 0.12, 0.45, FAIR.accent); this.scene.add(this.exhaust.mesh);
     this.tintRings = this.tinted();
+    if (movers) this.tintRiders = this.course.pickups.flatMap((_, i) => (movers.riderOf[i]! >= 0 && this.tintSlot[i] != null ? [i] : []));
   }
 
   /** A thin ring in the gear's tint round every star on that gear's line, facing along the lane: the line reads as
@@ -94,9 +101,11 @@ export class PlaygroundWorld {
       if (p.kind === 'jump') {
         const disc = new THREE.Mesh(new THREE.CircleGeometry(p.w / 2, 32).rotateX(-Math.PI / 2), blue); disc.position.set(p.x, p.y + 0.03, p.z); disc.renderOrder = 2; this.scene.add(disc);
         const eye = new THREE.Mesh(new THREE.CircleGeometry(p.w / 6, 24).rotateX(-Math.PI / 2), decal({ color: WHITE })); eye.position.set(p.x, p.y + 0.035, p.z); eye.renderOrder = 3; this.scene.add(eye);
+        this.padMarks.push([disc, eye].map((m) => ({ m, y: m.position.y })));
       } else {
         const m = new THREE.Mesh(new THREE.PlaneGeometry(p.w, p.d).rotateX(-Math.PI / 2), decal({ map: chevrons(), transparent: true }));
         m.position.set(p.x, p.y + 0.03, p.z); m.rotation.y = Math.atan2(p.dir[0], p.dir[1]) - Math.PI / 2; m.renderOrder = 2; this.scene.add(m);
+        this.padMarks.push([{ m, y: m.position.y }]);
       }
     }
     for (const s of c.stands) {
@@ -158,9 +167,23 @@ export class PlaygroundWorld {
     return out;
   }
 
-  /** Spin, bob, breathe; the pops of what was just collected. */
+  /** Orbit 2: each moving tile, the marks of the pads on it and the tinted rings of the stars riding it, where the
+   *  tiles are now (the pickups themselves follow in update). */
+  private follow(mv: Movers) {
+    const P = this.course.platforms, D = this.course.pads, K = this.course.pickups, M = this.tmpM;
+    mv.slots.forEach((s, k) => {
+      this.slabs.set(s.i, P[s.i]!); const o = mv.now[k]!;
+      for (const j of s.pads) { const d = D[j]!; for (const { m, y } of this.padMarks[j]!) m.position.set(d.x + o.x, y + o.y, d.z + o.z); }
+    });
+    this.slabs.commit();
+    for (const i of this.tintRiders) { if (this.collected[i]) continue; const p = K[i]!, o = mv.now[mv.riderOf[i]!]!; M.makeRotationY(Math.PI / 2).setPosition(p.x + o.x, p.y + o.y, p.z + o.z); this.tintRings.setMatrixAt(this.tintSlot[i]!, M); }
+    if (this.tintRiders.length) this.tintRings.instanceMatrix.needsUpdate = true;
+  }
+
+  /** Spin, bob, breathe; the pops of what was just collected; on Orbit 2, the tiles where they are. */
   update(t: number, dt: number) {
     this.sky.update(t);
+    const mv = this.movers; if (mv && (mv.awake || this.stirred)) { this.stirred = mv.awake; this.follow(mv); }
     if (this.rings) climbRings(this.rings, -PAD_FROM_DOCK.x, -PAD_FROM_DOCK.z, -SKY_Y, 0, t, this.tmpM); // up from the X's dock, beside the pad
     for (const s of this.showcase) { s.obj.rotation.y = t * 0.6; s.obj.position.y = s.y + Math.sin(t * 1.3) * 0.04; }
     if (this.pop) { this.pop.t += dt; const k = this.pop.t / 0.5, s = k < 1 ? 1 + Math.sin(k * Math.PI) * 0.3 : 1; this.pop.mesh.scale.set(s, 1, s); if (k >= 1) this.pop = null; }
@@ -168,18 +191,21 @@ export class PlaygroundWorld {
     for (let i = 0; i < K.length; i++) {
       const p = K[i]!, mesh = this.meshes[p.kind];
       if (this.collected[i]) continue;
-      const ph = this.phase[i]!, spin = p.kind === 'diamond' ? t * 0.5 : p.kind === 'bubble' ? 0 : t * 0.9 + ph;
+      const ph = this.phase[i]!, spin = p.kind === 'diamond' ? t * 0.5 : p.kind === 'bubble' ? 0 : t * 0.9 + ph, o = this.carried(i);
       const bob = p.kind === 'bubble' ? 0 : Math.sin(t * 1.6 + ph) * 0.12, s = p.kind === 'bubble' ? 1 + Math.sin(t * 2.2 + ph) * 0.08 : 1;
-      M.compose(P.set(p.x, p.y + bob, p.z), Q.setFromAxisAngle(UP, spin), S.setScalar(s)); mesh.setMatrixAt(this.slot[i]!, M);
+      M.compose(P.set(p.x + o.x, p.y + bob + o.y, p.z + o.z), Q.setFromAxisAngle(UP, spin), S.setScalar(s)); mesh.setMatrixAt(this.slot[i]!, M);
     }
     for (let k = this.pops.length - 1; k >= 0; k--) {
-      const pop = this.pops[k]!, p = K[pop.i]!, mesh = this.meshes[p.kind]; pop.t += dt;
+      const pop = this.pops[k]!, p = K[pop.i]!, mesh = this.meshes[p.kind], o = this.carried(pop.i); pop.t += dt;
       const s = pop.t < 0.06 ? 1 + pop.t * 6 : Math.max(0, 1.36 - (pop.t - 0.06) * 14);
-      M.compose(P.set(p.x, p.y + 0.3, p.z), Q.setFromAxisAngle(UP, t * 4), S.setScalar(s)); mesh.setMatrixAt(this.slot[pop.i]!, M);
+      M.compose(P.set(p.x + o.x, p.y + 0.3 + o.y, p.z + o.z), Q.setFromAxisAngle(UP, t * 4), S.setScalar(s)); mesh.setMatrixAt(this.slot[pop.i]!, M);
       if (pop.t > 0.16) { M.makeScale(0, 0, 0); mesh.setMatrixAt(this.slot[pop.i]!, M); this.pops.splice(k, 1); }
     }
     for (const m of Object.values(this.meshes)) m.instanceMatrix.needsUpdate = true;
   }
+
+  /** How far a pickup is carried from its place by the tile it rides (nothing, at rest or on a tile that stays). */
+  private carried(i: number): { x: number; y: number; z: number } { const mv = this.movers, k = mv ? mv.riderOf[i]! : -1; return k >= 0 ? mv!.now[k]! : STILL; }
 
   /** A gear that is yours: its stand glows from now on, and swells once as it is bought under the body's feet. */
   own(gear: Gear, ceremony = false) {
@@ -213,7 +239,7 @@ export class PlaygroundWorld {
   }
 }
 
-const UP = new THREE.Vector3(0, 1, 0);
+const UP = new THREE.Vector3(0, 1, 0), STILL = { x: 0, y: 0, z: 0 } as const;
 
 /** Three chevrons pointing along +x on a blue ground: a boost pad's face. */
 function chevrons(): THREE.CanvasTexture {

@@ -1,7 +1,8 @@
 // The Playground's engine: a Scene on the shared stage. The same body, controller, camera rig and input as the
 // fair, on the course's boxes, with the run's rules fed every simulation step: pads, pickups, rings, the gate, a
 // fall. The camera settles to each section's direction so the gaps are always seen from behind; a marker on the
-// surface below shows where a body in the air will land. Stars bank the moment they are picked up.
+// surface below shows where a body in the air will land. Stars bank the moment they are picked up. On Orbit 2 the
+// tiles move (movers.ts) on the same fixed steps, by a new seed each run, woken on the pad.
 import * as THREE from 'three';
 import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { classByKey } from '../../content';
@@ -16,15 +17,18 @@ import type { Library } from '../ceritera/game/anim';
 import type { FairSink } from '../fair/input';
 import { NexoActor, loadKit, loadNexo, loadNexoLibrary } from '../fair/nexo';
 import type { Quality, Scene, Stage } from '../fair/stage';
-import { level, modal, riding, toast, world } from '../state';
+import { level, modal, riding, switches, toast, world } from '../state';
 import { SKY_VIEW } from '../universe';
 import { api } from '../net/api';
 import { buzz, sfx, type Sfx as SfxName } from '../sfx';
-import { FALL_Y, JUMP_PAD, PickupIndex, buildCourse, courseBoxes, crossed, platformUnder, sectionAt, type Course, type Gear, type Section } from './course';
+import { FALL_Y, JUMP_PAD, PICKUP_R, PickupIndex, buildCourse, courseBoxes, crossed, platformUnder, sectionAt, type Course, type Gear, type Section } from './course';
 import { GEAR, GEAR_READY, boostBody } from './gear';
+import { Movers } from './movers';
+import { planOrbit, slotsFor, type OrbitPlan, type Slot } from './orbit';
+import { newSeed } from './rng';
 import { Run, type RunEvent } from './run';
-import { pgBalance, pgBest, pgCombo, pgControls, pgFade, pgFuel, pgGear, pgHint, pgMode, pgNearPortal, pgO2, pgRunStars, pgScore, pgStandNote, pgStore, pgSummary, pgUnlocks } from './state';
-import type { PlaygroundStore } from './store';
+import { pgBalance, pgBest, pgBest2, pgCombo, pgControls, pgFade, pgFuel, pgGear, pgHint, pgMode, pgNearPortal, pgO2, pgOrbit, pgRunStars, pgScore, pgStandNote, pgStore, pgSummary, pgUnlocks } from './state';
+import { rememberMovements, seenMovements, type Orbit, type PlaygroundStore } from './store';
 import { PlaygroundWorld } from './world';
 
 const ORBIT_HOLD_MS = 1500, CAM = { min: 2.6, max: 9 };
@@ -68,13 +72,20 @@ export class PlaygroundEngine implements Scene {
   /** Down to the fair under way: the camera rising to the shared view above. */
   private leaving: { t: number; from: { dist: number; pitch: number } } | null = null;
   private stops: (() => void)[] = [];
+  /** Orbit 2: the tiles that may move, what moves them, the pickups that ride them, and the clock their movements
+   *  keep (fixed steps, so a tile is where the physics has it). */
+  private slots: Slot[]; private movers: Movers; private riders: number[]; private clock = 0; private at = { x: 0, y: 0, z: 0 };
+  /** The plan in play (null: Orbit 1), and the orbit and seed the run under way began on. */
+  private plan: OrbitPlan | null = null; private runOrbit: Orbit = 1; private runSeed: number | undefined;
 
   constructor(private stage: Stage, private quality: Quality, store: PlaygroundStore) {
     this.store = store;
     this.course = buildCourse();
     const boxes = courseBoxes(this.course);
     this.sim = new Sim('pengembara', classByKey('pengembara')!.base, { size: 200, boxes, props: [], spawn: { pos: v3(this.course.spawn.x, this.course.spawn.y, this.course.spawn.z), yaw: this.course.spawn.yaw }, enemies: [], lanterns: [] }, 1, GEAR.boots.movement);
-    this.world = new PlaygroundWorld(this.course, quality === 'low', stage.shadowsWanted, level.value);
+    this.slots = slotsFor(this.course); this.movers = new Movers(this.course, this.slots, boxes); this.movers.gridFor(this.sim.world);
+    this.riders = this.course.pickups.flatMap((_, i) => (this.movers.riderOf[i]! >= 0 ? [i] : []));
+    this.world = new PlaygroundWorld(this.course, quality === 'low', stage.shadowsWanted, level.value, this.movers);
     this.index = new PickupIndex(this.course.pickups);
     // the glass ceiling keeps a body under the shadow map's reach; the camera may look down from above it (a ride's view)
     this.rig = new CameraRig(this.camera, this.sim.world, (b) => b.tag !== 'ceiling');
@@ -95,17 +106,17 @@ export class PlaygroundEngine implements Scene {
     void Promise.all([loadNexo(), loadNexoLibrary()]).then(([g, lib]) => { if (this.disposed) return; this.gltf = g; this.lib = lib; this.actor?.dispose(); this.actor = this.makeActor(); });
     const s = this.store.get(); this.gear = s.gear; // the gear before the body, so the first body wears it
     this.actor = this.makeActor(); this.publishStore(); pgStore.value = this.store; this.markOwned();
-    pgControls.value = { jump: () => this.jump(), hold: (on) => this.stage.input.hold(on), again: () => this.again(), restart: () => this.restart(), leave: () => this.leaveRequested(), down: () => this.down() };
+    pgControls.value = { jump: () => this.jump(), hold: (on) => this.stage.input.hold(on), again: () => this.again(), restart: () => this.restart(), leave: () => this.leaveRequested(), down: () => this.down(), orbit: (o) => this.chooseOrbit(o) };
     // the server's word on the balance and the gear, whenever it comes: republish, and step off a gear no longer owned
     this.stops.push(this.store.onChange(() => { this.publishStore(); this.markOwned(); if (!this.store.get().unlocks.includes(this.gear)) this.setGear('boots'); }));
     // a tab going away mid-run sends the run so far
-    const hide = () => { if (document.hidden && this.run && !this.run.ended) this.store.flush(this.run.snapshot(), this.gear); };
+    const hide = () => { if (document.hidden && this.run && !this.run.ended) this.store.flush(this.run.snapshot(), this.gear, this.runOrbit, this.runSeed); };
     document.addEventListener('visibilitychange', hide); this.stops.push(() => document.removeEventListener('visibilitychange', hide));
     if (import.meta.env.DEV) (window as unknown as { __pg?: unknown }).__pg = this;
   }
 
   private makeActor(): NexoActor { const a = new NexoActor(this.gltf, this.lib, 'visitor', this.quality === 'high'); a.setBlob(!this.world.light.shadows); a.setLocomotion(this.gear === 'skates' ? 'skate' : 'walk'); a.wear(this.gear); this.world.scene.add(a.root); return a; }
-  private publishStore() { const s = this.store.get(); pgBalance.value = s.stars; pgUnlocks.value = s.unlocks; pgBest.value = s.best?.score ?? null; pgGear.value = this.gear; }
+  private publishStore() { const s = this.store.get(); pgBalance.value = s.stars; pgUnlocks.value = s.unlocks; pgBest.value = s.best?.score ?? null; pgBest2.value = s.best2?.score ?? null; pgGear.value = this.gear; }
   /** The stands of the gear this player owns read as theirs: no price on the label, the disc lit; the one just
    *  bought swells under the feet. */
   private markOwned(bought: Gear | null = null) {
@@ -140,6 +151,25 @@ export class PlaygroundEngine implements Scene {
   private toPad() {
     const s = this.course.spawn; this.teleport(s.x, s.y, s.z, s.yaw); this.rig.snapBehind(s.yaw); this.section = null;
     this.setGear(this.gear); this.world.reset(); this.run = null; this.stage.input.release(); // a button held through a run's end lets go here
+    this.arm();
+  }
+
+  /* ---------------- the orbit ---------------- */
+
+  /** Orbit 2 is open once through the gate on Orbit 1, while the crew's switch for it is on. */
+  private orbitOpen(): boolean { return pgBest.value != null && switches.value.sky; }
+  /** The course for the next run, on the pad: Orbit 2's tiles settle and wake into a new seed's movements (the ones
+   *  this device has not met lately first); Orbit 1's settle home. */
+  private arm() {
+    const o: Orbit = this.store.get().orbit === 2 && this.orbitOpen() ? 2 : 1;
+    this.plan = o === 2 ? planOrbit(this.slots, newSeed(), seenMovements()) : null;
+    this.movers.set(this.plan, this.clock); pgOrbit.value = o;
+  }
+  /** The orbit chip on the pad (and the summary's first way onto Orbit 2): chosen, kept, and the course answers. */
+  private chooseOrbit(o: Orbit) {
+    if (pgMode.value === 'run' || this.leaving || (o === 2 && !this.orbitOpen())) return;
+    this.store.chooseOrbit(o); if (o === pgOrbit.value) return;
+    this.arm(); sfx(o === 2 ? 'liftUp' : 'tap'); api.track('playground_orbit', { orbit: o });
   }
   private teleport(x: number, y: number, z: number, yaw: number) {
     const p = this.sim.player; p.body.pos.x = x; p.body.pos.y = y; p.body.pos.z = z; p.body.vel = v3(); p.body.grounded = false; p.yaw = yaw; p.peak = y;
@@ -169,10 +199,12 @@ export class PlaygroundEngine implements Scene {
     this.world.update(t, dt);
     const it = this.stage.input.poll();
     if (pgMode.value === 'summary' || this.leaving) { it.move.x = it.move.y = 0; it.jump = false; it.thrust = false; }
+    if (pgOrbit.value === 2 && pgMode.value !== 'run' && !this.orbitOpen()) this.arm(); // its switch went off: the tiles settle home (a run under way keeps its course)
     this.acc += dt; let n = 0;
     while (this.acc >= STEP - 1e-9 && n < 6) {
       const step = n === 0 ? it : heldOnly(it);
       this.prev.x = p.body.pos.x; this.prev.y = p.body.pos.y; this.prev.z = p.body.pos.z;
+      this.clock += STEP; if (this.movers.awake) this.movers.step(this.clock, this.sim.world, p.body); // the tiles, and whoever rides one, then the body
       this.sim.camYaw = this.rig.yaw; this.sim.step(step, STEP);
       p.stamina = p.vit.stamina; p.spirit = p.vit.spirit; // no stamina here either
       this.afterStep();
@@ -222,13 +254,12 @@ export class PlaygroundEngine implements Scene {
     const run = this.run; if (!run || run.ended) return;
     run.tick(STEP);
     if (!this.warned && run.o2 <= O2_WARN && !run.ended) { this.warned = true; sfx('warn'); buzz([20, 30, 20]); } // the air's warning, once
-    // pickups against the chest, every step
-    const g = GEAR[this.gear], n = this.index.near(pos.x, pos.y + 0.9, pos.z, g.magnet + 0.36, this.near);
-    for (let k = 0; k < n; k++) {
-      const i = this.near[k]!; if (this.world.isCollected(i)) continue;
-      const kind = this.course.pickups[i]!.kind; if (kind === 'cell' && !this.sim.movement.thrust) continue; // fuel is the Jetpack's
-      this.world.collect(i);
-      if (kind === 'star') run.star(); else if (kind === 'bubble') run.bubble(); else if (kind === 'cell') run.cell(); else run.diamond();
+    // pickups against the chest, every step; on Orbit 2 those riding a tile are where the tile has them
+    const g = GEAR[this.gear], reach = g.magnet + 0.36, awake = this.movers.awake, n = this.index.near(pos.x, pos.y + 0.9, pos.z, reach, this.near);
+    for (let k = 0; k < n; k++) { const i = this.near[k]!; if (!awake || this.movers.riderOf[i]! < 0) this.take(i, run); }
+    if (awake) for (const i of this.riders) {
+      const q = this.movers.pickupAt(i, this.at), rr = reach + PICKUP_R[this.course.pickups[i]!.kind];
+      if ((q.x - pos.x) ** 2 + (q.y - pos.y - 0.9) ** 2 + (q.z - pos.z) ** 2 <= rr * rr) this.take(i, run);
     }
     for (const r of this.course.rings) if (crossed(r, this.prev, pos)) run.ringAt(r.order);
     if (crossed(this.course.gate, this.prev, pos)) run.gate();
@@ -237,8 +268,17 @@ export class PlaygroundEngine implements Scene {
     if (run.ended) this.finish();
   }
 
+  /** A pickup the chest reached: taken, once (fuel only by the Jetpack). */
+  private take(i: number, run: Run) {
+    if (this.world.isCollected(i)) return;
+    const kind = this.course.pickups[i]!.kind; if (kind === 'cell' && !this.sim.movement.thrust) return; // fuel is the Jetpack's
+    this.world.collect(i);
+    if (kind === 'star') run.star(); else if (kind === 'bubble') run.bubble(); else if (kind === 'cell') run.cell(); else run.diamond();
+  }
+
   private startRun() {
     this.run = new Run(); this.world.reset(); this.warned = false; this.store.beginRun(); pgMode.value = 'run'; pgCombo.value = 1; pgRunStars.value = 0; pgScore.value = 0; pgO2.value = this.run.o2;
+    this.runOrbit = pgOrbit.value; this.runSeed = this.plan?.seed; if (this.plan) rememberMovements(this.plan.programs); // met, from here on
     sfx('go');
   }
   /** Off the pad's edge before a run: back on it, after the same dark moment. */
@@ -253,10 +293,11 @@ export class PlaygroundEngine implements Scene {
    *  the body where it stopped (Again puts it back on the pad; nothing moves behind the sheet). */
   private finish() {
     const run = this.run; if (!run?.ended) return;
-    const s = run.ended, newBest = this.store.record(s, this.gear); this.publishStore();
-    pgSummary.value = { ...s, gear: this.gear, newBest, balance: this.store.get().stars };
+    const s = run.ended, first = this.store.get().best == null, newBest = this.store.record(s, this.gear, this.runOrbit, this.runSeed); this.publishStore();
+    const opened = this.runOrbit === 1 && s.reason === 'gate' && first && switches.value.sky; // the first time through the gate opens Orbit 2
+    pgSummary.value = { ...s, gear: this.gear, newBest, balance: this.store.get().stars, orbit: this.runOrbit, opened };
     pgMode.value = 'summary'; this.publishRun();
-    api.track('playground_run', { gear: this.gear, score: s.score, stars: s.stars, comboMax: s.comboMax, seconds: s.seconds, finished: s.reason === 'gate' });
+    api.track('playground_run', { gear: this.gear, score: s.score, stars: s.stars, comboMax: s.comboMax, seconds: s.seconds, finished: s.reason === 'gate', orbit: this.runOrbit });
     if (s.reason === 'gate') { sfx('big'); buzz([18, 40, 18]); } else if (s.reason === 'o2') sfx('warn');
   }
   private onStand(gear: Gear) {
@@ -341,7 +382,7 @@ export class PlaygroundEngine implements Scene {
 
   resize(w: number, h: number) { this.camera.aspect = w / h; this.rig.baseFov = w < h ? 58 : 50; this.camera.updateProjectionMatrix(); }
   applyLevel(_level: number, shadows: boolean, mapSize: number) { this.world.light.setShadows(this.world.scene, shadows, mapSize); this.actor?.setBlob(!shadows); }
-  perfExtra(): string { return `playground · ${pgMode.value}`; }
+  perfExtra(): string { return `playground · ${pgMode.value}${pgOrbit.value === 2 ? ' · orbit 2' : ''}`; }
   dispose() {
     this.disposed = true; this.stops.forEach((s) => s()); this.actor?.dispose(); this.steps.dispose(); this.world.dispose();
     this.overlay.remove();

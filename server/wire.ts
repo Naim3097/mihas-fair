@@ -29,7 +29,7 @@ export function buildServices(o: { db: Db; secret: string; level: LevelData; pub
   const venue = new Venue(game), director = new Director(game, stations, venue), gc = new GroundControl(game, stations, venue), ops = new LiveOps(game, stations, { live: o.live === true });
   const ceritera = new Ceritera(o.db, o.now), checkpoints = new Checkpoints(game, team);
   stations.onStatus = () => checkpoints.forget();
-  const referrals = new Referrals(game, team), onboarding = new Onboarding(game, stations, team), playground = new Playground(game, { daily: o.playgroundDaily === true });
+  const referrals = new Referrals(game, team), onboarding = new Onboarding(game, stations, team), playground = new Playground(game, { daily: o.playgroundDaily === true, sky: async () => (await ops.flags()).sky });
   stations.onFirstClaim = (id, ref) => referrals.record(id, ref);
 
   game.hooks = {
