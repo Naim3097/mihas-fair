@@ -21,6 +21,8 @@ interface Bot extends RosterEntry {
   job: { type: 'visit'; station: string } | null;
   /** what they are seen doing: sitting in a café, waving at you */
   pose: Pose; poseUntil: number; seat: Seat | null; wavedAt: number;
+  /** the Playground's kit on this body, so the demo shows what others see: two on Skates, one flying a Jetpack */
+  kit?: 'skates' | 'jetpack';
 }
 export interface DemoState { version: number; crewPin: string; pendingStation: string | null; hostedNear: { id: string; name: string }[]; drop: string | null; bots: number }
 
@@ -153,10 +155,12 @@ export class DemoSim {
     const row = await this.s.game.db.get<{ value: string }>("SELECT value FROM settings WHERE key = 'demo:roster'");
     const roster = row ? (JSON.parse(row.value) as RosterEntry[]) : [];
     this.botIds = new Set(roster.map((b) => b.id));
+    let kits = 0; // the first three fast walkers wear kits: Skates, Skates, Jetpack
     this.bots = roster.map((b) => {
+      const kit: Bot['kit'] = b.kind === 'remote' && kits < 3 ? (kits++ < 2 ? 'skates' : 'jetpack') : undefined;
       const home = b.station ? this.s.game.stations.get(b.station)! : this.pickBooth(b.deck, null);
       const pos = this.nav.nearestWalkable(home.x, home.y) ?? { x: home.x, y: home.y };
-      return { ...b, pos, h: this.rand() * 6.28, path: [], speed: b.kind === 'remote' || b.kind === 'suspect' ? 3.2 + this.rand() * 1.8 : 1.1 + this.rand() * 0.5, wait: this.rand() * 12, target: null, base: null, baseAt: 0, job: null, pose: '', poseUntil: 0, seat: null, wavedAt: 0 };
+      return { ...b, pos, h: this.rand() * 6.28, path: [], speed: kit === 'jetpack' ? 6 : kit === 'skates' ? 5 : b.kind === 'remote' || b.kind === 'suspect' ? 3.2 + this.rand() * 1.8 : 1.1 + this.rand() * 0.5, wait: this.rand() * 12, target: null, base: null, baseAt: 0, job: null, pose: '', poseUntil: 0, seat: null, wavedAt: 0, kit };
     });
     this.lastTick = 0;
   }
@@ -192,7 +196,9 @@ export class DemoSim {
     } else if (this.rand() < 0.04) b.h += (this.rand() - 0.5) * 1.2;
 
     if (!b.base || t - b.baseAt > 60_000) { const h = await this.s.game.hologramOf(b.id, { x: 0, y: 0, h: 0, deck: false, sigma: 0 }); b.base = { id: h.id, callsign: h.callsign, cls: h.cls, av: h.av, z: 0 }; b.baseAt = t; }
-    let moved = await this.s.game.presence.update({ ...b.base, x: +b.pos.x.toFixed(2), y: +b.pos.y.toFixed(2), h: +b.h.toFixed(2), pose: b.pose || undefined, deck: false, sigma: 0 }, t, false);
+    // a jetpack bot flies its walks a few metres up, the height breathing slowly; on the ground it stands like anyone
+    const airborne = b.kit === 'jetpack' && b.path.length > 0 && !b.pose, z = airborne ? +(3.2 + 1.4 * Math.sin(t / 2600)).toFixed(1) : 0;
+    let moved = await this.s.game.presence.update({ ...b.base, x: +b.pos.x.toFixed(2), y: +b.pos.y.toFixed(2), h: +b.h.toFixed(2), pose: airborne ? 'fly' : b.pose || undefined, deck: false, sigma: 0, kit: b.kit, z }, t, false);
     if (moved == null) { // the server refused an implausible jump: exactly what a teleporting client looks like
       await this.s.ops.speedFlag(b.id, `to ${b.pos.x.toFixed(0)},${b.pos.y.toFixed(0)} (demo: jumped across the hall)`);
       moved = await this.s.game.presence.update({ ...b.base, x: b.pos.x, y: b.pos.y, h: b.h, deck: false, sigma: 0 }, t, true);

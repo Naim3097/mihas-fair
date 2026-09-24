@@ -317,12 +317,14 @@ export class NexoActor {
   /** Drive a body we only hear about: walk or run by speed, or hold a pose. Speeds in m/s. */
   applyRemote(speed: number, pose: string, dt: number): void {
     if (!this.anims) return;
-    const s = this.state;
+    const s = this.state; this.speed = speed; // the glide on skates reads it
     const want: AnimKey | null = pose === 'wave' ? 'wave' : pose === 'cheer' ? 'victory' : pose === 'dance' ? 'dance' : pose === 'jump' ? 'jump' : null;
-    if (want) { if (!(s.key === want && !s.loop)) { s.key = want; s.loop = false; s.fit = 0; s.from = 0; s.serial++; } }
+    if (this.flight) { if (s.serial !== FLIGHT_SERIAL) { s.key = 'jump'; s.loop = true; s.fit = 0; s.from = FLIGHT_FROM; s.serial = FLIGHT_SERIAL; s.rate = 0; } } // airborne on a jetpack: the apex held, as the player's is
+    else if (want) { if (!(s.key === want && !s.loop)) { s.key = want; s.loop = false; s.fit = 0; s.from = 0; s.serial++; } }
     else {
-      const key: AnimKey = speed < 0.3 ? 'idle-calm' : speed < 2.2 ? 'stroll' : 'jog', rate = key === 'idle-calm' ? 1 : Math.max(0.5, speed / (NATURAL[key]! * this.stride));
-      if (!(s.key === key && s.loop)) { s.key = key; s.loop = true; s.fit = 0; s.from = 0; s.serial++; }
+      const skating = this.loco === 'skate' && speed >= 0.3; // the glide is a pose over a still clip, not a walk
+      const key: AnimKey = skating || speed < 0.3 ? 'idle-calm' : speed < 2.2 ? 'stroll' : 'jog', rate = key === 'idle-calm' ? 1 : Math.max(0.5, speed / (NATURAL[key]! * this.stride));
+      if (!(s.key === key && s.loop) || s.serial === FLIGHT_SERIAL) { s.key = key; s.loop = true; s.fit = 0; s.from = 0; s.serial = s.serial === FLIGHT_SERIAL ? 1 : s.serial + 1; }
       s.rate = rate;
     }
     this.anims.apply(s);

@@ -29,3 +29,17 @@ test('a lift ride or a fresh arrival is placed, not dragged across the hall', ()
   r.push({ t: 2000, x: 0, y: 190, h: 1 }); r.step(2016, 0.016);
   assert.deepEqual([r.x, r.y], [0, 190]); assert.equal(r.speed, 0);
 });
+
+test('a flyer climbs between two updates as smoothly as a walker walks, and one heard about in the air starts in the air', () => {
+  const r = new RemoteTrack({ t: 0, x: 0, y: 0, h: 0, z: 3 });
+  assert.equal(r.z, 3, 'arrives airborne: no rise from the floor');
+  r.push({ t: 2000, x: 6, y: 0, h: 0, z: 5 });
+  const zs: number[] = [];
+  for (let now = 2000; now <= 4000; now += 500) { r.step(now, 0.5); zs.push(+r.z.toFixed(3)); }
+  assert.deepEqual(zs, [3, 3.5, 4, 4.5, 5]);
+  assert.ok(Math.abs(r.vz) < 1e-9, 'arrived: level');
+  r.push({ t: 4000, x: 6, y: 0, h: 0 }); r.step(5000, 1); // the next ping says nothing about height: on the ground
+  assert.equal(+r.z.toFixed(3), 2.5); assert.ok(r.vz < 0, 'coming down');
+  const w = new RemoteTrack({ t: 0, x: 0, y: 0, h: 0 }); w.push({ t: 2000, x: 4, y: 0, h: 0 }); w.step(3000, 1);
+  assert.equal(w.z, 0); assert.equal(w.vz, 0);
+});

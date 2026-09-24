@@ -34,7 +34,7 @@ import type { PlaygroundStore } from '../playground/store';
 import { Ribbon } from '../playground/ribbon';
 export { pickQuality, type Quality } from './stage';
 import { CX, CY, buildFairLevel, fixY, toPlan, toWorld, type FairLevel } from './level';
-import { NexoActor, loadKit, loadNexo, loadNexoLibrary, loadNexoLod, type NexoRole } from './nexo';
+import { NexoActor, loadKit, loadNexo, loadNexoLibrary, loadNexoLod, type Kit, type NexoRole } from './nexo';
 import { FAIR_MOVEMENT } from './movement';
 import { Reach } from './reach';
 import { FAIR, FairWorld } from './world';
@@ -51,7 +51,7 @@ const INTRO = { dist: 30, pitch: 0.6, s: 1.6 };
 const TAP_TOL = 14;
 const EMOTE = { wave: { clip: 'wave', ms: 2600 }, cheer: { clip: 'victory', ms: 2600 }, dance: { clip: 'dance', ms: 5200 } } as const;
 
-interface Holo { actor: NexoActor; cls: Hologram['cls']; track: RemoteTrack; label: HTMLDivElement; seen: number; pose: string; tx: number; ty: number }
+interface Holo { actor: NexoActor; cls: Hologram['cls']; track: RemoteTrack; label: HTMLDivElement; seen: number; pose: string; tx: number; ty: number; /** the kit on their body, from their ping */ kit: Kit; /** airborne on a jetpack, with hysteresis so a ping never pops it */ flying: boolean }
 interface Label { text: string; pos: THREE.Vector3; kind: 'area' | 'gate' | 'hero' | 'lift' }
 
 export class FairEngine implements EngineApi, Scene {
@@ -618,9 +618,10 @@ export class FairEngine implements EngineApi, Scene {
   private sync(now: number) {
     if (now - this.pingAt < PING_MS || document.hidden) return; this.pingAt = now;
     const spawn = this.firstPing; this.firstPing = false;
-    const pos = this.position, p = this.sim.player;
-    const pose = this.pose || (!p.body.grounded && !this.seat ? 'jump' : '');
-    api.presence({ x: +pos.x.toFixed(2), y: +pos.y.toFixed(2), h: +p.yaw.toFixed(2), spawn, pose: pose || undefined })
+    const pos = this.position, p = this.sim.player, flying = this.kit === 'jetpack' && !p.body.grounded && !this.seat;
+    const pose = this.pose || (flying ? 'fly' : !p.body.grounded && !this.seat ? 'jump' : '');
+    // the kit on the body and, on a jetpack in the air, how high: what everyone else sees (the server keeps only what was paid for)
+    api.presence({ x: +pos.x.toFixed(2), y: +pos.y.toFixed(2), h: +p.yaw.toFixed(2), spawn, pose: pose || undefined, kit: this.kit === 'boots' ? undefined : this.kit, z: flying && p.body.pos.y > 0.05 ? +p.body.pos.y.toFixed(1) : undefined })
       .then((r) => { online.value = r.online; this.applyHolos(r.holograms, now); }).catch(() => {});
   }
 
@@ -632,13 +633,14 @@ export class FairEngine implements EngineApi, Scene {
       if (!o) {
         const actor = this.makeActor(h.cls === 'exhibitor' ? 'exhibitor' : 'visitor');
         const label = Object.assign(document.createElement('div'), { className: 'lbl holo' }); this.overlay.appendChild(label);
-        o = { actor, cls: h.cls, track: new RemoteTrack({ t: now, x: h.x, y: h.y, h: h.h }), label, seen: now, pose: '', tx: h.x, ty: h.y }; this.holos.set(h.id, o);
+        o = { actor, cls: h.cls, track: new RemoteTrack({ t: now, x: h.x, y: h.y, h: h.h, z: h.z }), label, seen: now, pose: '', tx: h.x, ty: h.y, kit: 'boots', flying: false }; this.holos.set(h.id, o);
       }
       const text = h.cls === 'exhibitor' && h.company ? h.company : h.callsign;
       if (o.label.textContent !== text) o.label.textContent = text;
       o.label.classList.toggle('exhib', h.cls === 'exhibitor');
       o.pose = h.pose ?? '';
-      const snap = { t: now, x: h.x, y: h.y, h: h.h }; if (o.pose === 'sit') o.track.place(snap); else o.track.push(snap);
+      const kit: Kit = h.kit ?? 'boots'; if (o.kit !== kit) { o.kit = kit; o.actor.setLocomotion(kit === 'skates' ? 'skate' : 'walk'); } // dressed in updateHolos, by distance
+      const snap = { t: now, x: h.x, y: h.y, h: h.h, z: h.z || 0 }; if (o.pose === 'sit') o.track.place(snap); else o.track.push(snap);
       o.tx = h.x; o.ty = h.y; o.seen = now;
     }
     for (const [id, o] of this.holos) if (now - o.seen > PING_MS * 3) { o.actor.dispose(); o.label.remove(); this.holos.delete(id); }
@@ -653,7 +655,15 @@ export class FairEngine implements EngineApi, Scene {
       const hidden = Math.abs(r.x - me.x) > far || Math.abs(r.y - me.y) > far;
       o.actor.root.visible = !hidden; if (hidden) continue;
       const w = toWorld(r.x, r.y, 0), d = Math.hypot(mp.x - w.x, mp.z - w.z);
-      o.actor.place(w.x, 0, w.z, r.h); o.actor.attend(d < 6 ? this.face.set(mp.x, mp.y + 1.3, mp.z) : null);
+      // their kit, on their body: the frames under the feet, the pack on the back with its flames, the glide, the flight — what
+      // the wearer sees of themselves, everyone sees. Phones dress only the bodies near them; a far one is Boots until it comes close.
+      o.actor.wear(o.kit !== 'boots' && (this.quality === 'high' || d < 30) ? o.kit : 'boots');
+      const flying = o.kit === 'jetpack' && (o.flying ? r.z > 0.15 : r.z > 0.3); o.flying = flying;
+      const lean = flying ? Math.min(1, r.speed / 7) * 0.35 : Math.min(0.8, r.speed / 11) * (o.kit === 'skates' ? 0.22 : 0.16);
+      o.actor.place(w.x, flying || r.z > 0.05 ? r.z : 0, w.z, r.h, lean);
+      o.actor.setFlight(flying); o.actor.setThrust(flying && r.vz > -0.4 ? 1 : 0); // climbing or holding height: the flames are lit; falling: out
+      o.actor.setLean(o.kit === 'skates' && !flying ? THREE.MathUtils.clamp(r.turnRate * 0.08 * Math.min(1, r.speed / 6), -0.35, 0.35) : 0);
+      o.actor.attend(d < 6 ? this.face.set(mp.x, mp.y + 1.3, mp.z) : null);
       o.actor.setCastShadow(d < 18); // the shadow map's texels go to the people near you
       if (d > 30 && (this.holoFrame + n) % 2) { o.actor.applyRemote(r.speed, o.pose, dt * 2); continue; } // far bodies animate at half rate, every other frame with a double step
       if (d > 30) continue;
@@ -700,7 +710,7 @@ export class FairEngine implements EngineApi, Scene {
     } else { write(this.myLabel, '0'); write(this.tip, '0'); }
     const hero = this.labelEls.find((x) => x.l.kind === 'hero'); if (hero) place(hero.el, hero.l.pos, 0, true);
     for (const s of this.boothEls) { if (s.booth) place(s.el, s.pos, 52); else write(s.el, '0'); }
-    for (const o of this.holos.values()) { if (!o.actor.root.visible) { write(o.label, '0'); continue; } const w2 = toWorld(o.track.x, o.track.y, 2.05); place(o.label, p.set(w2.x, w2.y, w2.z), 40); }
+    for (const o of this.holos.values()) { if (!o.actor.root.visible) { write(o.label, '0'); continue; } const w2 = toWorld(o.track.x, o.track.y, 2.05 + o.track.z); place(o.label, p.set(w2.x, w2.y, w2.z), 40); } // the name rides up with a flyer
     for (const { el, l } of this.labelEls) if (l.kind !== 'hero') place(el, l.pos, l.kind === 'gate' ? 110 : 80);
   }
 
