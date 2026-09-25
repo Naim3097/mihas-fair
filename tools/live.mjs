@@ -6,5 +6,5 @@ import { networkInterfaces } from 'node:os';
 const lan = Object.values(networkInterfaces()).flat().find((i) => i && i.family === 'IPv4' && !i.internal)?.address ?? 'localhost';
 process.env.API_PORT ??= '8787';
 process.env.PUBLIC_ORIGIN ??= `http://${lan}:${process.env.API_PORT}`;
-console.log(`[live] the fair: http://${lan}:${process.env.API_PORT}/  (this machine: http://localhost:${process.env.API_PORT}/)`);
+console.log(`[live] the fair: ${process.env.PUBLIC_ORIGIN}/  (this machine: http://localhost:${process.env.API_PORT}/)`); // the address a launcher named, if it knows the Wi-Fi's
 await import('../server/node.ts');
